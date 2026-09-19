@@ -52,7 +52,7 @@ export function shutdownCodex() {
   shared?.rpc.kill();
 }
 
-export function startCodexSession({ cwd, resume, onEvent, onPending, onExit }: StartOptions): ProviderSession {
+export function startCodexSession({ cwd, resume, model, effort, onEvent, onPending, onExit }: StartOptions): ProviderSession {
   const { rpc, ready, threads } = appServer();
   const { normalize } = createNormalizer();
   let threadId: string | null = null;
@@ -129,7 +129,8 @@ export function startCodexSession({ cwd, resume, onEvent, onPending, onExit }: S
       opened
         .then(
           async () => {
-            const res = (await rpc.request('turn/start', { threadId: threadId!, input })) as TurnStartResponse;
+            // model / effort 是"本轮及之后"的覆盖，每轮都带上保证 resume 后也一致
+            const res = (await rpc.request('turn/start', { threadId: threadId!, input, model, effort })) as TurnStartResponse;
             turnId = res.turn.id;
           },
           () => {}, // thread 没开起来已经走了 onExit，不再重复报

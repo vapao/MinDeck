@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { AgentEvent, Attachment, PendingRequest, PendingRequestBody, ProviderEvent, Resolution, Session, SessionStatus, UsageInfo } from '@agentdeck/shared';
+import { effortLevels, type AgentEvent, type Attachment, type PendingRequest, type PendingRequestBody, type ProviderEvent, type Resolution, type Session, type SessionStatus, type Settings, type UsageInfo } from '@agentdeck/shared';
 import type { Store } from './store/db';
 import type { AttachmentStore } from './store/attachments';
 import type { ProviderSession, StartOptions } from './providers/types';
@@ -15,7 +15,7 @@ export class HubError extends Error {
 }
 
 // Hub：Session 元数据 + append-only 事件流 + 多端 fan-out。Provider 会话在首条消息时才拉起。
-export function createHub(store: Store, attachments: AttachmentStore, workspaces: string[]) {
+export function createHub(store: Store, attachments: AttachmentStore) {
   const live = new Map<string, ProviderSession>();
   const listeners = new Map<string, Set<(e: AgentEvent) => void>>();
   // 正在等用户处理的 Provider 回调；Hub 重启后这些 Promise 不复存在，对应的行在启动时作废
@@ -45,6 +45,11 @@ export function createHub(store: Store, attachments: AttachmentStore, workspaces
   function setStatus(sessionId: string, status: SessionStatus) {
     store.setSessionStatus(sessionId, status);
     emit(sessionId, { type: 'session.status', payload: { status } });
+  }
+
+  const emptyDefaults: Settings = { claude: { model: '', effort: '' }, codex: { model: '', effort: '' } };
+  function settings(): Settings {
+    return store.getSettings() ?? emptyDefaults;
   }
 
   function getSession(id: string): Session {
@@ -98,6 +103,8 @@ export function createHub(store: Store, attachments: AttachmentStore, workspaces
     const provider = providers[session.provider]({
       cwd: session.cwd,
       resume: session.providerSessionId ?? undefined,
+      model: session.model ?? undefined,
+      effort: session.effort ?? undefined,
       onPending: (body, signal) => createPending(session.id, body, signal),
       onEvent(event) {
         if (event.type === 'session.started') store.setProviderSessionId(session.id, event.payload.providerSessionId);
@@ -131,15 +138,28 @@ export function createHub(store: Store, attachments: AttachmentStore, workspaces
   }
 
   return {
-    workspaces,
-
-    createSession(provider: Session['provider'], cwd: string): Session {
+    /** model / effort 省略时取设置里的默认值；空字符串 = 交给 Provider 默认，落库为 null */
+    createSession(provider: Session['provider'], cwd: string, override: { model?: string; effort?: string } = {}): Session {
       if (!(provider in providers)) throw new HubError(400, `未知 Provider ${provider}`);
-      if (!workspaces.includes(cwd)) throw new HubError(400, `cwd 不在 workspace allowlist 内`);
+      // cwd 只能是 UI 里添加过的工作区（方案 §11.3 allowlist）
+      if (!store.getWorkspaceByPath(cwd)) throw new HubError(400, `cwd 不是已添加的工作区`);
+      const defaults = settings()[provider];
+      const model = (override.model ?? defaults.model).trim() || null;
+      const effort = (override.effort ?? defaults.effort).trim() || null;
+      if (effort && !effortLevels[provider].includes(effort)) throw new HubError(400, `${provider} 不支持思考等级 ${effort}`);
       const now = new Date().toISOString();
-      const session: Session = { id: randomUUID(), provider, cwd, providerSessionId: null, status: 'idle', title: null, createdAt: now, updatedAt: now };
+      const session: Session = { id: randomUUID(), provider, cwd, providerSessionId: null, status: 'idle', title: null, model, effort, createdAt: now, updatedAt: now };
       store.createSession(session);
       return session;
+    },
+
+    settings,
+    updateSettings(next: Settings) {
+      for (const provider of ['claude', 'codex'] as const) {
+        const effort = next[provider].effort.trim();
+        if (effort && !effortLevels[provider].includes(effort)) throw new HubError(400, `${provider} 不支持思考等级 ${effort}`);
+      }
+      store.setSettings(next);
     },
 
     getSession,

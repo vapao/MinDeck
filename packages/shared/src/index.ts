@@ -13,8 +13,26 @@ export type Session = {
   status: SessionStatus;
   /** 首条用户消息的开头，用于列表展示；还没发过消息时为 null */
   title: string | null;
+  /** 创建时指定的模型 / 思考等级（来自设置或新建页覆盖）；null 交给 Provider 默认。实际生效的模型看 session.started */
+  model: string | null;
+  effort: string | null;
   createdAt: string;
   updatedAt: string;
+};
+
+// ---- 工作区与设置 ----
+
+/** 可作为会话 cwd 的目录，由用户在 UI 里从家目录内浏览添加；alias 只用于展示 */
+export type Workspace = { id: string; path: string; alias: string; createdAt: string };
+
+/** 应用级默认值：新建会话时未覆盖就用它；空字符串 = 交给 Provider 默认 */
+export type ProviderDefaults = { model: string; effort: string };
+export type Settings = Record<ProviderId, ProviderDefaults>;
+
+/** 各 Provider 接受的思考等级（Claude：SDK EffortLevel；Codex：model_reasoning_effort） */
+export const effortLevels: Record<ProviderId, readonly string[]> = {
+  claude: ['low', 'medium', 'high', 'xhigh', 'max'],
+  codex: ['minimal', 'low', 'medium', 'high', 'xhigh'],
 };
 
 /** 账号级额度（Claude：§16.1 第 4 条；Codex：account/rateLimits/updated），按 rateLimitType 各存一份最新值 */
@@ -135,7 +153,8 @@ export type ProviderEvent<T extends EventType = EventType> = {
 
 // ---- REST ----
 
-export type CreateSessionBody = { provider: ProviderId; cwd: string };
+/** model / effort 省略时取设置里的默认值；空字符串表示显式交给 Provider 默认 */
+export type CreateSessionBody = { provider: ProviderId; cwd: string; model?: string; effort?: string };
 export type CreateSessionResponse = Session;
 
 /** 按 updatedAt 倒序 */
@@ -149,7 +168,18 @@ export type SendMessageResponse = { seq: number; queued: boolean };
 /** POST /api/sessions/:id/interrupt，无 body；未在运行时 409 */
 export type InterruptResponse = { ok: true };
 
-export type ListWorkspacesResponse = { cwd: string }[];
+export type ListWorkspacesResponse = Workspace[];
+/** POST /api/workspaces；path 必须在家目录内且已存在，重复添加 409 */
+export type CreateWorkspaceBody = { path: string; alias: string };
+/** PATCH /api/workspaces/:id */
+export type UpdateWorkspaceBody = { alias: string };
+
+/** GET /api/fs/dirs?path=：列出 path 下的子目录（跳过隐藏目录），只允许家目录内；path 省略 = 家目录 */
+export type ListDirsResponse = { path: string; parent: string | null; dirs: { name: string; path: string }[] };
+
+/** GET / PUT /api/settings */
+export type SettingsResponse = Settings;
+export type UpdateSettingsBody = Settings;
 
 /** POST /api/sessions/:id/attachments，multipart 单文件字段 file */
 export type UploadAttachmentResponse = Attachment;

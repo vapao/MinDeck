@@ -1,4 +1,4 @@
-import { AlertTriangle, Plus } from 'lucide-react'
+import { AlertTriangle, FolderOpen, Plus, Settings } from 'lucide-react'
 import { navigate } from '../router'
 import { useSessions } from '../session/useSessions'
 import { SessionList } from '../components/SessionList'
@@ -11,7 +11,17 @@ export function SessionListPage() {
 
   return (
     <div className={styles.page}>
-      <header className={styles.brand}>AgentDeck</header>
+      <header className={styles.brand}>
+        AgentDeck
+        <span className={styles.nav}>
+          <button type="button" className={styles.navButton} onClick={() => navigate('/workspaces')} aria-label="项目">
+            <FolderOpen size={18} />
+          </button>
+          <button type="button" className={styles.navButton} onClick={() => navigate('/settings')} aria-label="设置">
+            <Settings size={18} />
+          </button>
+        </span>
+      </header>
       {waiting.length > 0 && (
         <button type="button" className={styles.banner} onClick={() => navigate(`/s/${waiting[0].id}`)}>
           <AlertTriangle size={16} />

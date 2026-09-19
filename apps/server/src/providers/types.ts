@@ -18,6 +18,9 @@ export type StartOptions = {
   cwd: string;
   /** Hub 重启后用保存的 providerSessionId 恢复上下文（方案 §6.2 / §5.2） */
   resume?: string;
+  /** 会话创建时定下的模型 / 思考等级；省略交给 Provider 默认。取值范围见 shared effortLevels */
+  model?: string;
+  effort?: string;
   onEvent(event: ProviderEvent): void;
   /** 审批 / 提问：等用户在某个设备上处理；signal 触发（如 turn 被中断）时 resolve 为 null */
   onPending(body: PendingRequestBody, signal: AbortSignal): Promise<Resolution | null>;

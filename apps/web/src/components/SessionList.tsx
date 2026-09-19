@@ -1,5 +1,7 @@
 import { ChevronRight } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
 import type { Session, SessionStatus } from '@agentdeck/shared'
+import { api } from '../api'
 import { formatTime } from '../format'
 import styles from './SessionList.module.css'
 
@@ -11,6 +13,9 @@ type Props = { sessions: Session[]; activeId?: string; onSelect: (id: string) =>
 export function SessionList({ sessions, activeId, onSelect }: Props) {
   const groups = new Map<string, Session[]>()
   for (const s of sessions) groups.set(s.cwd, [...(groups.get(s.cwd) ?? []), s])
+  // 分组名优先用项目别名；已移除的工作区退回目录名
+  const workspaces = useQuery({ queryKey: ['workspaces'], queryFn: api.listWorkspaces })
+  const aliasOf = (cwd: string) => workspaces.data?.find((w) => w.path === cwd)?.alias ?? cwd.split('/').pop()
 
   if (sessions.length === 0) return <div className={styles.empty}>还没有会话</div>
   return (
@@ -18,7 +23,7 @@ export function SessionList({ sessions, activeId, onSelect }: Props) {
       {[...groups].map(([cwd, items]) => (
         <section key={cwd} className={styles.group}>
           <header className={styles.groupHead}>
-            <span className={styles.groupName} title={cwd}>{cwd.split('/').pop()}</span>
+            <span className={styles.groupName} title={cwd}>{aliasOf(cwd)}</span>
             <code className={styles.groupCount}>{items.length}</code>
           </header>
           {items.map((s) => (

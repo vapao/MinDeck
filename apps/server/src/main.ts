@@ -1,10 +1,12 @@
-import { createReadStream, existsSync, mkdirSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { createReadStream, existsSync, mkdirSync, readdirSync, statSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { basename, dirname, resolve } from 'node:path';
 import Fastify from 'fastify';
 import websocket from '@fastify/websocket';
 import multipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
-import type { AgentEvent, ClientMessage, CreateSessionBody, ResolvePendingBody, SendMessageBody, ServerMessage } from '@agentdeck/shared';
+import type { AgentEvent, ClientMessage, CreateSessionBody, CreateWorkspaceBody, ListDirsResponse, ResolvePendingBody, SendMessageBody, ServerMessage, UpdateSettingsBody, UpdateWorkspaceBody, Workspace } from '@agentdeck/shared';
 import { openStore } from './store/db';
 import { createAttachmentStore, isImageMime, maxAttachmentBytes, maxAttachmentsPerMessage } from './store/attachments';
 import { createHub, HubError } from './hub';
@@ -14,15 +16,17 @@ const repoRoot = resolve(import.meta.dirname, '../../..');
 const port = Number(process.env.AGENTDECK_PORT ?? 8004);
 const dbPath = process.env.AGENTDECK_DB ?? resolve(repoRoot, 'data/agentdeck.db');
 const uploadsDir = process.env.AGENTDECK_UPLOADS ?? resolve(repoRoot, 'data/uploads');
-// 工作区 allowlist（方案 §11.3）：逗号分隔的绝对路径；默认只允许本仓库
-const workspaces = (process.env.AGENTDECK_WORKSPACES ?? repoRoot).split(',').map((p) => resolve(p));
+// 工作区（方案 §11.3 allowlist）由 UI 从家目录内浏览添加，存 workspaces 表；目录浏览也限定在家目录内
+const home = homedir();
 // 生产模式由 Hub 直接托管前端构建产物（方案 §11.2：只监听本机，Tailscale Serve 映射到这个端口）；目录不存在则只提供 API，前端走 vite dev server
 const webDist = process.env.AGENTDECK_WEB_DIST ?? resolve(repoRoot, 'apps/web/dist');
 
 mkdirSync(dirname(dbPath), { recursive: true });
 const store = openStore(dbPath);
 const attachments = createAttachmentStore(store, uploadsDir);
-const hub = createHub(store, attachments, workspaces);
+const hub = createHub(store, attachments);
+// 首次启动把本仓库种进去，否则新建会话页是空的
+if (store.listWorkspaces().length === 0) store.createWorkspace({ id: randomUUID(), path: repoRoot, alias: basename(repoRoot), createdAt: new Date().toISOString() });
 
 const app = Fastify({ logger: true });
 await app.register(websocket);
@@ -47,14 +51,69 @@ if (existsSync(webDist)) {
   app.log.info({ webDist }, 'serving web build');
 }
 
-app.get('/api/workspaces', () => workspaces.map((cwd) => ({ cwd })));
+const insideHome = (p: string) => p === home || p.startsWith(`${home}/`);
+
+app.get('/api/workspaces', () => store.listWorkspaces());
+
+app.post<{ Body: CreateWorkspaceBody }>(
+  '/api/workspaces',
+  { schema: { body: { type: 'object', required: ['path', 'alias'], properties: { path: { type: 'string' }, alias: { type: 'string', minLength: 1 } } } } },
+  (req, reply) => {
+    const path = resolve(req.body.path);
+    if (!insideHome(path)) throw new HubError(400, '只能添加家目录内的目录');
+    if (!existsSync(path) || !statSync(path).isDirectory()) throw new HubError(400, '目录不存在');
+    if (store.getWorkspaceByPath(path)) throw new HubError(409, '该目录已添加');
+    const w: Workspace = { id: randomUUID(), path, alias: req.body.alias.trim(), createdAt: new Date().toISOString() };
+    store.createWorkspace(w);
+    return reply.code(201).send(w);
+  },
+);
+
+app.patch<{ Params: { id: string }; Body: UpdateWorkspaceBody }>(
+  '/api/workspaces/:id',
+  { schema: { body: { type: 'object', required: ['alias'], properties: { alias: { type: 'string', minLength: 1 } } } } },
+  (req) => {
+    if (!store.setWorkspaceAlias(req.params.id, req.body.alias.trim())) throw new HubError(404, '工作区不存在');
+    return store.getWorkspace(req.params.id);
+  },
+);
+
+// 只从列表移除；该目录下已有的会话及其记录不动
+app.delete<{ Params: { id: string } }>('/api/workspaces/:id', (req) => {
+  if (!store.deleteWorkspace(req.params.id)) throw new HubError(404, '工作区不存在');
+  return { ok: true };
+});
+
+// 目录浏览（给添加工作区用）：只列家目录内的子目录，跳过隐藏目录；读不了的目录（权限）直接跳过
+app.get<{ Querystring: { path?: string } }>('/api/fs/dirs', (req): ListDirsResponse => {
+  const path = resolve(req.query.path ?? home);
+  if (!insideHome(path)) throw new HubError(400, '只能浏览家目录内的目录');
+  if (!existsSync(path) || !statSync(path).isDirectory()) throw new HubError(404, '目录不存在');
+  const dirs = readdirSync(path, { withFileTypes: true })
+    .filter((d) => d.isDirectory() && !d.name.startsWith('.'))
+    .map((d) => ({ name: d.name, path: resolve(path, d.name) }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  return { path, parent: path === home ? null : dirname(path), dirs };
+});
+
+app.get('/api/settings', () => hub.settings());
+
+const providerDefaults = { type: 'object', required: ['model', 'effort'], properties: { model: { type: 'string' }, effort: { type: 'string' } } };
+app.put<{ Body: UpdateSettingsBody }>(
+  '/api/settings',
+  { schema: { body: { type: 'object', required: ['claude', 'codex'], properties: { claude: providerDefaults, codex: providerDefaults } } } },
+  (req) => {
+    hub.updateSettings(req.body);
+    return hub.settings();
+  },
+);
 
 app.get('/api/sessions', () => hub.listSessions());
 
 app.post<{ Body: CreateSessionBody }>(
   '/api/sessions',
-  { schema: { body: { type: 'object', required: ['provider', 'cwd'], properties: { provider: { type: 'string' }, cwd: { type: 'string' } } } } },
-  (req, reply) => reply.code(201).send(hub.createSession(req.body.provider, req.body.cwd)),
+  { schema: { body: { type: 'object', required: ['provider', 'cwd'], properties: { provider: { type: 'string' }, cwd: { type: 'string' }, model: { type: 'string' }, effort: { type: 'string' } } } } },
+  (req, reply) => reply.code(201).send(hub.createSession(req.body.provider, req.body.cwd, { model: req.body.model, effort: req.body.effort })),
 );
 
 app.post<{ Params: { id: string }; Body: SendMessageBody }>(

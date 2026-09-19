@@ -1,5 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
-import type { AgentEvent, Attachment, EventType, PendingRequest, PendingRequestBody, ProviderEvent, Resolution, Session, SessionStatus } from '@agentdeck/shared';
+import type { AgentEvent, Attachment, EventType, PendingRequest, PendingRequestBody, ProviderEvent, Resolution, Session, SessionStatus, Settings, Workspace } from '@agentdeck/shared';
 
 export type Store = ReturnType<typeof openStore>;
 
@@ -41,11 +41,24 @@ export function openStore(path: string) {
       size       INTEGER NOT NULL,
       created_at TEXT    NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS workspaces (
+      id         TEXT PRIMARY KEY,
+      path       TEXT NOT NULL UNIQUE,
+      alias      TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS settings (
+      key   TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
   `);
+  // 切片 8 给 sessions 加的列；旧库没有就补上（SQLite 没有 ADD COLUMN IF NOT EXISTS）
+  const sessionCols = new Set((db.prepare(`PRAGMA table_info(sessions)`).all() as { name: string }[]).map((c) => c.name));
+  for (const col of ['model', 'effort']) if (!sessionCols.has(col)) db.exec(`ALTER TABLE sessions ADD COLUMN ${col} TEXT`);
 
   const insertSession = db.prepare(
-    `INSERT INTO sessions (id, provider, cwd, provider_session_id, status, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO sessions (id, provider, cwd, provider_session_id, status, model, effort, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
   // title 不单独存列：直接取该 session 首条 message.user 的文本，省一次迁移
   const sessionColumns = `sessions.*, (
@@ -84,6 +97,14 @@ export function openStore(path: string) {
     `INSERT INTO attachments (id, session_id, name, mime_type, size, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
   );
   const selectAttachment = db.prepare(`SELECT * FROM attachments WHERE id = ?`);
+  const insertWorkspace = db.prepare(`INSERT INTO workspaces (id, path, alias, created_at) VALUES (?, ?, ?, ?)`);
+  const selectWorkspaces = db.prepare(`SELECT * FROM workspaces ORDER BY created_at`);
+  const selectWorkspace = db.prepare(`SELECT * FROM workspaces WHERE id = ?`);
+  const selectWorkspaceByPath = db.prepare(`SELECT * FROM workspaces WHERE path = ?`);
+  const updateWorkspaceAlias = db.prepare(`UPDATE workspaces SET alias = ? WHERE id = ?`);
+  const deleteWorkspace = db.prepare(`DELETE FROM workspaces WHERE id = ?`);
+  const selectSetting = db.prepare(`SELECT value FROM settings WHERE key = ?`);
+  const upsertSetting = db.prepare(`INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`);
 
   const rowToSession = (r: Record<string, unknown>): Session => ({
     id: r.id as string,
@@ -92,6 +113,8 @@ export function openStore(path: string) {
     providerSessionId: (r.provider_session_id as string | null) ?? null,
     status: r.status as SessionStatus,
     title: (r.title as string | null)?.trim().split('\n')[0].slice(0, 80) || null,
+    model: (r.model as string | null) ?? null,
+    effort: (r.effort as string | null) ?? null,
     createdAt: r.created_at as string,
     updatedAt: r.updated_at as string,
   });
@@ -111,6 +134,7 @@ export function openStore(path: string) {
     size: r.size as number,
     createdAt: r.created_at as string,
   });
+  const rowToWorkspace = (r: Record<string, unknown>): Workspace => ({ id: r.id as string, path: r.path as string, alias: r.alias as string, createdAt: r.created_at as string });
   const rowToEvent = (r: Record<string, unknown>): AgentEvent =>
     ({
       sessionId: r.session_id,
@@ -124,7 +148,7 @@ export function openStore(path: string) {
     createSession(session: Session) {
       insertSession.run(
         session.id, session.provider, session.cwd, session.providerSessionId,
-        session.status, session.createdAt, session.updatedAt,
+        session.status, session.model, session.effort, session.createdAt, session.updatedAt,
       );
     },
     getSession(id: string): Session | undefined {
@@ -176,6 +200,34 @@ export function openStore(path: string) {
     getAttachment(id: string): Attachment | undefined {
       const row = selectAttachment.get(id);
       return row && rowToAttachment(row);
+    },
+    createWorkspace(w: Workspace) {
+      insertWorkspace.run(w.id, w.path, w.alias, w.createdAt);
+    },
+    listWorkspaces(): Workspace[] {
+      return selectWorkspaces.all().map(rowToWorkspace);
+    },
+    getWorkspace(id: string): Workspace | undefined {
+      const row = selectWorkspace.get(id);
+      return row && rowToWorkspace(row);
+    },
+    getWorkspaceByPath(path: string): Workspace | undefined {
+      const row = selectWorkspaceByPath.get(path);
+      return row && rowToWorkspace(row);
+    },
+    setWorkspaceAlias(id: string, alias: string): boolean {
+      return updateWorkspaceAlias.run(alias, id).changes === 1;
+    },
+    deleteWorkspace(id: string): boolean {
+      return deleteWorkspace.run(id).changes === 1;
+    },
+    /** 应用级默认值整份存一行 JSON；没存过时返回 null */
+    getSettings(): Settings | null {
+      const row = selectSetting.get('defaults');
+      return row ? (JSON.parse(row.value as string) as Settings) : null;
+    },
+    setSettings(settings: Settings) {
+      upsertSetting.run('defaults', JSON.stringify(settings));
     },
     close() {
       db.close();

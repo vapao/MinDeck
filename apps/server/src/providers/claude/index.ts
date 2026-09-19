@@ -1,11 +1,11 @@
 import { readFileSync } from 'node:fs';
-import { query, type CanUseTool, type PermissionResult, type PermissionUpdate, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
+import { query, type CanUseTool, type EffortLevel, type PermissionResult, type PermissionUpdate, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import type { QuestionSpec } from '@agentdeck/shared';
 import type { ProviderSession, StartOptions } from '../types';
 import { createNormalizer } from './normalize';
 
 // 一个 Streaming Input 长驻 session（方案 §6.1）。消息通过 inbox 推入，SDK 消息经 normalizer 转成统一事件回调出去。
-export function startClaudeSession({ cwd, resume, onEvent, onPending, onExit }: StartOptions): ProviderSession {
+export function startClaudeSession({ cwd, resume, model, effort, onEvent, onPending, onExit }: StartOptions): ProviderSession {
   const inbox = createInbox();
   const { normalize, markInterrupting } = createNormalizer(resume !== undefined);
 
@@ -36,6 +36,9 @@ export function startClaudeSession({ cwd, resume, onEvent, onPending, onExit }: 
     options: {
       cwd,
       resume,
+      model,
+      // effort 只能在这里给，SDK 没有会话中的 setter；取值已由 Hub 按 shared effortLevels 校验
+      effort: effort as EffortLevel | undefined,
       env: childEnv(),
       permissionMode: 'default',
       includePartialMessages: true,

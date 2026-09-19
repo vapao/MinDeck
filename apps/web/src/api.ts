@@ -1,4 +1,4 @@
-import type { CreateSessionBody, CreateSessionResponse, InterruptResponse, ListSessionsResponse, ListWorkspacesResponse, ResolvePendingBody, ResolvePendingResponse, SendMessageBody, SendMessageResponse, UploadAttachmentResponse } from '@agentdeck/shared'
+import type { CreateSessionBody, CreateSessionResponse, CreateWorkspaceBody, InterruptResponse, ListDirsResponse, ListSessionsResponse, ListWorkspacesResponse, ResolvePendingBody, ResolvePendingResponse, SendMessageBody, SendMessageResponse, SettingsResponse, UpdateSettingsBody, UpdateWorkspaceBody, UploadAttachmentResponse, Workspace } from '@agentdeck/shared'
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   // FormData 由浏览器自己设 multipart boundary，不能覆盖 content-type
@@ -13,6 +13,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   listWorkspaces: () => request<ListWorkspacesResponse>('/api/workspaces'),
+  createWorkspace: (body: CreateWorkspaceBody) => request<Workspace>('/api/workspaces', { method: 'POST', body: JSON.stringify(body) }),
+  updateWorkspace: (id: string, body: UpdateWorkspaceBody) => request<Workspace>(`/api/workspaces/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  deleteWorkspace: (id: string) => request<{ ok: true }>(`/api/workspaces/${id}`, { method: 'DELETE' }),
+  listDirs: (path?: string) => request<ListDirsResponse>(`/api/fs/dirs${path ? `?path=${encodeURIComponent(path)}` : ''}`),
+  getSettings: () => request<SettingsResponse>('/api/settings'),
+  updateSettings: (body: UpdateSettingsBody) => request<SettingsResponse>('/api/settings', { method: 'PUT', body: JSON.stringify(body) }),
   listSessions: () => request<ListSessionsResponse>('/api/sessions'),
   interrupt: (sessionId: string) => request<InterruptResponse>(`/api/sessions/${sessionId}/interrupt`, { method: 'POST' }),
   createSession: (body: CreateSessionBody) =>
