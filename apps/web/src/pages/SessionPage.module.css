@@ -56,6 +56,28 @@
   border-radius: 4px;
   color: var(--text-2);
 }
+.meter {
+  flex: none;
+  width: 200px;
+}
+.interrupt {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-button);
+  background: var(--danger-bg);
+  color: var(--danger);
+  font-weight: 500;
+  cursor: pointer;
+}
+.interrupt:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
 .stream {
   flex: 1;
   min-height: 0;
@@ -79,6 +101,12 @@
 @media (max-width: 1023px) {
   .stream {
     padding: 16px;
+  }
+  .meter {
+    display: none;
+  }
+  .interrupt {
+    height: 44px;
   }
   .back {
     width: 44px;

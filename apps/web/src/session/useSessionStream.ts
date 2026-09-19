@@ -1,5 +1,5 @@
 import { useEffect, useReducer } from 'react'
-import type { AgentEvent, ApprovalDecision, Attachment, PendingRequest, QuestionAnswers, ServerMessage, Session, SessionStatus } from '@agentdeck/shared'
+import type { AgentEvent, ApprovalDecision, Attachment, PendingRequest, QuestionAnswers, ServerMessage, Session, SessionStatus, UsageInfo } from '@agentdeck/shared'
 
 // 会话页的实时状态 = 对事件流做 reduce（方案 §13.1）。一个 seq 只处理一次，重放与 live 共用同一条路径。
 
@@ -8,6 +8,7 @@ export type StreamItem =
   | { kind: 'assistant'; key: string; messageId: string; text: string; streaming: boolean; at: string }
   | { kind: 'tool'; key: string; toolUseId: string; name: string; input: unknown; output: string | null; isError: boolean; at: string }
   | { kind: 'error'; key: string; message: string; at: string }
+  | { kind: 'interrupted'; key: string; at: string }
   | { kind: 'approval'; key: string; request: Extract<PendingRequest, { kind: 'approval' }>; state: PendingState; decision: ApprovalDecision | null; resolvedAt: string | null }
   | { kind: 'question'; key: string; request: Extract<PendingRequest, { kind: 'question' }>; state: PendingState; answers: QuestionAnswers | null; response: string | null; resolvedAt: string | null }
 
@@ -21,11 +22,13 @@ export type StreamState = {
   connection: 'connecting' | 'open' | 'closed'
   /** snapshot 里仍在等待的请求 id；重放结束后据此把陈旧的 pending 卡片标成已过期 */
   livePendingIds: string[]
+  /** 账号级额度，按 rateLimitType 存最新值 */
+  usage: Record<string, UsageInfo>
 }
 
 type Action = { type: 'server'; message: ServerMessage } | { type: 'connection'; value: StreamState['connection'] } | { type: 'reset' }
 
-const initial: StreamState = { session: null, status: 'idle', items: [], lastSeq: 0, connection: 'connecting', livePendingIds: [] }
+const initial: StreamState = { session: null, status: 'idle', items: [], lastSeq: 0, connection: 'connecting', livePendingIds: [], usage: {} }
 
 function reduce(state: StreamState, action: Action): StreamState {
   if (action.type === 'reset') return initial
@@ -33,7 +36,7 @@ function reduce(state: StreamState, action: Action): StreamState {
   const m = action.message
   switch (m.type) {
     case 'snapshot':
-      return { ...state, session: m.session, status: m.session.status, livePendingIds: m.pendingRequests.map((r) => r.id) }
+      return { ...state, session: m.session, status: m.session.status, livePendingIds: m.pendingRequests.map((r) => r.id), usage: m.usage }
     case 'event':
       if (m.event.seq <= state.lastSeq) return state
       return applyEvent({ ...state, lastSeq: m.event.seq }, m.event)
@@ -101,6 +104,11 @@ function applyEvent(state: StreamState, e: AgentEvent): StreamState {
     case 'turn.failed':
     case 'error':
       return { ...state, items: [...items, { kind: 'error', key: `e${e.seq}`, message: e.payload.message, at: e.createdAt }] }
+    case 'turn.completed':
+      if (e.payload.reason !== 'interrupted') return state
+      return { ...state, items: [...items, { kind: 'interrupted', key: `i${e.seq}`, at: e.createdAt }] }
+    case 'usage.updated':
+      return { ...state, usage: { ...state.usage, [e.payload.rateLimitType]: e.payload } }
     case 'session.status':
       return { ...state, status: e.payload.status }
     default:

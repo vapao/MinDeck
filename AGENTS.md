@@ -14,9 +14,9 @@ Mac Mini 上自托管的 Claude / Codex 多端控制台：Agent 在 Mac Mini 上
 
 ## 当前状态与下一步
 
-- 已完成：方案、Claude 侧 P0 验证、工程脚手架、UI 设计稿与规范、**切片 1、2、3**（2026-09-19 浏览器验收通过；切片 3 真机 iPhone 相册选图待切片 6 走 Tailscale 时一并验）。
+- 已完成：方案、Claude 侧 P0 验证、工程脚手架、UI 设计稿与规范、**切片 1–4**（2026-09-19 浏览器验收通过；切片 3 真机 iPhone 相册选图待切片 6 走 Tailscale 时一并验）。
 - Codex app-server 链路已由开发者人工确认可行，未写 harness。
-- **下一步：切片 4**。实施按垂直切片推进，每片端到端可用：
+- **下一步：切片 5**。实施按垂直切片推进，每片端到端可用：
 
 | 切片 | 内容 | 验收 |
 |---|---|---|
@@ -53,6 +53,8 @@ cd apps/server && node scripts/p0-claude-harness.mjs   # Claude SDK 回归 harne
 5. **SDK 消息类型有 40 余种**，normalizer 只显式映射 §7.2 需要的子集，其余归入 `provider.raw` 保留不映射。
 6. Hub 只保存标准化 UI 事件流；Agent 对话上下文由 Provider 原生 session / thread 负责（§4.1）。不要试图在 Hub 里重建 Provider 内部状态。
 7. 安全边界（§11.3）：workspace cwd 走 allowlist；附件路径由服务端生成，客户端只引用 attachmentId；不默认启用 bypassPermissions。
+8. **`rate_limit_event` 的各窗口利用率在 `rate_limit_info.unifiedWindows`**（`five_hour` / `seven_day`，SDK 类型未声明），顶层 `utilization` 实际不存在；normalizer 按 unifiedWindows 解析。
+9. **追加指令排队在 Hub 内存里**（不用 SDK 自己的消息队列，避免依赖其 result 语义）：一轮进行中收到的消息先落 `message.user` 事件，本轮 `turn.completed` / `turn.failed` 后按序发出；interrupt 会连同排队一起丢弃；Hub 重启后未发出的排队丢失。Hub 启动时把上次仍在 running / waiting_user 的会话记一条 `turn.completed(interrupted)` 并置 idle，下一轮用 `resume` 恢复。
 
 ## 工程习惯
 

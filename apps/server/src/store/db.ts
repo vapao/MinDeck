@@ -47,7 +47,13 @@ export function openStore(path: string) {
     `INSERT INTO sessions (id, provider, cwd, provider_session_id, status, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
   );
-  const selectSession = db.prepare(`SELECT * FROM sessions WHERE id = ?`);
+  // title 不单独存列：直接取该 session 首条 message.user 的文本，省一次迁移
+  const sessionColumns = `sessions.*, (
+    SELECT json_extract(payload, '$.text') FROM events
+    WHERE events.session_id = sessions.id AND type = 'message.user' ORDER BY seq LIMIT 1
+  ) AS title`;
+  const selectSession = db.prepare(`SELECT ${sessionColumns} FROM sessions WHERE id = ?`);
+  const selectSessions = db.prepare(`SELECT ${sessionColumns} FROM sessions ORDER BY updated_at DESC`);
   const updateStatus = db.prepare(`UPDATE sessions SET status = ?, updated_at = ? WHERE id = ?`);
   const updateProviderSessionId = db.prepare(
     `UPDATE sessions SET provider_session_id = ?, updated_at = ? WHERE id = ?`,
@@ -85,6 +91,7 @@ export function openStore(path: string) {
     cwd: r.cwd as string,
     providerSessionId: (r.provider_session_id as string | null) ?? null,
     status: r.status as SessionStatus,
+    title: (r.title as string | null)?.trim().split('\n')[0].slice(0, 80) || null,
     createdAt: r.created_at as string,
     updatedAt: r.updated_at as string,
   });
@@ -123,6 +130,9 @@ export function openStore(path: string) {
     getSession(id: string): Session | undefined {
       const row = selectSession.get(id);
       return row && rowToSession(row);
+    },
+    listSessions(): Session[] {
+      return selectSessions.all().map(rowToSession);
     },
     setSessionStatus(id: string, status: SessionStatus) {
       updateStatus.run(status, new Date().toISOString(), id);

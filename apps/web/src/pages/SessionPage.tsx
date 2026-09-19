@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
-import { useMutation } from '@tanstack/react-query'
-import { ChevronLeft } from 'lucide-react'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { ChevronLeft, Square } from 'lucide-react'
 import type { Resolution } from '@agentdeck/shared'
 import { api } from '../api'
 import { navigate } from '../router'
@@ -10,14 +10,22 @@ import { UserMessage } from '../components/UserMessage'
 import { AssistantMessage } from '../components/AssistantMessage'
 import { ToolCard } from '../components/ToolCard'
 import { ErrorCard } from '../components/ErrorCard'
+import { InterruptedRow } from '../components/InterruptedRow'
+import { RateMeter } from '../components/RateMeter'
 import { ApprovalCard } from '../components/ApprovalCard'
 import { QuestionCard } from '../components/QuestionCard'
 import { Composer } from '../components/Composer'
 import styles from './SessionPage.module.css'
 
 export function SessionPage({ sessionId }: { sessionId: string }) {
-  const { session, status, items, lastSeq, connection } = useSessionStream(sessionId)
-  const send = useMutation({ mutationFn: (body: { text: string; attachmentIds: string[] }) => api.sendMessage(sessionId, body) })
+  const { session, status, items, lastSeq, connection, usage } = useSessionStream(sessionId)
+  const queryClient = useQueryClient()
+  const send = useMutation({
+    mutationFn: (body: { text: string; attachmentIds: string[] }) => api.sendMessage(sessionId, body),
+    // 首条消息决定列表里的标题
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['sessions'] }),
+  })
+  const interrupt = useMutation({ mutationFn: () => api.interrupt(sessionId) })
   // 同一时刻只会有一个待处理请求在提交；409（已在别处处理）随后会被 resolved 事件覆盖掉卡片
   const resolve = useMutation({ mutationFn: ({ id, body }: { id: string; body: Resolution }) => api.resolvePending(id, body) })
   const pendingProps = (id: string) => ({
@@ -30,16 +38,18 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
     bottom.current?.scrollIntoView({ block: 'end' })
   }, [items])
 
-  const busy = status === 'running' || status === 'waiting_user'
+  const running = status === 'running' || status === 'waiting_user'
   const hint = send.error
     ? send.error.message
-    : connection === 'closed'
-      ? '连接已断开，刷新页面重连'
-      : status === 'waiting_user'
-        ? '处理上方的请求后 claude 才会继续'
-        : status === 'running'
-          ? '等待本轮结束后再发送'
-          : 'Enter 发送，Shift+Enter 换行'
+    : interrupt.error
+      ? interrupt.error.message
+      : connection === 'closed'
+        ? '连接已断开，刷新页面重连'
+        : status === 'waiting_user'
+          ? '处理上方的请求后 claude 才会继续'
+          : status === 'running'
+            ? '当前有一轮在运行，发送将作为追加指令排队'
+            : 'Enter 发送，Shift+Enter 换行'
 
   return (
     <div className={styles.page}>
@@ -54,6 +64,15 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
             <code>seq {lastSeq}</code>
           </span>
         </div>
+        <div className={styles.meter}>
+          <RateMeter usage={usage} />
+        </div>
+        {running && (
+          <button type="button" className={styles.interrupt} onClick={() => interrupt.mutate()} disabled={interrupt.isPending}>
+            <Square size={12} />
+            中断
+          </button>
+        )}
         <StatusPill status={connection === 'closed' ? 'error' : status} />
       </header>
 
@@ -69,6 +88,8 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
                 return <ToolCard key={it.key} name={it.name} input={it.input} output={it.output} isError={it.isError} />
               case 'error':
                 return <ErrorCard key={it.key} message={it.message} />
+              case 'interrupted':
+                return <InterruptedRow key={it.key} at={it.at} />
               case 'approval':
                 return (
                   <ApprovalCard
@@ -104,7 +125,7 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
       <footer className={styles.footer}>
         <div className={styles.column}>
           <Composer
-            disabled={busy || connection !== 'open'}
+            disabled={status === 'waiting_user' || connection !== 'open'}
             hint={hint}
             upload={(file) => api.uploadAttachment(sessionId, file)}
             onSend={(text, attachmentIds) => send.mutate({ text, attachmentIds })}

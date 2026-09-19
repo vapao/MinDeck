@@ -32,6 +32,8 @@ app.setErrorHandler((err: Error & { statusCode?: number }, _req, reply) => {
 
 app.get('/api/workspaces', () => workspaces.map((cwd) => ({ cwd })));
 
+app.get('/api/sessions', () => hub.listSessions());
+
 app.post<{ Body: CreateSessionBody }>(
   '/api/sessions',
   { schema: { body: { type: 'object', required: ['provider', 'cwd'], properties: { provider: { type: 'string' }, cwd: { type: 'string' } } } } },
@@ -52,9 +54,14 @@ app.post<{ Params: { id: string }; Body: SendMessageBody }>(
   (req, reply) => {
     const { text, attachmentIds = [] } = req.body;
     if (!text.trim() && attachmentIds.length === 0) throw new HubError(400, '消息不能为空');
-    return reply.code(202).send({ seq: hub.sendMessage(req.params.id, text, attachmentIds) });
+    return reply.code(202).send(hub.sendMessage(req.params.id, text, attachmentIds));
   },
 );
+
+app.post<{ Params: { id: string } }>('/api/sessions/:id/interrupt', async (req) => {
+  await hub.interrupt(req.params.id);
+  return { ok: true };
+});
 
 // multipart 单文件字段 file。只收图片（方案 §9.2）；HEIC 需客户端先转 JPEG（iOS 相册选图默认会转）
 app.post<{ Params: { id: string } }>('/api/sessions/:id/attachments', async (req, reply) => {
@@ -106,7 +113,7 @@ app.get('/ws', { websocket: true }, (socket) => {
           return send({ type: 'error', code: 'not_found', message: (err as Error).message });
         }
         // 快照 → 从 afterSeq 重放 → 挂上 live 监听。全程同步，中间不会漏掉新事件。
-        send({ type: 'snapshot', session, pendingRequests: hub.pendingRequests(msg.sessionId), lastSeq: hub.lastSeq(msg.sessionId) });
+        send({ type: 'snapshot', session, pendingRequests: hub.pendingRequests(msg.sessionId), lastSeq: hub.lastSeq(msg.sessionId), usage: hub.usage });
         for (const event of hub.eventsAfter(msg.sessionId, msg.afterSeq)) send({ type: 'event', event });
         send({ type: 'replay.completed', lastSeq: hub.lastSeq(msg.sessionId) });
         subscriptions.set(msg.sessionId, hub.subscribe(msg.sessionId, (event: AgentEvent) => send({ type: 'event', event })));

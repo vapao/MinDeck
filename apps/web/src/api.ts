@@ -1,4 +1,4 @@
-import type { CreateSessionBody, CreateSessionResponse, ListWorkspacesResponse, ResolvePendingBody, ResolvePendingResponse, SendMessageBody, SendMessageResponse, UploadAttachmentResponse } from '@agentdeck/shared'
+import type { CreateSessionBody, CreateSessionResponse, InterruptResponse, ListSessionsResponse, ListWorkspacesResponse, ResolvePendingBody, ResolvePendingResponse, SendMessageBody, SendMessageResponse, UploadAttachmentResponse } from '@agentdeck/shared'
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   // FormData 由浏览器自己设 multipart boundary，不能覆盖 content-type
@@ -13,6 +13,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   listWorkspaces: () => request<ListWorkspacesResponse>('/api/workspaces'),
+  listSessions: () => request<ListSessionsResponse>('/api/sessions'),
+  interrupt: (sessionId: string) => request<InterruptResponse>(`/api/sessions/${sessionId}/interrupt`, { method: 'POST' }),
   createSession: (body: CreateSessionBody) =>
     request<CreateSessionResponse>('/api/sessions', { method: 'POST', body: JSON.stringify(body) }),
   sendMessage: (sessionId: string, body: SendMessageBody) =>

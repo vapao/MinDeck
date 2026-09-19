@@ -11,8 +11,19 @@ export type Session = {
   /** Provider 原生会话 ID（Claude session_id / Codex threadId），首轮 init 后才有 */
   providerSessionId: string | null;
   status: SessionStatus;
+  /** 首条用户消息的开头，用于列表展示；还没发过消息时为 null */
+  title: string | null;
   createdAt: string;
   updatedAt: string;
+};
+
+/** claude.ai 订阅额度（P0 验证记录 §16.1 第 4 条），按 rateLimitType 各存一份最新值 */
+export type UsageInfo = {
+  rateLimitType: string;
+  /** 0–1 */
+  utilization: number;
+  /** Unix 秒；未知时为 null */
+  resetsAt: number | null;
 };
 
 // ---- 附件（方案 §9）----
@@ -80,10 +91,13 @@ export type TurnEndReason = 'completed' | 'interrupted';
 
 export type EventPayloads = {
   'session.started': { providerSessionId: string; model: string };
+  /** Hub 重启后用保存的 providerSessionId 恢复了 Provider 会话 */
+  'session.resumed': { providerSessionId: string; model: string };
   'session.status': { status: SessionStatus };
   'turn.started': Record<never, never>;
   'turn.completed': { reason: TurnEndReason; durationMs: number; costUsd: number };
   'turn.failed': { message: string };
+  'usage.updated': UsageInfo;
   'message.user': { text: string; attachments: Attachment[] };
   'message.delta': { messageId: string; text: string };
   'message.completed': { messageId: string; text: string };
@@ -120,9 +134,16 @@ export type ProviderEvent<T extends EventType = EventType> = {
 export type CreateSessionBody = { provider: ProviderId; cwd: string };
 export type CreateSessionResponse = Session;
 
+/** 按 updatedAt 倒序 */
+export type ListSessionsResponse = Session[];
+
 /** text 与 attachmentIds 至少有一个非空；附件必须属于同一 session */
 export type SendMessageBody = { text: string; attachmentIds?: string[] };
-export type SendMessageResponse = { seq: number };
+/** queued：当前有一轮在跑，消息已排队，本轮结束后自动发出 */
+export type SendMessageResponse = { seq: number; queued: boolean };
+
+/** POST /api/sessions/:id/interrupt，无 body；未在运行时 409 */
+export type InterruptResponse = { ok: true };
 
 export type ListWorkspacesResponse = { cwd: string }[];
 
@@ -140,7 +161,7 @@ export type ClientMessage =
   | { type: 'ping' };
 
 export type ServerMessage =
-  | { type: 'snapshot'; session: Session; pendingRequests: PendingRequest[]; lastSeq: number }
+  | { type: 'snapshot'; session: Session; pendingRequests: PendingRequest[]; lastSeq: number; usage: Record<string, UsageInfo> }
   | { type: 'event'; event: AgentEvent }
   | { type: 'replay.completed'; lastSeq: number }
   | { type: 'pong' }

@@ -3,20 +3,35 @@ import type { ProviderEvent } from '@agentdeck/shared';
 
 // SDK 消息 → 统一事件。只显式映射 §7.2 需要的子集，其余归入 provider.raw（AGENTS.md 规则 5）。
 // 一个 normalizer 实例对应一个 session：需要跨消息记住当前正在流式输出的 assistant 消息 ID。
-export function createNormalizer() {
+export function createNormalizer(resumed: boolean) {
   let streamingMessageId: string | null = null;
   let started = false;
+  let interrupting = false;
+  let lastUsage = '';
 
-  return function normalize(m: SDKMessage): ProviderEvent[] {
+  function normalize(m: SDKMessage): ProviderEvent[] {
     switch (m.type) {
       case 'system':
         if (m.subtype === 'init') {
-          // SDK 每轮都会发一次 init，只有第一次才是"会话建立"
+          // SDK 每轮都会发一次 init，只有第一次才是"会话建立 / 恢复"
           if (started) return [];
           started = true;
-          return [{ type: 'session.started', payload: { providerSessionId: m.session_id, model: m.model } }];
+          return [{ type: resumed ? 'session.resumed' : 'session.started', payload: { providerSessionId: m.session_id, model: m.model } }];
         }
         return [raw(m)];
+
+      case 'rate_limit_event': {
+        // 实际消息里各窗口的利用率在 unifiedWindows（SDK 类型未声明）；顶层字段只有 rateLimitType / resetsAt
+        const info = m.rate_limit_info as typeof m.rate_limit_info & { unifiedWindows?: Record<string, { utilization?: number; resetsAt?: number }> };
+        const windows = info.unifiedWindows ?? (info.rateLimitType ? { [info.rateLimitType]: info } : {});
+        // 每次 API 调用都会推一份，没变化就不落库
+        const key = JSON.stringify(windows);
+        if (key === lastUsage) return [];
+        lastUsage = key;
+        return Object.entries(windows).flatMap(([rateLimitType, w]) =>
+          w.utilization === undefined ? [] : [{ type: 'usage.updated' as const, payload: { rateLimitType, utilization: w.utilization, resetsAt: w.resetsAt ?? null } }],
+        );
+      }
 
       case 'stream_event': {
         const e = m.event;
@@ -54,16 +69,30 @@ export function createNormalizer() {
         });
       }
 
-      case 'result':
+      case 'result': {
+        const wasInterrupting = interrupting;
+        interrupting = false;
         if (m.subtype === 'success') {
           return [{ type: 'turn.completed', payload: { reason: 'completed', durationMs: m.duration_ms, costUsd: m.total_cost_usd } }];
         }
-        // TODO(切片 4)：interrupt 后 SDK 也返回 error_during_execution（AGENTS.md 规则 3），届时由 Provider 标记并映射为 reason: 'interrupted'
+        // interrupt 后 SDK 返回 error_during_execution（AGENTS.md 规则 3），是用户中断而不是错误
+        if (wasInterrupting && m.subtype === 'error_during_execution') {
+          return [{ type: 'turn.completed', payload: { reason: 'interrupted', durationMs: m.duration_ms, costUsd: m.total_cost_usd } }];
+        }
         return [{ type: 'turn.failed', payload: { message: m.errors.length ? m.errors.join('\n') : m.subtype } }];
+      }
 
       default:
         return [raw(m)];
     }
+  }
+
+  return {
+    normalize,
+    /** 调用 q.interrupt() 前标记：接下来那个 error_during_execution 结果按中断处理 */
+    markInterrupting() {
+      interrupting = true;
+    },
   };
 }
 

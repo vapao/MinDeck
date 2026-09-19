@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api'
 import { navigate } from '../router'
 import styles from './NewSessionPage.module.css'
@@ -7,9 +7,13 @@ import styles from './NewSessionPage.module.css'
 export function NewSessionPage() {
   const workspaces = useQuery({ queryKey: ['workspaces'], queryFn: api.listWorkspaces })
   const [cwd, setCwd] = useState('')
+  const queryClient = useQueryClient()
   const create = useMutation({
     mutationFn: api.createSession,
-    onSuccess: (session) => navigate(`/s/${session.id}`),
+    onSuccess: (session) => {
+      queryClient.invalidateQueries({ queryKey: ['sessions'] })
+      navigate(`/s/${session.id}`)
+    },
   })
   const selected = cwd || workspaces.data?.[0]?.cwd || ''
 

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { AgentEvent, PendingRequest, PendingRequestBody, ProviderEvent, Resolution, Session, SessionStatus } from '@agentdeck/shared';
+import type { AgentEvent, Attachment, PendingRequest, PendingRequestBody, ProviderEvent, Resolution, Session, SessionStatus, UsageInfo } from '@agentdeck/shared';
 import type { Store } from './store/db';
 import type { AttachmentStore } from './store/attachments';
 import { startClaudeSession, type ClaudeSession } from './providers/claude';
@@ -16,7 +16,21 @@ export function createHub(store: Store, attachments: AttachmentStore, workspaces
   const listeners = new Map<string, Set<(e: AgentEvent) => void>>();
   // 正在等用户处理的 Provider 回调；Hub 重启后这些 Promise 不复存在，对应的行在启动时作废
   const waiting = new Map<string, (r: Resolution | null) => void>();
+  // 一轮进行中收到的追加指令（方案 §8.3）：本轮结束后按序发出。只在内存里，Hub 重启即丢
+  const queues = new Map<string, { text: string; files: Attachment[] }[]>();
+  // 账号级额度，按 rateLimitType 保留最新值，随 snapshot 下发
+  const usage: Record<string, UsageInfo> = {};
+  let closing = false;
+
   store.expireAllPending();
+  // 上次 Hub 退出时还在跑的 turn 已随子进程消失（方案 §12.2）：记一条中断，让会话回到可继续的状态
+  for (const s of store.listSessions()) {
+    if (s.status === 'running' || s.status === 'waiting_user') {
+      store.appendEvent(s.id, { type: 'turn.completed', payload: { reason: 'interrupted', durationMs: 0, costUsd: 0 } });
+      store.setSessionStatus(s.id, 'idle');
+      store.appendEvent(s.id, { type: 'session.status', payload: { status: 'idle' } });
+    }
+  }
 
   function emit(sessionId: string, event: ProviderEvent): AgentEvent {
     const stored = store.appendEvent(sessionId, event);
@@ -79,16 +93,24 @@ export function createHub(store: Store, attachments: AttachmentStore, workspaces
     if (existing) return existing;
     const provider = startClaudeSession({
       cwd: session.cwd,
+      resume: session.providerSessionId ?? undefined,
       onPending: (body, signal) => createPending(session.id, body, signal),
       onEvent(event) {
         if (event.type === 'session.started') store.setProviderSessionId(session.id, event.payload.providerSessionId);
+        if (event.type === 'usage.updated') usage[event.payload.rateLimitType] = event.payload;
         emit(session.id, event);
-        if (event.type === 'turn.completed') setStatus(session.id, 'idle');
-        if (event.type === 'turn.failed' || event.type === 'error') setStatus(session.id, 'error');
+        // 一轮结束：有排队的追加指令就接着发，否则回到 idle / error
+        if (event.type === 'turn.completed' || event.type === 'turn.failed') {
+          const next = queues.get(session.id)?.shift();
+          if (next) dispatch(session.id, provider, next);
+          else setStatus(session.id, event.type === 'turn.completed' ? 'idle' : 'error');
+        }
+        if (event.type === 'error') setStatus(session.id, 'error');
       },
       onExit(error) {
         live.delete(session.id);
-        if (error) {
+        queues.delete(session.id);
+        if (error && !closing) {
           emit(session.id, { type: 'error', payload: { message: `Claude 子进程退出：${error instanceof Error ? error.message : String(error)}` } });
           setStatus(session.id, 'error');
         }
@@ -98,6 +120,16 @@ export function createHub(store: Store, attachments: AttachmentStore, workspaces
     return provider;
   }
 
+  function dispatch(sessionId: string, provider: ClaudeSession, { text, files }: { text: string; files: Attachment[] }) {
+    emit(sessionId, { type: 'turn.started', payload: {} });
+    setStatus(sessionId, 'running');
+    // Claude 走原生 image block（方案 §9.1）；图片放在文字前面是 Anthropic 视觉文档的建议顺序
+    provider.send([
+      ...files.map((a) => ({ type: 'image' as const, source: { type: 'base64' as const, media_type: a.mimeType, data: attachments.read(a).toString('base64') } })),
+      ...(text ? [{ type: 'text' as const, text }] : []),
+    ]);
+  }
+
   return {
     workspaces,
 
@@ -105,17 +137,17 @@ export function createHub(store: Store, attachments: AttachmentStore, workspaces
       if (provider !== 'claude') throw new HubError(400, `Provider ${provider} 尚未实现`);
       if (!workspaces.includes(cwd)) throw new HubError(400, `cwd 不在 workspace allowlist 内`);
       const now = new Date().toISOString();
-      const session: Session = { id: randomUUID(), provider, cwd, providerSessionId: null, status: 'idle', createdAt: now, updatedAt: now };
+      const session: Session = { id: randomUUID(), provider, cwd, providerSessionId: null, status: 'idle', title: null, createdAt: now, updatedAt: now };
       store.createSession(session);
       return session;
     },
 
     getSession,
+    listSessions: store.listSessions,
+    usage,
 
-    sendMessage(sessionId: string, text: string, attachmentIds: string[]): number {
+    sendMessage(sessionId: string, text: string, attachmentIds: string[]): { seq: number; queued: boolean } {
       const session = getSession(sessionId);
-      // MVP：一个 Session 同时只允许一个 active turn（方案 §8.3）；追加指令排队留给切片 4
-      if (session.status === 'running') throw new HubError(409, '当前有一轮在运行');
       let files;
       try {
         files = attachments.forMessage(sessionId, attachmentIds);
@@ -124,14 +156,25 @@ export function createHub(store: Store, attachments: AttachmentStore, workspaces
       }
       const provider = ensureProvider(session);
       const { seq } = emit(sessionId, { type: 'message.user', payload: { text, attachments: files } });
-      emit(sessionId, { type: 'turn.started', payload: {} });
-      setStatus(sessionId, 'running');
-      // Claude 走原生 image block（方案 §9.1）；图片放在文字前面是 Anthropic 视觉文档的建议顺序
-      provider.send([
-        ...files.map((a) => ({ type: 'image' as const, source: { type: 'base64' as const, media_type: a.mimeType, data: attachments.read(a).toString('base64') } })),
-        ...(text ? [{ type: 'text' as const, text }] : []),
-      ]);
-      return seq;
+      // 一个 Session 同时只允许一个 active turn（方案 §8.3）：进行中就排队，本轮结束后由 onEvent 接着发
+      const queued = session.status === 'running' || session.status === 'waiting_user';
+      if (queued) {
+        let q = queues.get(sessionId);
+        if (!q) queues.set(sessionId, (q = []));
+        q.push({ text, files });
+      } else {
+        dispatch(sessionId, provider, { text, files });
+      }
+      return { seq, queued };
+    },
+
+    async interrupt(sessionId: string) {
+      const session = getSession(sessionId);
+      const provider = live.get(sessionId);
+      if (!provider || (session.status !== 'running' && session.status !== 'waiting_user')) throw new HubError(409, '当前没有在运行的 turn');
+      // 用户要的是"停下来"：连同排队的追加指令一起丢弃
+      queues.delete(sessionId);
+      await provider.interrupt();
     },
 
     resolvePending(requestId: string, resolution: Resolution): number {
@@ -157,6 +200,7 @@ export function createHub(store: Store, attachments: AttachmentStore, workspaces
     lastSeq: store.lastSeq,
 
     close() {
+      closing = true;
       for (const p of live.values()) p.close();
       live.clear();
     },

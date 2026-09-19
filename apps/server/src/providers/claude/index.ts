@@ -4,11 +4,15 @@ import { createNormalizer } from './normalize';
 
 export type ClaudeSession = {
   send(content: SDKUserMessage['message']['content']): void;
+  /** 打断当前 turn；SDK 随后以 error_during_execution 结束该轮，normalizer 映射为 reason: 'interrupted' */
+  interrupt(): Promise<void>;
   close(): void;
 };
 
 type StartOptions = {
   cwd: string;
+  /** Hub 重启后用保存的 Claude session_id 恢复上下文（方案 §6.2） */
+  resume?: string;
   onEvent(event: ProviderEvent): void;
   /** 审批 / 提问：等用户在某个设备上处理；signal 触发（如 turn 被中断）时 resolve 为 null */
   onPending(body: PendingRequestBody, signal: AbortSignal): Promise<Resolution | null>;
@@ -17,9 +21,9 @@ type StartOptions = {
 };
 
 // 一个 Streaming Input 长驻 session（方案 §6.1）。消息通过 inbox 推入，SDK 消息经 normalizer 转成统一事件回调出去。
-export function startClaudeSession({ cwd, onEvent, onPending, onExit }: StartOptions): ClaudeSession {
+export function startClaudeSession({ cwd, resume, onEvent, onPending, onExit }: StartOptions): ClaudeSession {
   const inbox = createInbox();
-  const normalize = createNormalizer();
+  const { normalize, markInterrupting } = createNormalizer(resume !== undefined);
 
   // 审批与 AskUserQuestion 都从这里进来（方案 §6.4）；AskUserQuestion 的回答通过 updatedInput.answers 交还
   const canUseTool: CanUseTool = async (toolName, input, { signal, suggestions = [], toolUseID, title, description, decisionReason }) => {
@@ -47,6 +51,7 @@ export function startClaudeSession({ cwd, onEvent, onPending, onExit }: StartOpt
     prompt: inbox,
     options: {
       cwd,
+      resume,
       env: childEnv(),
       permissionMode: 'default',
       includePartialMessages: true,
@@ -75,6 +80,10 @@ export function startClaudeSession({ cwd, onEvent, onPending, onExit }: StartOpt
   return {
     send(content) {
       inbox.push({ type: 'user', message: { role: 'user', content }, parent_tool_use_id: null });
+    },
+    async interrupt() {
+      markInterrupting();
+      await q.interrupt();
     },
     close() {
       inbox.close();
