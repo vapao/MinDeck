@@ -3,19 +3,46 @@
   flex-direction: column;
   gap: 6px;
 }
-.hint {
-  min-height: 16px;
-  font-size: 11.5px;
-  color: var(--text-3);
-}
 .box {
   display: flex;
-  align-items: flex-end;
-  gap: 8px;
-  padding: 8px 8px 8px 8px;
+  flex-direction: column;
+  padding: 12px 12px 8px;
   background: var(--surface);
   border: 1px solid var(--border-2);
   border-radius: var(--radius-input);
+}
+/* 状态区：左侧附件按钮 + 会话信息 + 提示，右侧发送 */
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  margin-left: -6px;
+  margin-right: -4px;
+}
+.meta {
+  flex: none;
+  font-size: 12px;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+.hint {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--text-3);
+}
+.hint::before {
+  content: '· ';
+}
+.hint[data-error] {
+  color: var(--danger);
+}
+.meta:empty + .hint::before {
+  content: none;
 }
 .box:focus-within,
 .box[data-dragging] {
@@ -83,8 +110,8 @@
 }
 .attach {
   flex: none;
-  width: 36px;
-  height: 36px;
+  width: 30px;
+  height: 30px;
   display: grid;
   place-items: center;
   border: 0;
@@ -101,11 +128,11 @@
   cursor: default;
 }
 .input {
-  flex: 1;
+  width: 100%;
   min-height: 24px;
-  max-height: 200px;
+  max-height: 240px;
   padding: 0;
-  margin: 3px 0;
+  margin: 0;
   border: 0;
   background: none;
   outline: none;
@@ -118,8 +145,9 @@
 }
 .send {
   flex: none;
-  width: 36px;
-  height: 36px;
+  margin-left: auto;
+  width: 30px;
+  height: 30px;
   display: grid;
   place-items: center;
   border: 0;
@@ -136,8 +164,13 @@
 @media (max-width: 1023px) {
   .send,
   .attach {
-    width: 44px;
-    height: 44px;
+    width: 40px;
+    height: 40px;
+  }
+  .meta {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 0 1 auto;
   }
 }
 

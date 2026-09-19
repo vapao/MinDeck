@@ -4,6 +4,7 @@ import { useMediaQuery } from './session/useMediaQuery'
 import { useSessions } from './session/useSessions'
 import { notificationsSupported, useNotificationPermission, useNotifications } from './session/useNotifications'
 import { SessionList } from './components/SessionList'
+import { useResizable } from './components/Resizer'
 import { NewSessionPage } from './pages/NewSessionPage'
 import { SessionListPage } from './pages/SessionListPage'
 import { SessionPage } from './pages/SessionPage'
@@ -36,8 +37,10 @@ export default function App() {
 function Sidebar({ activeId }: { activeId?: string }) {
   const sessions = useSessions()
   const notify = useNotificationPermission()
+  const { width, handle } = useResizable('sidebar', 280, 220, 480, 'left')
   return (
-    <aside className={styles.sidebar}>
+    <aside className={styles.sidebar} style={{ width }}>
+      <div {...handle} />
       <div className={styles.brand}>
         AgentDeck
         {notificationsSupported && notify.permission === 'default' && (

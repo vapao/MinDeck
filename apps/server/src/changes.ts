@@ -53,7 +53,8 @@ async function insideCwd(cwd: string, rel: string): Promise<string> {
 export async function listChanges(cwd: string): Promise<ListChangesResponse> {
   if (!(await isGitRepo(cwd))) return { git: false, files: [] };
   // -z：路径不转义、NUL 分隔；重命名会跟一个额外的原路径条目
-  const out = await git(cwd, ['status', '--porcelain=v1', '-z', '--untracked-files=all']);
+  const [out, numstat] = await Promise.all([git(cwd, ['status', '--porcelain=v1', '-z', '--untracked-files=all']), git(cwd, ['diff', 'HEAD', '--numstat', '-z'])]);
+  const stats = parseNumstat(numstat);
   const parts = out.split('\0');
   const files: ChangedFile[] = [];
   for (let i = 0; i < parts.length; i++) {
@@ -65,9 +66,23 @@ export async function listChanges(cwd: string): Promise<ListChangesResponse> {
     if (x === 'R' || x === 'C') i++; // 跳过原路径
     // 合并 index / worktree 两列成一个字母：未跟踪 ?、删除 D、新增 A、其余按修改 M
     const status: ChangedFile['status'] = x === '?' ? '?' : x === 'D' || y === 'D' ? 'D' : x === 'A' ? 'A' : x === 'R' ? 'R' : 'M';
-    files.push({ path, status });
+    files.push({ path, status, ...(stats.get(path) ?? { additions: null, deletions: null }) });
   }
   return { git: true, files: files.sort((a, b) => a.path.localeCompare(b.path)) };
+}
+
+// `git diff --numstat -z`：每条 `加\t减\t路径\0`；重命名时路径列为空，后面跟 `旧\0新\0`；二进制两列是 `-`
+function parseNumstat(out: string): Map<string, { additions: number | null; deletions: number | null }> {
+  const stats = new Map<string, { additions: number | null; deletions: number | null }>();
+  const parts = out.split('\0');
+  for (let i = 0; i < parts.length; i++) {
+    const [add, del, path] = parts[i].split('\t');
+    if (add === undefined || del === undefined) continue;
+    const target = path || parts[(i += 2)];
+    if (!target) continue;
+    stats.set(target, add === '-' ? { additions: null, deletions: null } : { additions: Number(add), deletions: Number(del) });
+  }
+  return stats;
 }
 
 export async function fileDiff(cwd: string, rel: string): Promise<DiffResponse> {

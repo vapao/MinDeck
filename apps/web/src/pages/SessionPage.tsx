@@ -3,17 +3,16 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { ChevronLeft, GitBranch, MessageSquarePlus, Square, Trash2 } from 'lucide-react'
 import type { Resolution } from '@agentdeck/shared'
 import { api } from '../api'
-import { providerName } from '../format'
+import { formatTokens, providerName } from '../format'
 import { navigate } from '../router'
-import { useSessionStream } from '../session/useSessionStream'
+import { useSessionStream, type StreamItem } from '../session/useSessionStream'
 import { useMediaQuery } from '../session/useMediaQuery'
 import { ChangesPanel } from '../components/ChangesPanel'
-import { StatusPill } from '../components/StatusPill'
 import { UserMessage } from '../components/UserMessage'
 import { AssistantMessage } from '../components/AssistantMessage'
 import { ToolCard } from '../components/ToolCard'
 import { ErrorCard } from '../components/ErrorCard'
-import { InterruptedRow } from '../components/InterruptedRow'
+import { TurnRow, WorkingRow } from '../components/TurnRow'
 import { RateMeter } from '../components/RateMeter'
 import { ConnectionBanner } from '../components/ConnectionBanner'
 import { ApprovalCard } from '../components/ApprovalCard'
@@ -22,7 +21,7 @@ import { Composer } from '../components/Composer'
 import styles from './SessionPage.module.css'
 
 export function SessionPage({ sessionId }: { sessionId: string }) {
-  const { session, status, model, items, lastSeq, connection, replay, usage, gone, changesVersion } = useSessionStream(sessionId)
+  const { session, status, model, items, connection, replay, usage, context, turnStartedAt, gone, changesVersion } = useSessionStream(sessionId)
   const queryClient = useQueryClient()
   const send = useMutation({
     mutationFn: (body: { text: string; attachmentIds: string[] }) => api.sendMessage(sessionId, body),
@@ -87,19 +86,18 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
   const running = status === 'running' || status === 'waiting_user'
   // snapshot 到达前先按 claude 渲染，随后被真实 provider 覆盖
   const provider = session?.provider ?? 'claude'
-  const hint = send.error
-    ? send.error.message
-    : fresh.error
-      ? fresh.error.message
-      : interrupt.error
-        ? interrupt.error.message
-        : connection !== 'open'
-          ? '等待连接…'
-          : status === 'waiting_user'
-            ? `处理上方的请求后 ${provider} 才会继续`
-            : status === 'running'
-              ? '当前有一轮在运行，发送将作为追加指令排队'
-              : 'Enter 发送，Shift+Enter 换行'
+  const mutationError = send.error ?? fresh.error ?? interrupt.error
+  const hint = mutationError
+    ? mutationError.message
+    : connection !== 'open'
+      ? '等待连接…'
+      : status === 'waiting_user'
+        ? `处理上方的请求后 ${provider} 才会继续`
+        : status === 'running'
+          ? '当前有一轮在运行，发送将作为追加指令排队'
+          : ''
+  // 状态区：Provider · 模型 · 思考等级 · 上下文用量；init 前模型取创建时指定的；没指定 effort 就是 Provider 默认
+  const meta = [providerName[provider], model ?? session?.model, `思考 ${session?.effort ?? '默认'}`, context !== null && `${formatTokens(context)} 上下文`].filter(Boolean).join(' · ')
 
   return (
     <div className={styles.page}>
@@ -107,14 +105,7 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
         <button type="button" className={styles.back} onClick={() => navigate('/')} aria-label="返回">
           <ChevronLeft size={20} />
         </button>
-        <div className={styles.title}>
-          <code className={styles.cwd}>{session?.cwd ?? '…'}</code>
-          <span className={styles.sub}>
-            <code className={styles.chip}>{provider}</code>
-            {model && <code className={styles.chip}>{model}</code>}
-            <code>seq {lastSeq}</code>
-          </span>
-        </div>
+        <code className={styles.cwd} title={session?.cwd}>{session?.cwd ?? '…'}</code>
         <div className={styles.meter}>
           <RateMeter provider={provider} usage={usage} />
         </div>
@@ -136,7 +127,6 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
             中断
           </button>
         )}
-        <StatusPill status={status} />
       </header>
 
       <ConnectionBanner connection={connection} replay={replay} />
@@ -145,18 +135,18 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
         <div className={styles.conversation}>
           <main className={styles.stream} onScroll={onScroll}>
             <div className={styles.column}>
-              {items.map((it) => {
+              {items.map((it, i) => {
                 switch (it.kind) {
                   case 'user':
                     return <UserMessage key={it.key} text={it.text} attachments={it.attachments} at={it.at} />
                   case 'assistant':
-                    return <AssistantMessage key={it.key} provider={provider} text={it.text} streaming={it.streaming} at={it.at} />
+                    return <AssistantMessage key={it.key} provider={provider} text={it.text} streaming={it.streaming} at={it.at} showMeta={firstReplySince(items, i)} />
                   case 'tool':
                     return <ToolCard key={it.key} name={it.name} input={it.input} output={it.output} isError={it.isError} />
                   case 'error':
                     return <ErrorCard key={it.key} message={it.message} />
-                  case 'interrupted':
-                    return <InterruptedRow key={it.key} at={it.at} />
+                  case 'turn':
+                    return <TurnRow key={it.key} reason={it.reason} durationMs={it.durationMs} at={it.at} />
                   case 'approval':
                     return (
                       <ApprovalCard
@@ -196,6 +186,7 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
                     )
                 }
               })}
+              {turnStartedAt && running && <WorkingRow since={turnStartedAt} />}
               <div ref={bottom} />
             </div>
           </main>
@@ -206,10 +197,12 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
                 key={sessionId}
                 draftKey={sessionId}
                 disabled={status === 'waiting_user' || connection !== 'open'}
+                meta={meta}
                 hint={hint}
-                placeholder={`给 ${providerName[provider]} 发消息…`}
+                hintError={mutationError !== null}
+                placeholder={`给 ${providerName[provider]} 发消息 · Enter 发送 · Shift+Enter 换行`}
                 upload={(file) => api.uploadAttachment(sessionId, file)}
-            search={(q) => api.listEntries(sessionId, q)}
+                search={(q) => api.listEntries(sessionId, q)}
                 onSend={(text, attachmentIds) => send.mutate({ text, attachmentIds })}
               />
             </div>
@@ -219,4 +212,13 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
       </div>
     </div>
   )
+}
+
+// 一轮里 Agent 的第一段回复才带头部（头像 · 时间），之后的段落与工具卡连着排，不再重复发送者
+function firstReplySince(items: StreamItem[], i: number) {
+  for (let j = i - 1; j >= 0; j--) {
+    if (items[j].kind === 'user') return true
+    if (items[j].kind === 'assistant') return false
+  }
+  return true
 }

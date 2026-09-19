@@ -120,6 +120,8 @@ export type EventPayloads = {
   'turn.completed': { reason: TurnEndReason; durationMs: number; costUsd: number };
   'turn.failed': { message: string };
   'usage.updated': UsageInfo;
+  /** 最近一次模型调用的上下文大小（prompt 侧 token 数，含缓存），Composer 状态区展示 */
+  'context.updated': { tokens: number };
   'message.user': { text: string; attachments: Attachment[] };
   'message.delta': { messageId: string; text: string };
   'message.completed': { messageId: string; text: string };
@@ -182,8 +184,8 @@ export type ListDirsResponse = { path: string; parent: string | null; dirs: { na
 
 // ---- 改动侧栏（切片 10）：cwd 内只读 ----
 
-/** ?：未跟踪；A 新增；M 修改；D 删除；R 重命名（path 为新路径） */
-export type ChangedFile = { path: string; status: '?' | 'A' | 'M' | 'D' | 'R' };
+/** ?：未跟踪；A 新增；M 修改；D 删除；R 重命名（path 为新路径）。additions / deletions 来自 numstat，未跟踪与二进制文件为 null */
+export type ChangedFile = { path: string; status: '?' | 'A' | 'M' | 'D' | 'R'; additions: number | null; deletions: number | null };
 /** GET /api/sessions/:id/changes；cwd 不是 git 仓库时 git=false */
 export type ListChangesResponse = { git: boolean; files: ChangedFile[] };
 /** GET /api/sessions/:id/diff?path=：工作区 vs HEAD 的 unified diff；未跟踪文件与 /dev/null 比 */

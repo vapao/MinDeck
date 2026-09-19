@@ -1,5 +1,5 @@
 import { useEffect, useReducer, useRef } from 'react'
-import type { AgentEvent, ApprovalDecision, Attachment, PendingRequest, QuestionAnswers, ServerMessage, Session, SessionStatus, UsageInfo } from '@agentdeck/shared'
+import type { AgentEvent, ApprovalDecision, Attachment, PendingRequest, QuestionAnswers, ServerMessage, Session, SessionStatus, TurnEndReason, UsageInfo } from '@agentdeck/shared'
 
 // 会话页的实时状态 = 对事件流做 reduce（方案 §13.1）。一个 seq 只处理一次，重放与 live 共用同一条路径。
 
@@ -8,7 +8,8 @@ export type StreamItem =
   | { kind: 'assistant'; key: string; messageId: string; text: string; streaming: boolean; at: string }
   | { kind: 'tool'; key: string; toolUseId: string; name: string; input: unknown; output: string | null; isError: boolean; at: string }
   | { kind: 'error'; key: string; message: string; at: string }
-  | { kind: 'interrupted'; key: string; at: string }
+  /** 一轮结束的落款：完成 / 中断 及用时 */
+  | { kind: 'turn'; key: string; reason: TurnEndReason; durationMs: number; at: string }
   | { kind: 'approval'; key: string; request: Extract<PendingRequest, { kind: 'approval' }>; state: PendingState; decision: ApprovalDecision | null; resolvedAt: string | null }
   | { kind: 'question'; key: string; request: Extract<PendingRequest, { kind: 'question' }>; state: PendingState; answers: QuestionAnswers | null; response: string | null; resolvedAt: string | null }
 
@@ -29,6 +30,10 @@ export type StreamState = {
   livePendingIds: string[]
   /** 账号级额度，按 rateLimitType 存最新值 */
   usage: Record<string, UsageInfo>
+  /** 最近一次模型调用的上下文 token 数；还没跑过为 null */
+  context: number | null
+  /** 当前这一轮的开始时间，给底部"处理中"计时用；没有在跑的轮次为 null */
+  turnStartedAt: string | null
   /** 会话已被删除（或订阅时就不存在）：页面应离开，连接不再重试 */
   gone: boolean
   /** 工作区可能变了（工具完成 / 一轮结束）就 +1，改动侧栏据此刷新 */
@@ -41,7 +46,7 @@ type Action =
   | { type: 'replay.dismiss' }
   | { type: 'reset' }
 
-const initial: StreamState = { session: null, status: 'idle', model: null, items: [], lastSeq: 0, connection: 'connecting', replay: null, livePendingIds: [], usage: {}, gone: false, changesVersion: 0 }
+const initial: StreamState = { session: null, status: 'idle', model: null, items: [], lastSeq: 0, connection: 'connecting', replay: null, livePendingIds: [], usage: {}, context: null, turnStartedAt: null, gone: false, changesVersion: 0 }
 
 function reduce(state: StreamState, action: Action): StreamState {
   if (action.type === 'reset') return initial
@@ -129,14 +134,23 @@ function applyEvent(state: StreamState, e: AgentEvent): StreamState {
       const cur = items[i] as Extract<StreamItem, { kind: 'question' }>
       return { ...state, items: items.toSpliced(i, 1, { ...cur, state: e.payload.answers ? 'resolved' : 'expired', answers: e.payload.answers, response: e.payload.response ?? null, resolvedAt: e.createdAt }) }
     }
+    case 'turn.started':
+      return { ...state, turnStartedAt: e.createdAt }
     case 'turn.failed':
+      return { ...state, turnStartedAt: null, items: [...items, { kind: 'error', key: `e${e.seq}`, message: e.payload.message, at: e.createdAt }] }
     case 'error':
       return { ...state, items: [...items, { kind: 'error', key: `e${e.seq}`, message: e.payload.message, at: e.createdAt }] }
     case 'turn.completed':
-      if (e.payload.reason !== 'interrupted') return { ...state, changesVersion: state.changesVersion + 1 }
-      return { ...state, changesVersion: state.changesVersion + 1, items: [...items, { kind: 'interrupted', key: `i${e.seq}`, at: e.createdAt }] }
+      return {
+        ...state,
+        turnStartedAt: null,
+        changesVersion: state.changesVersion + 1,
+        items: [...items, { kind: 'turn', key: `t${e.seq}`, reason: e.payload.reason, durationMs: e.payload.durationMs, at: e.createdAt }],
+      }
     case 'usage.updated':
       return { ...state, usage: { ...state.usage, [e.payload.rateLimitType]: e.payload } }
+    case 'context.updated':
+      return { ...state, context: e.payload.tokens }
     case 'session.status':
       return { ...state, status: e.payload.status }
     case 'session.started':

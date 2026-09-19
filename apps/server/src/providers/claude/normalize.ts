@@ -8,6 +8,7 @@ export function createNormalizer(resumed: boolean) {
   let started = false;
   let interrupting = false;
   let lastUsage = '';
+  let lastContext = 0;
 
   function normalize(m: SDKMessage): ProviderEvent[] {
     switch (m.type) {
@@ -47,6 +48,13 @@ export function createNormalizer(resumed: boolean) {
       case 'assistant': {
         // 一条完整的 API 响应：文本块合并成 message.completed（覆盖之前 delta 拼出的文本），tool_use 块各自开一张工具卡
         const events: ProviderEvent[] = [];
+        // 上下文大小 = 本次调用的 prompt 侧 token；子 Agent（parent_tool_use_id 非空）有自己的上下文，不算
+        const u = m.message.usage;
+        const context = u.input_tokens + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0);
+        if (m.parent_tool_use_id === null && context !== lastContext) {
+          lastContext = context;
+          events.push({ type: 'context.updated', payload: { tokens: context } });
+        }
         const text = m.message.content.filter((b) => b.type === 'text').map((b) => b.text).join('');
         if (text) events.push({ type: 'message.completed', payload: { messageId: m.message.id, text } });
         for (const b of m.message.content) {

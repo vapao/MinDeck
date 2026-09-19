@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { ChevronLeft, FileCode, FileDiff, RefreshCw } from 'lucide-react'
+import { ChevronLeft, FileCode, FileDiff, Folder, RefreshCw } from 'lucide-react'
 import type { ChangedFile } from '@agentdeck/shared'
 import { api } from '../api'
+import { useResizable } from './Resizer'
 import styles from './ChangesPanel.module.css'
 
 // 改动侧栏（桌面端）：工作区相对 HEAD 改了哪些文件；点开看 diff，或直接看整个文件。只读。
@@ -10,7 +11,62 @@ import styles from './ChangesPanel.module.css'
 
 type Props = { sessionId: string; version: number }
 
-const statusText: Record<ChangedFile['status'], string> = { '?': '新', A: '增', M: '改', D: '删', R: '移' }
+// 目录树：只含有改动的路径；只有一个子目录的目录链压成一行（apps/web/src）
+type TreeNode = { name: string; dirs: TreeNode[]; files: ChangedFile[] }
+
+function buildTree(files: ChangedFile[]): TreeNode {
+  const root: TreeNode = { name: '', dirs: [], files: [] }
+  for (const f of files) {
+    const segs = f.path.split('/')
+    let node = root
+    for (const seg of segs.slice(0, -1)) {
+      let next = node.dirs.find((d) => d.name === seg)
+      if (!next) node.dirs.push((next = { name: seg, dirs: [], files: [] }))
+      node = next
+    }
+    node.files.push(f)
+  }
+  const compact = (n: TreeNode): TreeNode => {
+    while (n.dirs.length === 1 && n.files.length === 0 && n !== root) n = { ...n.dirs[0], name: `${n.name}/${n.dirs[0].name}` }
+    return { ...n, dirs: n.dirs.map(compact) }
+  }
+  return compact(root)
+}
+
+// 右侧统计：修改显示 +加 −减；新增 / 删除 / 重命名只给一个字母
+function FileStat({ f }: { f: ChangedFile }) {
+  if (f.status === '?' || f.status === 'A') return <span className={styles.stat} data-kind="add">A</span>
+  if (f.status === 'D') return <span className={styles.stat} data-kind="del">D</span>
+  return (
+    <span className={styles.stat}>
+      {f.status === 'R' && <span data-kind="rename">R</span>}
+      {f.additions !== null && f.additions > 0 && <span data-kind="add">+{f.additions}</span>}
+      {f.deletions !== null && f.deletions > 0 && <span data-kind="del">−{f.deletions}</span>}
+    </span>
+  )
+}
+
+function Tree({ node, depth, onSelect }: { node: TreeNode; depth: number; onSelect: (path: string) => void }) {
+  return (
+    <>
+      {node.dirs.map((d) => (
+        <div key={d.name}>
+          <div className={styles.dir} style={{ paddingLeft: 8 + depth * 14 }}>
+            <Folder size={14} />
+            <span className={styles.dirName}>{d.name}</span>
+          </div>
+          <Tree node={d} depth={depth + 1} onSelect={onSelect} />
+        </div>
+      ))}
+      {node.files.map((f) => (
+        <button key={f.path} type="button" className={styles.file} style={{ paddingLeft: 8 + depth * 14 }} onClick={() => onSelect(f.path)} title={f.path}>
+          <span className={styles.fileName}>{f.path.split('/').pop()}</span>
+          <FileStat f={f} />
+        </button>
+      ))}
+    </>
+  )
+}
 
 export function ChangesPanel({ sessionId, version }: Props) {
   const changes = useQuery({ queryKey: ['changes', sessionId], queryFn: () => api.listChanges(sessionId) })
@@ -23,10 +79,12 @@ export function ChangesPanel({ sessionId, version }: Props) {
     return () => clearTimeout(t)
   }, [version, refetch])
   useEffect(() => setSelected(null), [sessionId])
+  const { width, handle } = useResizable('changes', 380, 280, 720, 'right')
 
   if (selected) {
     return (
-      <aside className={styles.panel}>
+      <aside className={styles.panel} style={{ width }}>
+        <div {...handle} />
         <header className={styles.head}>
           <button type="button" className={styles.iconButton} onClick={() => setSelected(null)} aria-label="返回列表">
             <ChevronLeft size={16} />
@@ -46,7 +104,8 @@ export function ChangesPanel({ sessionId, version }: Props) {
 
   const files = changes.data?.files ?? []
   return (
-    <aside className={styles.panel}>
+    <aside className={styles.panel} style={{ width }}>
+      <div {...handle} />
       <header className={styles.head}>
         <span className={styles.title}>改动</span>
         {changes.data?.git && <code className={styles.count}>{files.length}</code>}
@@ -63,13 +122,7 @@ export function ChangesPanel({ sessionId, version }: Props) {
         ) : files.length === 0 ? (
           <div className={styles.empty}>{changes.data ? '工作区干净' : '…'}</div>
         ) : (
-          files.map((f) => (
-            <button key={f.path} type="button" className={styles.file} onClick={() => setSelected(f.path)} title={f.path}>
-              <span className={styles.status} data-status={f.status}>{statusText[f.status]}</span>
-              <span className={styles.fileName}>{f.path.split('/').pop()}</span>
-              <span className={styles.fileDir}>{f.path.includes('/') ? f.path.slice(0, f.path.lastIndexOf('/')) : ''}</span>
-            </button>
-          ))
+          <Tree node={buildTree(files)} depth={0} onSelect={setSelected} />
         )}
       </div>
     </aside>

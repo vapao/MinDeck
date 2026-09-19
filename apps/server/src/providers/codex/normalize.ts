@@ -7,6 +7,7 @@ import type { ThreadItem } from './schema/v2';
 export function createNormalizer() {
   let streaming: { id: string; text: string } | null = null;
   let lastUsage = '';
+  let lastContext = 0;
 
   function normalize(n: ServerNotification): ProviderEvent[] {
     switch (n.method) {
@@ -42,6 +43,14 @@ export function createNormalizer() {
         if (status === 'failed') events.push({ type: 'turn.failed', payload: { message: error?.message ?? 'turn failed' } });
         else events.push({ type: 'turn.completed', payload: { reason: status === 'interrupted' ? 'interrupted' : 'completed', durationMs: durationMs ?? 0, costUsd: 0 } });
         return events;
+      }
+
+      case 'thread/tokenUsage/updated': {
+        // inputTokens 已含 cachedInputTokens，就是最近一次调用的 prompt 大小
+        const context = n.params.tokenUsage.last.inputTokens;
+        if (context === lastContext) return [];
+        lastContext = context;
+        return [{ type: 'context.updated', payload: { tokens: context } }];
       }
 
       case 'account/rateLimits/updated': {

@@ -1,0 +1,19 @@
+.handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  touch-action: none;
+  z-index: 2;
+}
+.handle[data-side='left'] {
+  right: -3px;
+}
+.handle[data-side='right'] {
+  left: -3px;
+}
+.handle:hover,
+.handle:active {
+  background: var(--border-2);
+}

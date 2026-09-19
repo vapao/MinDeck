@@ -8,7 +8,11 @@ type Props = {
   /** 草稿按此 key 存 localStorage，切走再切回来输入内容还在 */
   draftKey: string
   disabled: boolean
+  /** 状态区左侧的会话信息（模型、思考等级、上下文用量） */
+  meta: string
+  /** 需要用户注意的状态（排队、等待、报错）；为空时状态区只显示 meta */
   hint: string
+  hintError?: boolean
   placeholder: string
   upload: (file: File) => Promise<Attachment>
   /** @ 引用补全：q 是 @ 后面敲的内容 */
@@ -30,7 +34,7 @@ type Draft = { key: string; file: File; previewUrl: string } & ({ status: 'uploa
 
 const maxPerMessage = 5
 
-export function Composer({ draftKey, disabled, hint, placeholder, upload, search, onSend }: Props) {
+export function Composer({ draftKey, disabled, meta, hint, hintError, placeholder, upload, search, onSend }: Props) {
   const [text, setText] = useState(() => localStorage.getItem(`draft:${draftKey}`) ?? '')
   useEffect(() => {
     if (text) localStorage.setItem(`draft:${draftKey}`, text)
@@ -163,7 +167,6 @@ export function Composer({ draftKey, disabled, hint, placeholder, upload, search
           ))}
         </div>
       )}
-      <div className={styles.hint}>{failed ? failed.message : uploading ? '正在上传图片…' : hint}</div>
       <div className={styles.boxWrap}>
         {mention && (
           <div className={styles.mentions}>
@@ -197,20 +200,6 @@ export function Composer({ draftKey, disabled, hint, placeholder, upload, search
           onDragLeave={() => setDragging(false)}
           onDrop={onDrop}
         >
-          <input
-            ref={fileInput}
-            type="file"
-            accept="image/*"
-            multiple
-            hidden
-            onChange={(e) => {
-              if (e.target.files) addFiles(e.target.files)
-              e.target.value = ''
-            }}
-          />
-          <button type="button" className={styles.attach} onClick={() => fileInput.current?.click()} disabled={drafts.length >= maxPerMessage} aria-label="添加图片">
-            <ImagePlus size={18} />
-          </button>
           <textarea
             ref={textarea}
             className={styles.input}
@@ -224,15 +213,37 @@ export function Composer({ draftKey, disabled, hint, placeholder, upload, search
             onKeyDown={onKeyDown}
             onKeyUp={(e) => {
               // 上下键在弹层里选项，不动光标；左右 / Home / End 会移动光标，重新判定 @ 位置
-            if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Home' || e.key === 'End') syncMention()
+              if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Home' || e.key === 'End') syncMention()
             }}
             onClick={syncMention}
             onBlur={() => setMention(null)}
             onPaste={onPaste}
           />
-          <button type="button" className={styles.send} onClick={submit} disabled={!canSend} aria-label="发送">
-            <ArrowUp size={18} />
-          </button>
+          <div className={styles.bar}>
+            <input
+              ref={fileInput}
+              type="file"
+              accept="image/*"
+              multiple
+              hidden
+              onChange={(e) => {
+                if (e.target.files) addFiles(e.target.files)
+                e.target.value = ''
+              }}
+            />
+            <button type="button" className={styles.attach} onClick={() => fileInput.current?.click()} disabled={drafts.length >= maxPerMessage} aria-label="添加图片" title="添加图片">
+              <ImagePlus size={16} />
+            </button>
+            <span className={styles.meta}>{meta}</span>
+            {(failed || uploading || hint) && (
+              <span className={styles.hint} data-error={(failed || hintError) || undefined}>
+                {failed ? failed.message : uploading ? '正在上传图片…' : hint}
+              </span>
+            )}
+            <button type="button" className={styles.send} onClick={submit} disabled={!canSend} aria-label="发送">
+              <ArrowUp size={16} />
+            </button>
+          </div>
         </div>
       </div>
     </div>
