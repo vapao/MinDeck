@@ -29,7 +29,9 @@ export function createNormalizer(resumed: boolean) {
         if (key === lastUsage) return [];
         lastUsage = key;
         return Object.entries(windows).flatMap(([rateLimitType, w]) =>
-          w.utilization === undefined ? [] : [{ type: 'usage.updated' as const, payload: { rateLimitType, utilization: w.utilization, resetsAt: w.resetsAt ?? null } }],
+          w.utilization === undefined
+            ? []
+            : [{ type: 'usage.updated' as const, payload: { provider: 'claude' as const, rateLimitType, utilization: w.utilization, resetsAt: w.resetsAt ?? null, windowMinutes: null } }],
         );
       }
 

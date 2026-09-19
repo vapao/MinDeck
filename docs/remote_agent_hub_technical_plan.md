@@ -689,7 +689,7 @@ error { code, message }
 
 **8.** 确认 Claude 认证方案符合实际使用方式和官方条款。
 
-以上 8 条中 Claude 相关项（4、5、7 的 Claude 部分、8）已于 2026-09-19 通过，见 16.1；1–3、6、7 的 Codex 部分依赖 Hub 端实现，进入 P1 后在真实 Hub 上验收。
+以上 8 条中 Claude 相关项（4、5、7 的 Claude 部分、8）已于 2026-09-19 通过，见 16.1；1–3、6、7 的 Codex 部分于切片 5 在真实 Hub 上通过（浏览器 / iPhone 真机部分待切片 6），见 16.2。
 
 ## 16.1 P0 验证记录（2026-09-19）
 
@@ -722,6 +722,38 @@ error { code, message }
 **4. `rateLimitInfo` 对 Claude 可立即实现。**`rate_limit_event.rate_limit_info` 含 `status`、`rateLimitType`（`five_hour` / `seven_day` / `seven_day_opus` 等）、`utilization`、`resetsAt`。§7.3 中 Claude 的 `rateLimitInfo` 取 `true`，P3 的额度面板不必等待。
 
 **5. SDK 消息类型远多于 §7.2 的核心事件。**一次 session 内观察到 `system/hook_started`、`system/hook_response`、`system/status`、`rate_limit_event` 等；`SDKMessage` 联合类型共 40 余种。normalizer 应显式处理需要的子集，其余归入 `provider.raw` 事件保留而不映射，避免每次 SDK 升级都要补类型。
+
+## 16.2 Codex P0 验证记录（2026-09-19，切片 5）
+
+**环境：**codex-cli 0.155.0（app-server 协议 v2，`experimentalApi: true`）、Node 24.20、macOS 24.6。验证脚本 `apps/server/scripts/p0-codex-harness.mjs`：一个 app-server 进程内单 thread 连续跑 6 轮，再用新进程 `thread/resume`；随后在真实 Hub 上走 REST + WS 端到端。
+
+| **P0 项**                        | **结果** | **证据**                                                                                          |
+|----------------------------------|----------|---------------------------------------------------------------------------------------------------|
+| stdio JSONL 双向 JSON-RPC        | 通过     | `initialize` → `thread/start` → `turn/start`，通知按 `threadId` 路由                               |
+| 流式输出                         | 通过     | `item/started(agentMessage)` → `item/agentMessage/delta` → `item/completed`                       |
+| `localImage` 图片输入            | 通过     | 上传目录里的 PNG 直接按路径送入，模型正确识别颜色                                                 |
+| 命令审批                         | 通过     | 沙箱外写文件触发 `item/commandExecution/requestApproval`；延迟 2s 回 `accept` 后命令执行          |
+| 审批拒绝                         | 通过     | 回 `decline` 后 item 以 `status: "declined"` 结束，turn 正常 `completed`                           |
+| `request_user_input`             | 通过     | 需 `--enable default_mode_request_user_input`（见下）；`item/tool/requestUserInput` 按问题 id 回答 |
+| `turn/interrupt`                 | 通过     | `turn/completed` 的 `turn.status = "interrupted"`，无 error                                        |
+| 打断后继续                       | 通过     | 同 thread 下一轮正常                                                                              |
+| `thread/resume`（新进程）        | 通过     | 新进程 resume 后带前几轮上下文（记得图片颜色）；`thread.turns` 含历史                             |
+| 额度                             | 通过     | 每次 API 调用后推 `account/rateLimits/updated`，`primary.usedPercent` / `windowDurationMins` / `resetsAt` |
+| Hub 端到端（切片 1–4 验收项）    | 通过     | 对话、审批、追加指令排队、interrupt、Hub 重启后 resume、提问卡、上传图片，均经 REST + WS 走通      |
+
+### 对设计有影响的发现
+
+**1. 本机 Codex 配置会吞掉审批。**`~/.codex/config.toml` 是 `approval_policy = "never"` + `sandbox_mode = "danger-full-access"`。Provider 必须在 `thread/start` / `thread/resume` 里显式传 `approvalPolicy: "on-request"`、`sandbox: "workspace-write"`、`approvalsReviewer: "user"`，并校验回包中的 `approvalPolicy` / `sandbox.type`，不符则拒绝启动（与 Claude 侧规则 2 同类）。`workspace-write` 默认允许写 `/tmp`，审批只在写工作区外其他路径或访问网络时触发。
+
+**2. `request_user_input` 默认只在 Plan 协作模式可用。**默认模式下模型调用会得到 `request_user_input is unavailable in Default mode`。Plan 模式下 Codex 不改文件，不适合作为 Hub 默认；app-server 提供 feature flag `default_mode_request_user_input`，开启后默认模式也能收到 `item/tool/requestUserInput`。Provider 以 `--enable default_mode_request_user_input` 启动 app-server；不支持 Plan 模式本身。
+
+**3. 被打断的 agentMessage 不会收到 `item/completed`。**normalizer 在 `turn/completed` 时用已累积的 delta 文本补发 `message.completed`。
+
+**4. 审批回包的 `availableDecisions` 字段 schema 未声明。**沙箱逃逸类审批实际只给 `accept` / `acceptWithExecpolicyAmendment` / `cancel`，没有 `acceptForSession`；"本会话允许"按钮只在 `availableDecisions` 含 `acceptForSession` 时提供。`acceptWithExecpolicyAmendment` 会写持久化的 execpolicy 规则，超出"本会话"语义，不使用。
+
+**5. 一个 Hub 进程一个 app-server（§5.1）可行。**`account/rateLimits/updated` 等账号级通知没有 `threadId`，广播给所有会话，各自 normalizer 按内容去重后落库。app-server 每个 thread 启动时会拉起本机配置的 MCP server（`mcpServer/startupStatus/updated`）与 hooks，约 3s。
+
+**6. 高频通知不落库。**`item/reasoning/*Delta`、`item/commandExecution/outputDelta` 直接丢弃；`thread/tokenUsage/updated`、`thread/status/changed` 等归入 `provider.raw`。
 
 # 17. 决策记录
 

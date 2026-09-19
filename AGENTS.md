@@ -8,15 +8,14 @@ Mac Mini 上自托管的 Claude / Codex 多端控制台：Agent 在 Mac Mini 上
 
 | 文档 | 内容 |
 |---|---|
-| `docs/remote_agent_hub_technical_plan.md` | 技术方案 v1.1。架构、Provider 设计、统一事件协议（§7）、持久化（§12）、技术栈（§13）、API（§14）、分期（§15）、P0 验证记录与设计影响（§16.1） |
+| `docs/remote_agent_hub_technical_plan.md` | 技术方案 v1.1。架构、Provider 设计、统一事件协议（§7）、持久化（§12）、技术栈（§13）、API（§14）、分期（§15）、P0 验证记录与设计影响（Claude §16.1、Codex §16.2） |
 | `docs/ui-design-spec.md` | UI 设计规范：token、事件→组件映射、页面布局、实现约定。前端实现以它为准 |
 | 设计稿 | https://claude.ai/artifact/Q4D8So6aNPffo4oiLezwze |
 
 ## 当前状态与下一步
 
-- 已完成：方案、Claude 侧 P0 验证、工程脚手架、UI 设计稿与规范、**切片 1–4**（2026-09-19 浏览器验收通过；切片 3 真机 iPhone 相册选图待切片 6 走 Tailscale 时一并验）。
-- Codex app-server 链路已由开发者人工确认可行，未写 harness。
-- **下一步：切片 5**。实施按垂直切片推进，每片端到端可用：
+- 已完成：方案、Claude / Codex 两侧 P0 验证、工程脚手架、UI 设计稿与规范、**切片 1–5**（切片 1–4 于 2026-09-19 浏览器验收通过；切片 5 于 2026-09-19 在真实 Hub 上用 REST + WS 脚本验收通过，浏览器端只做了 typecheck；切片 3 真机 iPhone 相册选图待切片 6 走 Tailscale 时一并验）。
+- **下一步：切片 6**。实施按垂直切片推进，每片端到端可用：
 
 | 切片 | 内容 | 验收 |
 |---|---|---|
@@ -42,6 +41,7 @@ pnpm typecheck       # 三个工作区
 pnpm --filter @agentdeck/server test   # tsx --test：事件 seq 单调、PendingRequest 原子 resolve、附件路径/会话边界
 pnpm codex:schema    # codex app-server generate-ts → apps/server/src/providers/codex/schema（已 gitignore，按本机 codex 版本生成）
 cd apps/server && node scripts/p0-claude-harness.mjs   # Claude SDK 回归 harness，真实消耗额度
+cd apps/server && node scripts/p0-codex-harness.mjs    # Codex app-server 回归 harness，真实消耗额度
 ```
 
 ## 本项目已定的规则（来自 P0 验证，不要回退）
@@ -55,6 +55,10 @@ cd apps/server && node scripts/p0-claude-harness.mjs   # Claude SDK 回归 harne
 7. 安全边界（§11.3）：workspace cwd 走 allowlist；附件路径由服务端生成，客户端只引用 attachmentId；不默认启用 bypassPermissions。
 8. **`rate_limit_event` 的各窗口利用率在 `rate_limit_info.unifiedWindows`**（`five_hour` / `seven_day`，SDK 类型未声明），顶层 `utilization` 实际不存在；normalizer 按 unifiedWindows 解析。
 9. **追加指令排队在 Hub 内存里**（不用 SDK 自己的消息队列，避免依赖其 result 语义）：一轮进行中收到的消息先落 `message.user` 事件，本轮 `turn.completed` / `turn.failed` 后按序发出；interrupt 会连同排队一起丢弃；Hub 重启后未发出的排队丢失。Hub 启动时把上次仍在 running / waiting_user 的会话记一条 `turn.completed(interrupted)` 并置 idle，下一轮用 `resume` 恢复。
+10. **Codex Provider 在 `thread/start` / `thread/resume` 里显式传 `approvalPolicy: "on-request"` + `sandbox: "workspace-write"` + `approvalsReviewer: "user"`**，并校验回包，不符则拒绝启动。原因：开发者本机 `~/.codex/config.toml` 是 `approval_policy = "never"` + `danger-full-access`，不覆盖审批会全部静默通过。
+11. **app-server 以 `--enable default_mode_request_user_input` 启动**：`request_user_input` 默认只在 Plan 模式可用，Hub 不支持 Plan 模式。
+12. **一个 Hub 进程只维持一个 app-server**（`providers/codex/index.ts` 里的模块级单例），thread 按 `threadId` 路由；账号级通知（额度）广播给所有 Codex 会话，各自去重。
+13. **Codex 审批的"本会话允许"只在回包 `availableDecisions` 含 `acceptForSession` 时提供**；不用 `acceptWithExecpolicyAmendment`（会写持久化 execpolicy 规则）。
 
 ## 工程习惯
 

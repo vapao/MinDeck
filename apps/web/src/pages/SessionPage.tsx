@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { ChevronLeft, Square } from 'lucide-react'
 import type { Resolution } from '@agentdeck/shared'
 import { api } from '../api'
+import { providerName } from '../format'
 import { navigate } from '../router'
 import { useSessionStream } from '../session/useSessionStream'
 import { StatusPill } from '../components/StatusPill'
@@ -39,6 +40,8 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
   }, [items])
 
   const running = status === 'running' || status === 'waiting_user'
+  // snapshot 到达前先按 claude 渲染，随后被真实 provider 覆盖
+  const provider = session?.provider ?? 'claude'
   const hint = send.error
     ? send.error.message
     : interrupt.error
@@ -46,7 +49,7 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
       : connection === 'closed'
         ? '连接已断开，刷新页面重连'
         : status === 'waiting_user'
-          ? '处理上方的请求后 claude 才会继续'
+          ? `处理上方的请求后 ${provider} 才会继续`
           : status === 'running'
             ? '当前有一轮在运行，发送将作为追加指令排队'
             : 'Enter 发送，Shift+Enter 换行'
@@ -60,12 +63,12 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
         <div className={styles.title}>
           <code className={styles.cwd}>{session?.cwd ?? '…'}</code>
           <span className={styles.sub}>
-            <code className={styles.chip}>claude</code>
+            <code className={styles.chip}>{provider}</code>
             <code>seq {lastSeq}</code>
           </span>
         </div>
         <div className={styles.meter}>
-          <RateMeter usage={usage} />
+          <RateMeter provider={provider} usage={usage} />
         </div>
         {running && (
           <button type="button" className={styles.interrupt} onClick={() => interrupt.mutate()} disabled={interrupt.isPending}>
@@ -83,7 +86,7 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
               case 'user':
                 return <UserMessage key={it.key} text={it.text} attachments={it.attachments} at={it.at} />
               case 'assistant':
-                return <AssistantMessage key={it.key} text={it.text} streaming={it.streaming} at={it.at} />
+                return <AssistantMessage key={it.key} provider={provider} text={it.text} streaming={it.streaming} at={it.at} />
               case 'tool':
                 return <ToolCard key={it.key} name={it.name} input={it.input} output={it.output} isError={it.isError} />
               case 'error':
@@ -108,6 +111,7 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
                   <QuestionCard
                     key={it.key}
                     request={it.request}
+                    provider={provider}
                     state={it.state}
                     answers={it.answers}
                     response={it.response}
@@ -127,6 +131,7 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
           <Composer
             disabled={status === 'waiting_user' || connection !== 'open'}
             hint={hint}
+            placeholder={`给 ${providerName[provider]} 发消息…`}
             upload={(file) => api.uploadAttachment(sessionId, file)}
             onSend={(text, attachmentIds) => send.mutate({ text, attachmentIds })}
           />

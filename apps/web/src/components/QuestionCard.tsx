@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { CircleHelp } from 'lucide-react'
-import type { PendingRequest, QuestionAnswers } from '@agentdeck/shared'
+import type { PendingRequest, ProviderId, QuestionAnswers } from '@agentdeck/shared'
 import { formatTime } from '../format'
 import type { PendingState } from '../session/useSessionStream'
 import styles from './pendingCard.module.css'
 
 type Props = {
   request: Extract<PendingRequest, { kind: 'question' }>
+  provider: ProviderId
   state: PendingState
   answers: QuestionAnswers | null
   response: string | null
@@ -16,7 +17,7 @@ type Props = {
   onSubmit: (answers: QuestionAnswers, response: string | undefined) => void
 }
 
-export function QuestionCard({ request, state, answers, response, resolvedAt, busy, error, onSubmit }: Props) {
+export function QuestionCard({ request, provider, state, answers, response, resolvedAt, busy, error, onSubmit }: Props) {
   const [picked, setPicked] = useState<QuestionAnswers>({})
   const [other, setOther] = useState('')
   const complete = request.questions.every((q) => (picked[q.question]?.length ?? 0) > 0) || other.trim().length > 0
@@ -32,7 +33,7 @@ export function QuestionCard({ request, state, answers, response, resolvedAt, bu
     <div className={styles.card} data-state={state}>
       <div className={styles.head}>
         <CircleHelp size={16} className={styles.headIcon} />
-        {state === 'pending' ? 'claude 想确认' : state === 'expired' ? '提问已失效' : '提问 · 已回答'}
+        {state === 'pending' ? `${provider} 想确认` : state === 'expired' ? '提问已失效' : '提问 · 已回答'}
         <span className={styles.headMeta}>{state === 'pending' ? (request.questions.some((q) => q.multiSelect) ? '可多选' : '单选') : resolvedAt ? formatTime(resolvedAt) : ''}</span>
       </div>
       <div className={styles.body}>

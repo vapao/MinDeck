@@ -1,27 +1,11 @@
+import { readFileSync } from 'node:fs';
 import { query, type CanUseTool, type PermissionResult, type PermissionUpdate, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
-import type { PendingRequestBody, ProviderEvent, QuestionSpec, Resolution } from '@agentdeck/shared';
+import type { QuestionSpec } from '@agentdeck/shared';
+import type { ProviderSession, StartOptions } from '../types';
 import { createNormalizer } from './normalize';
 
-export type ClaudeSession = {
-  send(content: SDKUserMessage['message']['content']): void;
-  /** 打断当前 turn；SDK 随后以 error_during_execution 结束该轮，normalizer 映射为 reason: 'interrupted' */
-  interrupt(): Promise<void>;
-  close(): void;
-};
-
-type StartOptions = {
-  cwd: string;
-  /** Hub 重启后用保存的 Claude session_id 恢复上下文（方案 §6.2） */
-  resume?: string;
-  onEvent(event: ProviderEvent): void;
-  /** 审批 / 提问：等用户在某个设备上处理；signal 触发（如 turn 被中断）时 resolve 为 null */
-  onPending(body: PendingRequestBody, signal: AbortSignal): Promise<Resolution | null>;
-  /** 子进程结束（正常关闭或抛错）后调用一次 */
-  onExit(error?: unknown): void;
-};
-
 // 一个 Streaming Input 长驻 session（方案 §6.1）。消息通过 inbox 推入，SDK 消息经 normalizer 转成统一事件回调出去。
-export function startClaudeSession({ cwd, resume, onEvent, onPending, onExit }: StartOptions): ClaudeSession {
+export function startClaudeSession({ cwd, resume, onEvent, onPending, onExit }: StartOptions): ProviderSession {
   const inbox = createInbox();
   const { normalize, markInterrupting } = createNormalizer(resume !== undefined);
 
@@ -78,9 +62,15 @@ export function startClaudeSession({ cwd, resume, onEvent, onPending, onExit }: 
   })();
 
   return {
-    send(content) {
+    send({ text, images }) {
+      // 原生 image block（方案 §9.1）；图片放在文字前面是 Anthropic 视觉文档的建议顺序
+      const content: SDKUserMessage['message']['content'] = [
+        ...images.map((img) => ({ type: 'image' as const, source: { type: 'base64' as const, media_type: img.mimeType, data: readFileSync(img.path).toString('base64') } })),
+        ...(text ? [{ type: 'text' as const, text }] : []),
+      ];
       inbox.push({ type: 'user', message: { role: 'user', content }, parent_tool_use_id: null });
     },
+    // SDK 随后以 error_during_execution 结束该轮，normalizer 映射为 reason: 'interrupted'
     async interrupt() {
       markInterrupting();
       await q.interrupt();

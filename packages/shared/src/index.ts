@@ -17,13 +17,17 @@ export type Session = {
   updatedAt: string;
 };
 
-/** claude.ai 订阅额度（P0 验证记录 §16.1 第 4 条），按 rateLimitType 各存一份最新值 */
+/** 账号级额度（Claude：§16.1 第 4 条；Codex：account/rateLimits/updated），按 rateLimitType 各存一份最新值 */
 export type UsageInfo = {
+  provider: ProviderId;
+  /** Claude: five_hour / seven_day …；Codex: primary / secondary */
   rateLimitType: string;
   /** 0–1 */
   utilization: number;
   /** Unix 秒；未知时为 null */
   resetsAt: number | null;
+  /** 窗口长度；Provider 没给时为 null，UI 按 rateLimitType 兜底标注 */
+  windowMinutes: number | null;
 };
 
 // ---- 附件（方案 §9）----

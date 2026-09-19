@@ -1,3 +1,7 @@
+import type { ProviderId } from '@agentdeck/shared'
+
+export const providerName: Record<ProviderId, string> = { claude: 'Claude', codex: 'Codex' }
+
 export const formatTime = (iso: string) =>
   new Date(iso).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
 

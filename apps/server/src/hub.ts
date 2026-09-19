@@ -2,7 +2,11 @@ import { randomUUID } from 'node:crypto';
 import type { AgentEvent, Attachment, PendingRequest, PendingRequestBody, ProviderEvent, Resolution, Session, SessionStatus, UsageInfo } from '@agentdeck/shared';
 import type { Store } from './store/db';
 import type { AttachmentStore } from './store/attachments';
-import { startClaudeSession, type ClaudeSession } from './providers/claude';
+import type { ProviderSession, StartOptions } from './providers/types';
+import { startClaudeSession } from './providers/claude';
+import { shutdownCodex, startCodexSession } from './providers/codex';
+
+const providers: Record<Session['provider'], (o: StartOptions) => ProviderSession> = { claude: startClaudeSession, codex: startCodexSession };
 
 export class HubError extends Error {
   constructor(public statusCode: number, message: string) {
@@ -12,7 +16,7 @@ export class HubError extends Error {
 
 // Hub：Session 元数据 + append-only 事件流 + 多端 fan-out。Provider 会话在首条消息时才拉起。
 export function createHub(store: Store, attachments: AttachmentStore, workspaces: string[]) {
-  const live = new Map<string, ClaudeSession>();
+  const live = new Map<string, ProviderSession>();
   const listeners = new Map<string, Set<(e: AgentEvent) => void>>();
   // 正在等用户处理的 Provider 回调；Hub 重启后这些 Promise 不复存在，对应的行在启动时作废
   const waiting = new Map<string, (r: Resolution | null) => void>();
@@ -88,10 +92,10 @@ export function createHub(store: Store, attachments: AttachmentStore, workspaces
     return true;
   }
 
-  function ensureProvider(session: Session): ClaudeSession {
+  function ensureProvider(session: Session): ProviderSession {
     const existing = live.get(session.id);
     if (existing) return existing;
-    const provider = startClaudeSession({
+    const provider = providers[session.provider]({
       cwd: session.cwd,
       resume: session.providerSessionId ?? undefined,
       onPending: (body, signal) => createPending(session.id, body, signal),
@@ -111,7 +115,7 @@ export function createHub(store: Store, attachments: AttachmentStore, workspaces
         live.delete(session.id);
         queues.delete(session.id);
         if (error && !closing) {
-          emit(session.id, { type: 'error', payload: { message: `Claude 子进程退出：${error instanceof Error ? error.message : String(error)}` } });
+          emit(session.id, { type: 'error', payload: { message: `${session.provider} 进程退出：${error instanceof Error ? error.message : String(error)}` } });
           setStatus(session.id, 'error');
         }
       },
@@ -120,21 +124,17 @@ export function createHub(store: Store, attachments: AttachmentStore, workspaces
     return provider;
   }
 
-  function dispatch(sessionId: string, provider: ClaudeSession, { text, files }: { text: string; files: Attachment[] }) {
+  function dispatch(sessionId: string, provider: ProviderSession, { text, files }: { text: string; files: Attachment[] }) {
     emit(sessionId, { type: 'turn.started', payload: {} });
     setStatus(sessionId, 'running');
-    // Claude 走原生 image block（方案 §9.1）；图片放在文字前面是 Anthropic 视觉文档的建议顺序
-    provider.send([
-      ...files.map((a) => ({ type: 'image' as const, source: { type: 'base64' as const, media_type: a.mimeType, data: attachments.read(a).toString('base64') } })),
-      ...(text ? [{ type: 'text' as const, text }] : []),
-    ]);
+    provider.send({ text, images: files.map((a) => ({ mimeType: a.mimeType, path: attachments.pathOf(a) })) });
   }
 
   return {
     workspaces,
 
     createSession(provider: Session['provider'], cwd: string): Session {
-      if (provider !== 'claude') throw new HubError(400, `Provider ${provider} 尚未实现`);
+      if (!(provider in providers)) throw new HubError(400, `未知 Provider ${provider}`);
       if (!workspaces.includes(cwd)) throw new HubError(400, `cwd 不在 workspace allowlist 内`);
       const now = new Date().toISOString();
       const session: Session = { id: randomUUID(), provider, cwd, providerSessionId: null, status: 'idle', title: null, createdAt: now, updatedAt: now };
@@ -203,6 +203,7 @@ export function createHub(store: Store, attachments: AttachmentStore, workspaces
       closing = true;
       for (const p of live.values()) p.close();
       live.clear();
+      shutdownCodex();
     },
   };
 }

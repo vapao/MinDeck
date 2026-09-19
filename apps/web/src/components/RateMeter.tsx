@@ -1,18 +1,20 @@
-import type { UsageInfo } from '@agentdeck/shared'
+import type { ProviderId, UsageInfo } from '@agentdeck/shared'
 import styles from './RateMeter.module.css'
 
-const label: Record<string, string> = { five_hour: '5 小时额度', seven_day: '7 天额度' }
+// Claude 的窗口只有 rateLimitType 没有时长；Codex 给了 windowDurationMins，按它标注
+const fixedLabel: Record<string, string> = { five_hour: '5 小时额度', seven_day: '7 天额度' }
+const label = (u: UsageInfo) => fixedLabel[u.rateLimitType] ?? (u.windowMinutes ? `${u.windowMinutes >= 1440 ? `${Math.round(u.windowMinutes / 1440)} 天` : `${Math.round(u.windowMinutes / 60)} 小时`}额度` : u.rateLimitType)
 
-// 只展示订阅的两条主额度；其余 rateLimitType（opus/sonnet 细分、overage）暂不显示
-export function RateMeter({ usage }: { usage: Record<string, UsageInfo> }) {
-  const shown = ['five_hour', 'seven_day'].flatMap((k) => (usage[k] ? [usage[k]] : []))
+// 只展示当前会话 Provider 的主额度：Claude 取订阅的两条（opus/sonnet 细分、overage 不显示），Codex 取 primary / secondary
+export function RateMeter({ provider, usage }: { provider: ProviderId; usage: Record<string, UsageInfo> }) {
+  const shown = ['five_hour', 'seven_day', 'primary', 'secondary'].flatMap((k) => (usage[k]?.provider === provider ? [usage[k]] : []))
   if (shown.length === 0) return null
   return (
     <div className={styles.wrap}>
       {shown.map((u) => (
-        <div key={u.rateLimitType} className={styles.meter} title={label[u.rateLimitType]}>
+        <div key={u.rateLimitType} className={styles.meter} title={label(u)}>
           <div className={styles.head}>
-            <span className={styles.label}>{label[u.rateLimitType]}</span>
+            <span className={styles.label}>{label(u)}</span>
             <code className={styles.value}>
               {Math.round(u.utilization * 100)}%{u.resetsAt ? ` · 重置 ${formatUntil(u.resetsAt)}` : ''}
             </code>

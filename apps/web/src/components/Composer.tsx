@@ -6,6 +6,7 @@ import styles from './Composer.module.css'
 type Props = {
   disabled: boolean
   hint: string
+  placeholder: string
   upload: (file: File) => Promise<Attachment>
   onSend: (text: string, attachmentIds: string[]) => void
 }
@@ -15,7 +16,7 @@ type Draft = { key: string; file: File; previewUrl: string } & ({ status: 'uploa
 
 const maxPerMessage = 5
 
-export function Composer({ disabled, hint, upload, onSend }: Props) {
+export function Composer({ disabled, hint, placeholder, upload, onSend }: Props) {
   const [text, setText] = useState('')
   const [drafts, setDrafts] = useState<Draft[]>([])
   const [dragging, setDragging] = useState(false)
@@ -116,7 +117,7 @@ export function Composer({ disabled, hint, upload, onSend }: Props) {
           className={styles.input}
           rows={1}
           value={text}
-          placeholder="给 Claude 发消息…"
+          placeholder={placeholder}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={onKeyDown}
           onPaste={onPaste}
