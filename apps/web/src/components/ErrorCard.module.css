@@ -1,0 +1,17 @@
+.card {
+  max-width: min(var(--assistant-w), 100%);
+  padding: 10px 14px;
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-card);
+  background: var(--danger-bg);
+}
+.title {
+  font-weight: 500;
+  color: var(--danger);
+}
+.body {
+  margin-top: 4px;
+  color: var(--text-2);
+  white-space: pre-wrap;
+  word-break: break-word;
+}

@@ -1,0 +1,30 @@
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--border-2);
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.pill[data-status='running'] {
+  color: var(--ok);
+  border-color: var(--ok-border);
+}
+.pill[data-status='waiting_user'] {
+  color: var(--accent);
+  border-color: var(--accent-border-2);
+}
+.pill[data-status='error'] {
+  color: var(--danger);
+  border-color: var(--danger-border);
+}

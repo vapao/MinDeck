@@ -1,0 +1,78 @@
+.card {
+  max-width: min(var(--assistant-w), 100%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-tool);
+  background: var(--surface);
+  overflow: hidden;
+}
+.card[data-state='failed'] {
+  border-color: var(--danger-border);
+}
+.head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+.head:disabled {
+  cursor: default;
+}
+.icon {
+  flex: none;
+  color: var(--ok);
+}
+.card[data-state='running'] .icon {
+  color: var(--text-2);
+  animation: spin 1s linear infinite;
+}
+.card[data-state='failed'] .icon {
+  color: var(--danger);
+}
+.name {
+  flex: none;
+  font-weight: 500;
+  color: var(--text-2);
+}
+.summary {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+  color: var(--text-3);
+}
+.chevron {
+  flex: none;
+  color: var(--text-4);
+  transition: transform 0.15s;
+}
+.chevron[data-open='true'] {
+  transform: rotate(90deg);
+}
+.output {
+  margin: 0;
+  padding: 10px;
+  max-height: 320px;
+  overflow: auto;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-2);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.card[data-state='failed'] .output {
+  color: var(--danger);
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

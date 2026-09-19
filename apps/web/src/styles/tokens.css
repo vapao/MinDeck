@@ -1,0 +1,43 @@
+/* 设计规范 docs/ui-design-spec.md §2。组件样式只引用这里的变量，不写裸色值。 */
+:root {
+  --bg: #111214;
+  --panel: #141518;
+  --surface: #16171b;
+  --surface-2: #1b1d22;
+  --surface-3: #1f2126;
+  --surface-4: #2a2d33;
+  --border: #25272d;
+  --border-2: #2e3138;
+  --text: #ecedef;
+  --text-2: #a5a9b2;
+  --text-3: #8a8f99;
+  --text-4: #5b606b;
+  --accent: #e4a94f;
+  --accent-text: #f2d08a;
+  --accent-bg: #1a1710;
+  --accent-bg-2: #2a2113;
+  --accent-border-2: #4a3a1b;
+  --accent-divider: #3a2f16;
+  --on-accent: #1a1204;
+  --ok: #5fb97a;
+  --ok-bg: #142018;
+  --ok-border: #244a2f;
+  --danger: #e06c6c;
+  --danger-bg: #241717;
+  --danger-border: #3a2626;
+  --inverse: #ecedef;
+  --on-inverse: #111214;
+
+  --font-sans: 'IBM Plex Sans', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  --radius-card: 10px;
+  --radius-tool: 8px;
+  --radius-input: 12px;
+  --radius-button: 8px;
+
+  --topbar-h: 56px;
+  --stream-w: 820px;
+  --assistant-w: 720px;
+  --user-w: 600px;
+}
