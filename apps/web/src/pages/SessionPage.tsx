@@ -1,11 +1,13 @@
-import { useEffect, useRef, type UIEvent } from 'react'
+import { useEffect, useRef, useState, type UIEvent } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { ChevronLeft, MessageSquarePlus, Square, Trash2 } from 'lucide-react'
+import { ChevronLeft, GitBranch, MessageSquarePlus, Square, Trash2 } from 'lucide-react'
 import type { Resolution } from '@agentdeck/shared'
 import { api } from '../api'
 import { providerName } from '../format'
 import { navigate } from '../router'
 import { useSessionStream } from '../session/useSessionStream'
+import { useMediaQuery } from '../session/useMediaQuery'
+import { ChangesPanel } from '../components/ChangesPanel'
 import { StatusPill } from '../components/StatusPill'
 import { UserMessage } from '../components/UserMessage'
 import { AssistantMessage } from '../components/AssistantMessage'
@@ -20,7 +22,7 @@ import { Composer } from '../components/Composer'
 import styles from './SessionPage.module.css'
 
 export function SessionPage({ sessionId }: { sessionId: string }) {
-  const { session, status, model, items, lastSeq, connection, replay, usage, gone } = useSessionStream(sessionId)
+  const { session, status, model, items, lastSeq, connection, replay, usage, gone, changesVersion } = useSessionStream(sessionId)
   const queryClient = useQueryClient()
   const send = useMutation({
     mutationFn: (body: { text: string; attachmentIds: string[] }) => api.sendMessage(sessionId, body),
@@ -61,6 +63,15 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
       navigate('/')
     }
   }, [gone, queryClient])
+  // 改动侧栏只在桌面端；开关记在 localStorage，默认开
+  const desktop = useMediaQuery('(min-width: 1024px)')
+  const [showChanges, setShowChanges] = useState(() => localStorage.getItem('changesPanel') !== 'off')
+  const toggleChanges = () => {
+    setShowChanges((v) => {
+      localStorage.setItem('changesPanel', v ? 'off' : 'on')
+      return !v
+    })
+  }
   const bottom = useRef<HTMLDivElement>(null)
   // 用户往上翻看历史时不再自动跟到底部；回到底部附近后恢复跟随
   const follow = useRef(true)
@@ -80,15 +91,15 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
     ? send.error.message
     : fresh.error
       ? fresh.error.message
-    : interrupt.error
-      ? interrupt.error.message
-      : connection !== 'open'
-        ? '等待连接…'
-        : status === 'waiting_user'
-          ? `处理上方的请求后 ${provider} 才会继续`
-          : status === 'running'
-            ? '当前有一轮在运行，发送将作为追加指令排队'
-            : 'Enter 发送，Shift+Enter 换行'
+      : interrupt.error
+        ? interrupt.error.message
+        : connection !== 'open'
+          ? '等待连接…'
+          : status === 'waiting_user'
+            ? `处理上方的请求后 ${provider} 才会继续`
+            : status === 'running'
+              ? '当前有一轮在运行，发送将作为追加指令排队'
+              : 'Enter 发送，Shift+Enter 换行'
 
   return (
     <div className={styles.page}>
@@ -111,7 +122,12 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
           <MessageSquarePlus size={16} />
           <span className={styles.freshLabel}>新开一轮</span>
         </button>
-        <button type="button" className={styles.iconButton} onClick={onDelete} disabled={!session || remove.isPending} aria-label="删除会话" title="删除会话及其全部记录">
+        {desktop && (
+          <button type="button" className={styles.iconButton} data-active={showChanges || undefined} onClick={toggleChanges} aria-label="改动侧栏" title="显示 / 隐藏改动侧栏">
+            <GitBranch size={16} />
+          </button>
+        )}
+        <button type="button" className={styles.iconButton} data-danger onClick={onDelete} disabled={!session || remove.isPending} aria-label="删除会话" title="删除会话及其全部记录">
           <Trash2 size={16} />
         </button>
         {running && (
@@ -125,66 +141,81 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
 
       <ConnectionBanner connection={connection} replay={replay} />
 
-      <main className={styles.stream} onScroll={onScroll}>
-        <div className={styles.column}>
-          {items.map((it) => {
-            switch (it.kind) {
-              case 'user':
-                return <UserMessage key={it.key} text={it.text} attachments={it.attachments} at={it.at} />
-              case 'assistant':
-                return <AssistantMessage key={it.key} provider={provider} text={it.text} streaming={it.streaming} at={it.at} />
-              case 'tool':
-                return <ToolCard key={it.key} name={it.name} input={it.input} output={it.output} isError={it.isError} />
-              case 'error':
-                return <ErrorCard key={it.key} message={it.message} />
-              case 'interrupted':
-                return <InterruptedRow key={it.key} at={it.at} />
-              case 'approval':
-                return (
-                  <ApprovalCard
-                    key={it.key}
-                    request={it.request}
-                    cwd={session?.cwd ?? ''}
-                    state={it.state}
-                    decision={it.decision}
-                    resolvedAt={it.resolvedAt}
-                    {...pendingProps(it.request.id)}
-                    onResolve={(decision) => resolve.mutate({ id: it.request.id, body: { kind: 'approval', decision } })}
-                  />
-                )
-              case 'question':
-                return (
-                  <QuestionCard
-                    key={it.key}
-                    request={it.request}
-                    provider={provider}
-                    state={it.state}
-                    answers={it.answers}
-                    response={it.response}
-                    resolvedAt={it.resolvedAt}
-                    {...pendingProps(it.request.id)}
-                    onSubmit={(answers, response) => resolve.mutate({ id: it.request.id, body: { kind: 'question', answers, response } })}
-                  />
-                )
-            }
-          })}
-          <div ref={bottom} />
-        </div>
-      </main>
+      <div className={styles.body}>
+        <div className={styles.conversation}>
+          <main className={styles.stream} onScroll={onScroll}>
+            <div className={styles.column}>
+              {items.map((it) => {
+                switch (it.kind) {
+                  case 'user':
+                    return <UserMessage key={it.key} text={it.text} attachments={it.attachments} at={it.at} />
+                  case 'assistant':
+                    return <AssistantMessage key={it.key} provider={provider} text={it.text} streaming={it.streaming} at={it.at} />
+                  case 'tool':
+                    return <ToolCard key={it.key} name={it.name} input={it.input} output={it.output} isError={it.isError} />
+                  case 'error':
+                    return <ErrorCard key={it.key} message={it.message} />
+                  case 'interrupted':
+                    return <InterruptedRow key={it.key} at={it.at} />
+                  case 'approval':
+                    return (
+                      <ApprovalCard
+                        key={it.key}
+                        request={it.request}
+                        cwd={session?.cwd ?? ''}
+                        state={it.state}
+                        decision={it.decision}
+                        resolvedAt={it.resolvedAt}
+                        {...pendingProps(it.request.id)}
+                        onResolve={(decision) =>
+                          resolve.mutate({
+                            id: it.request.id,
+                            body: { kind: 'approval', decision },
+                          })
+                        }
+                      />
+                    )
+                  case 'question':
+                    return (
+                      <QuestionCard
+                        key={it.key}
+                        request={it.request}
+                        provider={provider}
+                        state={it.state}
+                        answers={it.answers}
+                        response={it.response}
+                        resolvedAt={it.resolvedAt}
+                        {...pendingProps(it.request.id)}
+                        onSubmit={(answers, response) =>
+                          resolve.mutate({
+                            id: it.request.id,
+                            body: { kind: 'question', answers, response },
+                          })
+                        }
+                      />
+                    )
+                }
+              })}
+              <div ref={bottom} />
+            </div>
+          </main>
 
-      <footer className={styles.footer}>
-        <div className={styles.column}>
-          <Composer
-            key={sessionId}
-            draftKey={sessionId}
-            disabled={status === 'waiting_user' || connection !== 'open'}
-            hint={hint}
-            placeholder={`给 ${providerName[provider]} 发消息…`}
-            upload={(file) => api.uploadAttachment(sessionId, file)}
-            onSend={(text, attachmentIds) => send.mutate({ text, attachmentIds })}
-          />
+          <footer className={styles.footer}>
+            <div className={styles.column}>
+              <Composer
+                key={sessionId}
+                draftKey={sessionId}
+                disabled={status === 'waiting_user' || connection !== 'open'}
+                hint={hint}
+                placeholder={`给 ${providerName[provider]} 发消息…`}
+                upload={(file) => api.uploadAttachment(sessionId, file)}
+                onSend={(text, attachmentIds) => send.mutate({ text, attachmentIds })}
+              />
+            </div>
+          </footer>
         </div>
-      </footer>
+        {desktop && showChanges && <ChangesPanel sessionId={sessionId} version={changesVersion} />}
+      </div>
     </div>
   )
 }

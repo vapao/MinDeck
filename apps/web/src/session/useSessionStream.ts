@@ -31,6 +31,8 @@ export type StreamState = {
   usage: Record<string, UsageInfo>
   /** 会话已被删除（或订阅时就不存在）：页面应离开，连接不再重试 */
   gone: boolean
+  /** 工作区可能变了（工具完成 / 一轮结束）就 +1，改动侧栏据此刷新 */
+  changesVersion: number
 }
 
 type Action =
@@ -39,7 +41,7 @@ type Action =
   | { type: 'replay.dismiss' }
   | { type: 'reset' }
 
-const initial: StreamState = { session: null, status: 'idle', model: null, items: [], lastSeq: 0, connection: 'connecting', replay: null, livePendingIds: [], usage: {}, gone: false }
+const initial: StreamState = { session: null, status: 'idle', model: null, items: [], lastSeq: 0, connection: 'connecting', replay: null, livePendingIds: [], usage: {}, gone: false, changesVersion: 0 }
 
 function reduce(state: StreamState, action: Action): StreamState {
   if (action.type === 'reset') return initial
@@ -107,7 +109,7 @@ function applyEvent(state: StreamState, e: AgentEvent): StreamState {
       const i = items.findIndex((it) => it.kind === 'tool' && it.toolUseId === e.payload.toolUseId)
       if (i === -1) return state
       const cur = items[i] as Extract<StreamItem, { kind: 'tool' }>
-      return { ...state, items: items.toSpliced(i, 1, { ...cur, output: e.payload.output, isError: e.payload.isError }) }
+      return { ...state, changesVersion: state.changesVersion + 1, items: items.toSpliced(i, 1, { ...cur, output: e.payload.output, isError: e.payload.isError }) }
     }
     case 'approval.requested':
       return { ...state, items: [...items, { kind: 'approval', key: e.payload.request.id, request: e.payload.request, state: 'pending', decision: null, resolvedAt: null }] }
@@ -131,8 +133,8 @@ function applyEvent(state: StreamState, e: AgentEvent): StreamState {
     case 'error':
       return { ...state, items: [...items, { kind: 'error', key: `e${e.seq}`, message: e.payload.message, at: e.createdAt }] }
     case 'turn.completed':
-      if (e.payload.reason !== 'interrupted') return state
-      return { ...state, items: [...items, { kind: 'interrupted', key: `i${e.seq}`, at: e.createdAt }] }
+      if (e.payload.reason !== 'interrupted') return { ...state, changesVersion: state.changesVersion + 1 }
+      return { ...state, changesVersion: state.changesVersion + 1, items: [...items, { kind: 'interrupted', key: `i${e.seq}`, at: e.createdAt }] }
     case 'usage.updated':
       return { ...state, usage: { ...state.usage, [e.payload.rateLimitType]: e.payload } }
     case 'session.status':

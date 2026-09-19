@@ -180,6 +180,17 @@ export type UpdateWorkspaceBody = { alias: string };
 /** GET /api/fs/dirs?path=：列出 path 下的子目录（跳过隐藏目录），只允许家目录内；path 省略 = 家目录 */
 export type ListDirsResponse = { path: string; parent: string | null; dirs: { name: string; path: string }[] };
 
+// ---- 改动侧栏（切片 10）：cwd 内只读 ----
+
+/** ?：未跟踪；A 新增；M 修改；D 删除；R 重命名（path 为新路径） */
+export type ChangedFile = { path: string; status: '?' | 'A' | 'M' | 'D' | 'R' };
+/** GET /api/sessions/:id/changes；cwd 不是 git 仓库时 git=false */
+export type ListChangesResponse = { git: boolean; files: ChangedFile[] };
+/** GET /api/sessions/:id/diff?path=：工作区 vs HEAD 的 unified diff；未跟踪文件与 /dev/null 比 */
+export type DiffResponse = { path: string; diff: string; binary: boolean };
+/** GET /api/sessions/:id/file?path=：超过 512KB 截断；二进制文件 content 为 null */
+export type FileResponse = { path: string; content: string | null; truncated: boolean; binary: boolean };
+
 /** GET / PUT /api/settings */
 export type SettingsResponse = Settings;
 export type UpdateSettingsBody = Settings;

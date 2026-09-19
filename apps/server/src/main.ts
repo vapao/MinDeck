@@ -10,6 +10,7 @@ import type { AgentEvent, ClientMessage, CreateSessionBody, CreateWorkspaceBody,
 import { openStore } from './store/db';
 import { createAttachmentStore, isImageMime, maxAttachmentBytes, maxAttachmentsPerMessage } from './store/attachments';
 import { createHub, HubError } from './hub';
+import { fileDiff, listChanges, readWorkspaceFile } from './changes';
 
 const repoRoot = resolve(import.meta.dirname, '../../..');
 // 端口分配见 ~/Workspace/mac-mini-tailscale-web-ports.md：8004 只监听本机；开发时由 vite dev server 代理，生产由 Tailscale Serve 8450 映射到这里
@@ -133,6 +134,12 @@ app.post<{ Params: { id: string }; Body: SendMessageBody }>(
     return reply.code(202).send(hub.sendMessage(req.params.id, text, attachmentIds));
   },
 );
+
+app.get<{ Params: { id: string } }>('/api/sessions/:id/changes', (req) => listChanges(hub.getSession(req.params.id).cwd));
+
+const pathQuery = { schema: { querystring: { type: 'object', required: ['path'], properties: { path: { type: 'string', minLength: 1 } } } } };
+app.get<{ Params: { id: string }; Querystring: { path: string } }>('/api/sessions/:id/diff', pathQuery, (req) => fileDiff(hub.getSession(req.params.id).cwd, req.query.path));
+app.get<{ Params: { id: string }; Querystring: { path: string } }>('/api/sessions/:id/file', pathQuery, (req) => readWorkspaceFile(hub.getSession(req.params.id).cwd, req.query.path));
 
 app.delete<{ Params: { id: string } }>('/api/sessions/:id', (req) => {
   hub.deleteSession(req.params.id);
