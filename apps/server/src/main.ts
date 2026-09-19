@@ -134,6 +134,11 @@ app.post<{ Params: { id: string }; Body: SendMessageBody }>(
   },
 );
 
+app.delete<{ Params: { id: string } }>('/api/sessions/:id', (req) => {
+  hub.deleteSession(req.params.id);
+  return { ok: true };
+});
+
 app.post<{ Params: { id: string } }>('/api/sessions/:id/interrupt', async (req) => {
   await hub.interrupt(req.params.id);
   return { ok: true };
@@ -195,7 +200,13 @@ app.get('/ws', { websocket: true, preValidation: (req, reply, done) => (checkOri
         send({ type: 'snapshot', session, pendingRequests: hub.pendingRequests(msg.sessionId), lastSeq: hub.lastSeq(msg.sessionId), usage: hub.usage });
         for (const event of hub.eventsAfter(msg.sessionId, msg.afterSeq)) send({ type: 'event', event });
         send({ type: 'replay.completed', lastSeq: hub.lastSeq(msg.sessionId) });
-        subscriptions.set(msg.sessionId, hub.subscribe(msg.sessionId, (event: AgentEvent) => send({ type: 'event', event })));
+        subscriptions.set(
+          msg.sessionId,
+          hub.subscribe(msg.sessionId, (event: AgentEvent) => send({ type: 'event', event }), () => {
+            send({ type: 'session.deleted' });
+            subscriptions.delete(msg.sessionId);
+          }),
+        );
         return;
       }
     }

@@ -1,6 +1,6 @@
 import { useEffect, useRef, type UIEvent } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { ChevronLeft, MessageSquarePlus, Square } from 'lucide-react'
+import { ChevronLeft, MessageSquarePlus, Square, Trash2 } from 'lucide-react'
 import type { Resolution } from '@agentdeck/shared'
 import { api } from '../api'
 import { providerName } from '../format'
@@ -20,7 +20,7 @@ import { Composer } from '../components/Composer'
 import styles from './SessionPage.module.css'
 
 export function SessionPage({ sessionId }: { sessionId: string }) {
-  const { session, status, model, items, lastSeq, connection, replay, usage } = useSessionStream(sessionId)
+  const { session, status, model, items, lastSeq, connection, replay, usage, gone } = useSessionStream(sessionId)
   const queryClient = useQueryClient()
   const send = useMutation({
     mutationFn: (body: { text: string; attachmentIds: string[] }) => api.sendMessage(sessionId, body),
@@ -42,6 +42,25 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
     busy: resolve.isPending && resolve.variables?.id === id,
     error: resolve.error && resolve.variables?.id === id ? resolve.error.message : null,
   })
+  // 运行中的服务端会 409，消息原样给用户看；成功后列表刷新并回首页
+  const remove = useMutation({
+    mutationFn: () => api.deleteSession(sessionId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sessions'] })
+      navigate('/')
+    },
+    onError: (err) => alert(err.message),
+  })
+  const onDelete = () => {
+    if (confirm('删除这个会话及其全部记录？此操作不可恢复。')) remove.mutate()
+  }
+  // 在别处被删了：离开页面
+  useEffect(() => {
+    if (gone) {
+      queryClient.invalidateQueries({ queryKey: ['sessions'] })
+      navigate('/')
+    }
+  }, [gone, queryClient])
   const bottom = useRef<HTMLDivElement>(null)
   // 用户往上翻看历史时不再自动跟到底部；回到底部附近后恢复跟随
   const follow = useRef(true)
@@ -91,6 +110,9 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
         <button type="button" className={styles.fresh} onClick={() => fresh.mutate()} disabled={!session || fresh.isPending} title="同工作区新开一个会话，清空上下文">
           <MessageSquarePlus size={16} />
           <span className={styles.freshLabel}>新开一轮</span>
+        </button>
+        <button type="button" className={styles.iconButton} onClick={onDelete} disabled={!session || remove.isPending} aria-label="删除会话" title="删除会话及其全部记录">
+          <Trash2 size={16} />
         </button>
         {running && (
           <button type="button" className={styles.interrupt} onClick={() => interrupt.mutate()} disabled={interrupt.isPending}>

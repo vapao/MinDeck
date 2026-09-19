@@ -29,6 +29,8 @@ export type StreamState = {
   livePendingIds: string[]
   /** 账号级额度，按 rateLimitType 存最新值 */
   usage: Record<string, UsageInfo>
+  /** 会话已被删除（或订阅时就不存在）：页面应离开，连接不再重试 */
+  gone: boolean
 }
 
 type Action =
@@ -37,7 +39,7 @@ type Action =
   | { type: 'replay.dismiss' }
   | { type: 'reset' }
 
-const initial: StreamState = { session: null, status: 'idle', model: null, items: [], lastSeq: 0, connection: 'connecting', replay: null, livePendingIds: [], usage: {} }
+const initial: StreamState = { session: null, status: 'idle', model: null, items: [], lastSeq: 0, connection: 'connecting', replay: null, livePendingIds: [], usage: {}, gone: false }
 
 function reduce(state: StreamState, action: Action): StreamState {
   if (action.type === 'reset') return initial
@@ -58,6 +60,10 @@ function reduce(state: StreamState, action: Action): StreamState {
     case 'event':
       if (m.event.seq <= state.lastSeq) return state
       return applyEvent({ ...state, lastSeq: m.event.seq }, m.event)
+    case 'session.deleted':
+      return { ...state, gone: true }
+    case 'error':
+      return m.code === 'not_found' ? { ...state, gone: true } : state
     case 'replay.completed':
       return {
         ...state,
@@ -185,6 +191,11 @@ export function useSessionStream(sessionId: string): StreamState {
         const message = JSON.parse(ev.data as string) as ServerMessage
         if (message.type === 'pong') return clearTimeout(pongTimer)
         dispatch({ type: 'server', message })
+        // 会话没了就别再重连
+        if (message.type === 'session.deleted' || (message.type === 'error' && message.code === 'not_found')) {
+          stopped = true
+          socket.close()
+        }
         if (message.type === 'replay.completed') {
           clearTimeout(dismissTimer)
           dismissTimer = setTimeout(() => dispatch({ type: 'replay.dismiss' }), 5000)

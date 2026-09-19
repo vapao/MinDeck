@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, statSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { openStore } from './db';
@@ -28,6 +28,39 @@ test('attachment path is server-generated and references are session-scoped', ()
     assert.deepEqual(attachments.forMessage('a', [a.id]), [a]);
     assert.throws(() => attachments.forMessage('b', [a.id]));
     assert.throws(() => attachments.forMessage('a', [a.id, 'missing']));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// 规则（切片 9）：删除会话后 data/ 里不留孤儿数据——四张表的行和上传目录一起消失，其他会话不受影响。
+test('deleting a session leaves no rows or files behind', () => {
+  const root = mkdtempSync(join(tmpdir(), 'agentdeck-del-'));
+  try {
+    const store = openStore(':memory:');
+    const now = new Date().toISOString();
+    for (const id of ['gone', 'stays']) {
+      store.createSession({ id, provider: 'claude', cwd: '/tmp', providerSessionId: null, status: 'idle', title: null, model: null, effort: null, createdAt: now, updatedAt: now });
+      store.appendEvent(id, { type: 'message.user', payload: { text: 'hi', attachments: [] } });
+      store.createPending({ id: `p-${id}`, sessionId: id, kind: 'question', toolUseId: 't', questions: [], status: 'pending', createdAt: now, resolvedAt: null });
+    }
+    const attachments = createAttachmentStore(store, root);
+    const a = attachments.save('gone', 'x.png', 'image/png', Buffer.from('png'));
+    const b = attachments.save('stays', 'y.png', 'image/png', Buffer.from('png'));
+
+    store.deleteSession('gone');
+    attachments.removeAll('gone');
+
+    assert.equal(store.getSession('gone'), undefined);
+    assert.equal(store.lastSeq('gone'), 0);
+    assert.equal(store.getPending('p-gone'), undefined);
+    assert.equal(store.getAttachment(a.id), undefined);
+    assert.ok(!existsSync(join(root, 'gone')), '上传目录必须删掉');
+
+    assert.ok(store.getSession('stays'));
+    assert.equal(store.lastSeq('stays'), 1);
+    assert.ok(store.getPending('p-stays'));
+    assert.equal(attachments.read(b).toString(), 'png');
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

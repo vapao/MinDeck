@@ -168,6 +168,9 @@ export type SendMessageResponse = { seq: number; queued: boolean };
 /** POST /api/sessions/:id/interrupt，无 body；未在运行时 409 */
 export type InterruptResponse = { ok: true };
 
+/** DELETE /api/sessions/:id：连同事件、待处理请求、附件（含文件）一起删；running / waiting_user 时 409 */
+export type DeleteSessionResponse = { ok: true };
+
 export type ListWorkspacesResponse = Workspace[];
 /** POST /api/workspaces；path 必须在家目录内且已存在，重复添加 409 */
 export type CreateWorkspaceBody = { path: string; alias: string };
@@ -198,5 +201,7 @@ export type ServerMessage =
   | { type: 'snapshot'; session: Session; pendingRequests: PendingRequest[]; lastSeq: number; usage: Record<string, UsageInfo> }
   | { type: 'event'; event: AgentEvent }
   | { type: 'replay.completed'; lastSeq: number }
+  /** 订阅中的会话被删除；客户端应离开该页且不再重连 */
+  | { type: 'session.deleted' }
   | { type: 'pong' }
   | { type: 'error'; code: string; message: string };

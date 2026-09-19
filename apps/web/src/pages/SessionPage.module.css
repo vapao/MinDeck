@@ -83,6 +83,27 @@
   opacity: 0.6;
   cursor: default;
 }
+.iconButton {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-button);
+  background: var(--surface);
+  color: var(--text-2);
+  cursor: pointer;
+}
+.iconButton:hover:not(:disabled) {
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+.iconButton:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
 .interrupt {
   flex: none;
   display: flex;
@@ -132,6 +153,10 @@
   }
   .interrupt,
   .fresh {
+    height: 44px;
+  }
+  .iconButton {
+    width: 44px;
     height: 44px;
   }
   .fresh {

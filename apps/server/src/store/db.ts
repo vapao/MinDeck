@@ -81,6 +81,13 @@ export function openStore(path: string) {
     `SELECT * FROM events WHERE session_id = ? AND seq > ? ORDER BY seq`,
   );
   const selectLastSeq = db.prepare(`SELECT COALESCE(MAX(seq), 0) AS seq FROM events WHERE session_id = ?`);
+  // 删除会话连同它的全部记录；四张表在一个事务里，不留半截
+  const deleteSessionRows = [
+    db.prepare(`DELETE FROM events WHERE session_id = ?`),
+    db.prepare(`DELETE FROM pending_requests WHERE session_id = ?`),
+    db.prepare(`DELETE FROM attachments WHERE session_id = ?`),
+    db.prepare(`DELETE FROM sessions WHERE id = ?`),
+  ];
   const insertPending = db.prepare(
     `INSERT INTO pending_requests (id, session_id, status, request, created_at) VALUES (?, ?, 'pending', ?, ?)`,
   );
@@ -157,6 +164,16 @@ export function openStore(path: string) {
     },
     listSessions(): Session[] {
       return selectSessions.all().map(rowToSession);
+    },
+    deleteSession(id: string) {
+      db.exec('BEGIN');
+      try {
+        for (const stmt of deleteSessionRows) stmt.run(id);
+        db.exec('COMMIT');
+      } catch (err) {
+        db.exec('ROLLBACK');
+        throw err;
+      }
     },
     setSessionStatus(id: string, status: SessionStatus) {
       updateStatus.run(status, new Date().toISOString(), id);

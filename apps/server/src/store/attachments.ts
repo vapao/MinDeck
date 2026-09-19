@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Attachment, ImageMimeType } from '@agentdeck/shared';
 import type { Store } from './db';
@@ -29,6 +29,10 @@ export function createAttachmentStore(store: Store, root: string) {
     },
     get: store.getAttachment,
     pathOf,
+    /** 删除会话时清掉整个上传目录；行记录由 store.deleteSession 一并删 */
+    removeAll(sessionId: string) {
+      rmSync(join(root, sessionId), { recursive: true, force: true });
+    },
     /** 一条消息引用的附件：每个 id 都必须存在且属于该 session，否则整体拒绝 */
     forMessage(sessionId: string, ids: string[]): Attachment[] {
       return ids.map((id) => {
