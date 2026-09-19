@@ -17,6 +17,8 @@ export type PendingState = 'pending' | 'resolved' | 'expired'
 export type StreamState = {
   session: Session | null
   status: SessionStatus
+  /** Provider 启动 / 恢复时报告的模型；首轮 init 前为 null */
+  model: string | null
   items: StreamItem[]
   lastSeq: number
   /** connecting：首次连接；reconnecting：掉线后自动重连中；open：已连上 */
@@ -35,7 +37,7 @@ type Action =
   | { type: 'replay.dismiss' }
   | { type: 'reset' }
 
-const initial: StreamState = { session: null, status: 'idle', items: [], lastSeq: 0, connection: 'connecting', replay: null, livePendingIds: [], usage: {} }
+const initial: StreamState = { session: null, status: 'idle', model: null, items: [], lastSeq: 0, connection: 'connecting', replay: null, livePendingIds: [], usage: {} }
 
 function reduce(state: StreamState, action: Action): StreamState {
   if (action.type === 'reset') return initial
@@ -129,6 +131,9 @@ function applyEvent(state: StreamState, e: AgentEvent): StreamState {
       return { ...state, usage: { ...state.usage, [e.payload.rateLimitType]: e.payload } }
     case 'session.status':
       return { ...state, status: e.payload.status }
+    case 'session.started':
+    case 'session.resumed':
+      return { ...state, model: e.payload.model }
     default:
       return state
   }

@@ -1,6 +1,6 @@
 import { useEffect, useRef, type UIEvent } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { ChevronLeft, Square } from 'lucide-react'
+import { ChevronLeft, MessageSquarePlus, Square } from 'lucide-react'
 import type { Resolution } from '@agentdeck/shared'
 import { api } from '../api'
 import { providerName } from '../format'
@@ -20,7 +20,7 @@ import { Composer } from '../components/Composer'
 import styles from './SessionPage.module.css'
 
 export function SessionPage({ sessionId }: { sessionId: string }) {
-  const { session, status, items, lastSeq, connection, replay, usage } = useSessionStream(sessionId)
+  const { session, status, model, items, lastSeq, connection, replay, usage } = useSessionStream(sessionId)
   const queryClient = useQueryClient()
   const send = useMutation({
     mutationFn: (body: { text: string; attachmentIds: string[] }) => api.sendMessage(sessionId, body),
@@ -28,6 +28,14 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['sessions'] }),
   })
   const interrupt = useMutation({ mutationFn: () => api.interrupt(sessionId) })
+  // "新开一轮" = 同工作区同 Agent 起一个新会话，等价于 CLI 的 /clear；旧会话记录保留
+  const fresh = useMutation({
+    mutationFn: () => api.createSession({ provider: session!.provider, cwd: session!.cwd }),
+    onSuccess: (s) => {
+      queryClient.invalidateQueries({ queryKey: ['sessions'] })
+      navigate(`/s/${s.id}`)
+    },
+  })
   // 同一时刻只会有一个待处理请求在提交；409（已在别处处理）随后会被 resolved 事件覆盖掉卡片
   const resolve = useMutation({ mutationFn: ({ id, body }: { id: string; body: Resolution }) => api.resolvePending(id, body) })
   const pendingProps = (id: string) => ({
@@ -51,6 +59,8 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
   const provider = session?.provider ?? 'claude'
   const hint = send.error
     ? send.error.message
+    : fresh.error
+      ? fresh.error.message
     : interrupt.error
       ? interrupt.error.message
       : connection !== 'open'
@@ -71,12 +81,17 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
           <code className={styles.cwd}>{session?.cwd ?? '…'}</code>
           <span className={styles.sub}>
             <code className={styles.chip}>{provider}</code>
+            {model && <code className={styles.chip}>{model}</code>}
             <code>seq {lastSeq}</code>
           </span>
         </div>
         <div className={styles.meter}>
           <RateMeter provider={provider} usage={usage} />
         </div>
+        <button type="button" className={styles.fresh} onClick={() => fresh.mutate()} disabled={!session || fresh.isPending} title="同工作区新开一个会话，清空上下文">
+          <MessageSquarePlus size={16} />
+          <span className={styles.freshLabel}>新开一轮</span>
+        </button>
         {running && (
           <button type="button" className={styles.interrupt} onClick={() => interrupt.mutate()} disabled={interrupt.isPending}>
             <Square size={12} />
@@ -138,6 +153,8 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
       <footer className={styles.footer}>
         <div className={styles.column}>
           <Composer
+            key={sessionId}
+            draftKey={sessionId}
             disabled={status === 'waiting_user' || connection !== 'open'}
             hint={hint}
             placeholder={`给 ${providerName[provider]} 发消息…`}

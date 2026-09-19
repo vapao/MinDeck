@@ -61,6 +61,28 @@
   flex: none;
   width: 200px;
 }
+.fresh {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-button);
+  background: var(--surface);
+  color: var(--text-2);
+  font-weight: 500;
+  cursor: pointer;
+}
+.fresh:hover:not(:disabled) {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.fresh:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
 .interrupt {
   flex: none;
   display: flex;
@@ -108,8 +130,17 @@
   .meter {
     display: none;
   }
-  .interrupt {
+  .interrupt,
+  .fresh {
     height: 44px;
+  }
+  .fresh {
+    width: 44px;
+    padding: 0;
+    justify-content: center;
+  }
+  .freshLabel {
+    display: none;
   }
   .back {
     width: 44px;

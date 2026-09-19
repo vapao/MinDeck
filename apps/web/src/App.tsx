@@ -1,7 +1,8 @@
-import { Plus } from 'lucide-react'
+import { Bell, Plus } from 'lucide-react'
 import { navigate, usePathname } from './router'
 import { useMediaQuery } from './session/useMediaQuery'
 import { useSessions } from './session/useSessions'
+import { notificationsSupported, useNotificationPermission, useNotifications } from './session/useNotifications'
 import { SessionList } from './components/SessionList'
 import { NewSessionPage } from './pages/NewSessionPage'
 import { SessionListPage } from './pages/SessionListPage'
@@ -13,6 +14,8 @@ export default function App() {
   const pathname = usePathname()
   const desktop = useMediaQuery('(min-width: 1024px)')
   const sessionId = pathname.match(/^\/s\/([^/]+)$/)?.[1]
+  const sessions = useSessions()
+  useNotifications(sessions.data, sessionId)
 
   if (!desktop) {
     if (sessionId) return <SessionPage sessionId={sessionId} />
@@ -28,9 +31,18 @@ export default function App() {
 
 function Sidebar({ activeId }: { activeId?: string }) {
   const sessions = useSessions()
+  const notify = useNotificationPermission()
   return (
     <aside className={styles.sidebar}>
-      <div className={styles.brand}>AgentDeck</div>
+      <div className={styles.brand}>
+        AgentDeck
+        {notificationsSupported && notify.permission === 'default' && (
+          <button type="button" className={styles.bell} onClick={notify.request} title="会话等待审批或完成时弹系统通知">
+            <Bell size={14} />
+            开启通知
+          </button>
+        )}
+      </div>
       <div className={styles.sidebarList}>
         <SessionList sessions={sessions.data ?? []} activeId={activeId} onSelect={(id) => navigate(`/s/${id}`)} />
       </div>

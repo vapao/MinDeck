@@ -4,6 +4,8 @@ import type { Attachment } from '@agentdeck/shared'
 import styles from './Composer.module.css'
 
 type Props = {
+  /** 草稿按此 key 存 localStorage，切走再切回来输入内容还在 */
+  draftKey: string
   disabled: boolean
   hint: string
   placeholder: string
@@ -16,8 +18,12 @@ type Draft = { key: string; file: File; previewUrl: string } & ({ status: 'uploa
 
 const maxPerMessage = 5
 
-export function Composer({ disabled, hint, placeholder, upload, onSend }: Props) {
-  const [text, setText] = useState('')
+export function Composer({ draftKey, disabled, hint, placeholder, upload, onSend }: Props) {
+  const [text, setText] = useState(() => localStorage.getItem(`draft:${draftKey}`) ?? '')
+  useEffect(() => {
+    if (text) localStorage.setItem(`draft:${draftKey}`, text)
+    else localStorage.removeItem(`draft:${draftKey}`)
+  }, [draftKey, text])
   const [drafts, setDrafts] = useState<Draft[]>([])
   const [dragging, setDragging] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
