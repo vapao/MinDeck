@@ -5,6 +5,7 @@ import { effortLevels, type ProviderId, type Settings } from '@agentdeck/shared'
 import { api } from '../api'
 import { providerName } from '../format'
 import { navigate } from '../router'
+import { Select } from '../components/Select'
 import styles from './Manage.module.css'
 
 // 应用级默认值：新建会话时用；已有会话不受影响。模型填别名或完整 id，是否生效看会话头部的模型标签。
@@ -54,14 +55,7 @@ export function SettingsPage() {
               </label>
               <label className={styles.field}>
                 <span>思考等级</span>
-                <select className={styles.select} value={draft[p].effort} onChange={(e) => patch(p, 'effort', e.target.value)}>
-                  <option value="">默认</option>
-                  {effortLevels[p].map((l) => (
-                    <option key={l} value={l}>
-                      {l}
-                    </option>
-                  ))}
-                </select>
+                <Select value={draft[p].effort} onChange={(v) => patch(p, 'effort', v)} options={[{ value: '', label: '默认' }, ...effortLevels[p].map((l) => ({ value: l, label: l }))]} />
               </label>
             </div>
           ))}

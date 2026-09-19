@@ -28,14 +28,19 @@
   font-size: 12.5px;
   color: var(--text-3);
 }
-.select {
-  height: 44px;
+.input {
+  height: 40px;
   padding: 0 10px;
   background: var(--surface-2);
   border: 1px solid var(--border-2);
   border-radius: var(--radius-button);
+  color: var(--text);
   font-family: var(--font-mono);
   font-size: 13px;
+}
+.input:focus {
+  outline: none;
+  border-color: var(--text-4);
 }
 .primary {
   height: 44px;

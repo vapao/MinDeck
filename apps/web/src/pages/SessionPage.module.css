@@ -31,18 +31,17 @@
 .back:hover {
   background: var(--surface-2);
 }
-.cwd {
+.title {
   flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
+  font-size: 13.5px;
   font-weight: 500;
 }
 .meter {
   flex: none;
-  width: 200px;
 }
 .fresh {
   flex: none;

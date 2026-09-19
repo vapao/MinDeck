@@ -7,6 +7,7 @@ import { formatTokens, providerName } from '../format'
 import { navigate } from '../router'
 import { useSessionStream, type StreamItem } from '../session/useSessionStream'
 import { useMediaQuery } from '../session/useMediaQuery'
+import { useSessions } from '../session/useSessions'
 import { ChangesPanel } from '../components/ChangesPanel'
 import { UserMessage } from '../components/UserMessage'
 import { AssistantMessage } from '../components/AssistantMessage'
@@ -23,6 +24,9 @@ import styles from './SessionPage.module.css'
 export function SessionPage({ sessionId }: { sessionId: string }) {
   const { session, status, model, items, connection, replay, usage, context, turnStartedAt, gone, changesVersion } = useSessionStream(sessionId)
   const queryClient = useQueryClient()
+  // 标题由首条消息生成，snapshot 里的 session 不会跟着更新；列表查询在发送成功后会失效重取，从它读最新值
+  const sessions = useSessions()
+  const title = sessions.data?.find((s) => s.id === sessionId)?.title ?? session?.title ?? '新会话'
   const send = useMutation({
     mutationFn: (body: { text: string; attachmentIds: string[] }) => api.sendMessage(sessionId, body),
     // 首条消息决定列表里的标题
@@ -105,7 +109,7 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
         <button type="button" className={styles.back} onClick={() => navigate('/')} aria-label="返回">
           <ChevronLeft size={20} />
         </button>
-        <code className={styles.cwd} title={session?.cwd}>{session?.cwd ?? '…'}</code>
+        <span className={styles.title} title={session?.cwd}>{title}</span>
         <div className={styles.meter}>
           <RateMeter provider={provider} usage={usage} />
         </div>

@@ -4,6 +4,7 @@ import { effortLevels, type ProviderId } from '@agentdeck/shared'
 import { api } from '../api'
 import { providerName } from '../format'
 import { navigate } from '../router'
+import { Select } from '../components/Select'
 import styles from './NewSessionPage.module.css'
 
 export function NewSessionPage() {
@@ -38,39 +39,20 @@ export function NewSessionPage() {
               管理项目
             </button>
           </span>
-          <select className={styles.select} value={selected} onChange={(e) => setCwd(e.target.value)} disabled={!workspaces.data}>
-            {workspaces.data?.map((w) => (
-              <option key={w.id} value={w.path} title={w.path}>
-                {w.alias}
-              </option>
-            ))}
-          </select>
+          <Select value={selected} onChange={setCwd} disabled={!workspaces.data} placeholder="还没有项目" options={(workspaces.data ?? []).map((w) => ({ value: w.path, label: w.alias, hint: w.path }))} />
         </label>
         <label className={styles.field}>
           <span>Agent</span>
-          <select className={styles.select} value={provider} onChange={(e) => setProvider(e.target.value as ProviderId)}>
-            {(Object.keys(providerName) as ProviderId[]).map((p) => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </select>
+          <Select value={provider} onChange={(v) => setProvider(v as ProviderId)} options={(Object.keys(providerName) as ProviderId[]).map((p) => ({ value: p, label: p }))} />
         </label>
         <div className={styles.pair}>
           <label className={styles.field}>
             <span>模型</span>
-            <input className={styles.select} value={model} placeholder="默认" onChange={(e) => patch('model', e.target.value)} />
+            <input className={styles.input} value={model} placeholder="默认" onChange={(e) => patch('model', e.target.value)} />
           </label>
           <label className={styles.field}>
             <span>思考等级</span>
-            <select className={styles.select} value={effort} onChange={(e) => patch('effort', e.target.value)}>
-              <option value="">默认</option>
-              {effortLevels[provider].map((l) => (
-                <option key={l} value={l}>
-                  {l}
-                </option>
-              ))}
-            </select>
+            <Select value={effort} onChange={(v) => patch('effort', v)} options={[{ value: '', label: '默认' }, ...effortLevels[provider].map((l) => ({ value: l, label: l }))]} />
           </label>
         </div>
         <button type="button" className={styles.primary} disabled={!selected || create.isPending} onClick={() => create.mutate({ provider, cwd: selected, model, effort })}>

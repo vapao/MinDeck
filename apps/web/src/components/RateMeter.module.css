@@ -1,27 +1,21 @@
+/* 顶栏里两条额度并排，每条一行：标签 · 进度条 · 百分比 · 重置倒计时 */
 .wrap {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
+  align-items: center;
+  gap: 14px;
 }
 .meter {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.head {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
+  align-items: center;
+  gap: 6px;
   font-size: 11.5px;
+  white-space: nowrap;
 }
 .label {
   color: var(--text-3);
 }
-.value {
-  color: var(--text-2);
-  white-space: nowrap;
-}
 .bar {
+  width: 44px;
   height: 4px;
   border-radius: 2px;
   background: var(--surface-3);
@@ -30,4 +24,10 @@
 .fill {
   height: 100%;
   background: var(--text-2);
+}
+.value {
+  color: var(--text-2);
+}
+.reset {
+  color: var(--text-4);
 }
