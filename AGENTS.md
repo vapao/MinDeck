@@ -59,6 +59,6 @@ cd apps/server && node scripts/p0-claude-harness.mjs   # Claude SDK 回归 harne
 - YAGNI：只解决当前切片的需求，抽象等重复出现再提。Provider 在 `apps/server/src/providers/` 里是目录，不拆包。
 - 只在规则被明确固定、且破坏会静默失败时写测试（事件 seq 单调、PendingRequest 原子 resolve、附件路径边界这类）。UI、时序、样式不写测试。
 - 错误只在真正的边界处理（用户输入、Provider 进程、外部 API），内部代码让异常抛出。
-- 开发时 `pnpm dev:server`（8787）+ `pnpm dev:web`（5173，vite 代理 `/api` 与 `/ws` 到 8787）。工作区 allowlist 用 `AGENTDECK_WORKSPACES`（逗号分隔绝对路径）配置，默认只允许本仓库；SQLite 在 `data/`（已 gitignore）。
+- 端口按 `~/Workspace/mac-mini-tailscale-web-ports.md` 分配：后端 8004（只监听 127.0.0.1）、前端 5180、Tailscale HTTPS 8450（`tailscale serve --bg --https=8450 5180`）。开发时 `pnpm dev:server` + `pnpm dev:web`，vite 代理 `/api` 与 `/ws` 到 8004。工作区 allowlist 用 `AGENTDECK_WORKSPACES`（逗号分隔绝对路径）配置，默认只允许本仓库；SQLite 在 `data/`（已 gitignore）。
 - 提交前 `pnpm typecheck`。commit 用 conventional 格式，不加 Co-Authored-By。
 - 回复与文档使用简体中文；代码标识符、路径、命令保持原文。

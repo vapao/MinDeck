@@ -7,7 +7,8 @@ import { openStore } from './store/db';
 import { createHub, HubError } from './hub';
 
 const repoRoot = resolve(import.meta.dirname, '../../..');
-const port = Number(process.env.AGENTDECK_PORT ?? 8787);
+// 端口分配见 ~/Workspace/mac-mini-tailscale-web-ports.md：后端 8004 只监听本机，由前端 dev server 代理
+const port = Number(process.env.AGENTDECK_PORT ?? 8004);
 const dbPath = process.env.AGENTDECK_DB ?? resolve(repoRoot, 'data/agentdeck.db');
 // 工作区 allowlist（方案 §11.3）：逗号分隔的绝对路径；默认只允许本仓库
 const workspaces = (process.env.AGENTDECK_WORKSPACES ?? repoRoot).split(',').map((p) => resolve(p));
@@ -90,4 +91,4 @@ app.addHook('onClose', () => {
   store.close();
 });
 
-await app.listen({ port, host: '0.0.0.0' });
+await app.listen({ port, host: '127.0.0.1' });
