@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { AgentEvent, PendingRequest, PendingRequestBody, ProviderEvent, Resolution, Session, SessionStatus } from '@agentdeck/shared';
 import type { Store } from './store/db';
+import type { AttachmentStore } from './store/attachments';
 import { startClaudeSession, type ClaudeSession } from './providers/claude';
 
 export class HubError extends Error {
@@ -10,7 +11,7 @@ export class HubError extends Error {
 }
 
 // Hub：Session 元数据 + append-only 事件流 + 多端 fan-out。Provider 会话在首条消息时才拉起。
-export function createHub(store: Store, workspaces: string[]) {
+export function createHub(store: Store, attachments: AttachmentStore, workspaces: string[]) {
   const live = new Map<string, ClaudeSession>();
   const listeners = new Map<string, Set<(e: AgentEvent) => void>>();
   // 正在等用户处理的 Provider 回调；Hub 重启后这些 Promise 不复存在，对应的行在启动时作废
@@ -111,15 +112,25 @@ export function createHub(store: Store, workspaces: string[]) {
 
     getSession,
 
-    sendMessage(sessionId: string, text: string): number {
+    sendMessage(sessionId: string, text: string, attachmentIds: string[]): number {
       const session = getSession(sessionId);
       // MVP：一个 Session 同时只允许一个 active turn（方案 §8.3）；追加指令排队留给切片 4
       if (session.status === 'running') throw new HubError(409, '当前有一轮在运行');
+      let files;
+      try {
+        files = attachments.forMessage(sessionId, attachmentIds);
+      } catch (err) {
+        throw new HubError(400, (err as Error).message);
+      }
       const provider = ensureProvider(session);
-      const { seq } = emit(sessionId, { type: 'message.user', payload: { text } });
+      const { seq } = emit(sessionId, { type: 'message.user', payload: { text, attachments: files } });
       emit(sessionId, { type: 'turn.started', payload: {} });
       setStatus(sessionId, 'running');
-      provider.send(text);
+      // Claude 走原生 image block（方案 §9.1）；图片放在文字前面是 Anthropic 视觉文档的建议顺序
+      provider.send([
+        ...files.map((a) => ({ type: 'image' as const, source: { type: 'base64' as const, media_type: a.mimeType, data: attachments.read(a).toString('base64') } })),
+        ...(text ? [{ type: 'text' as const, text }] : []),
+      ]);
       return seq;
     },
 

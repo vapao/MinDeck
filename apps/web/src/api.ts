@@ -1,7 +1,9 @@
-import type { CreateSessionBody, CreateSessionResponse, ListWorkspacesResponse, ResolvePendingBody, ResolvePendingResponse, SendMessageBody, SendMessageResponse } from '@agentdeck/shared'
+import type { CreateSessionBody, CreateSessionResponse, ListWorkspacesResponse, ResolvePendingBody, ResolvePendingResponse, SendMessageBody, SendMessageResponse, UploadAttachmentResponse } from '@agentdeck/shared'
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, { ...init, headers: { 'content-type': 'application/json', ...init?.headers } })
+  // FormData 由浏览器自己设 multipart boundary，不能覆盖 content-type
+  const headers = init?.body instanceof FormData ? init.headers : { 'content-type': 'application/json', ...init?.headers }
+  const res = await fetch(path, { ...init, headers })
   if (!res.ok) {
     const body = (await res.json().catch(() => null)) as { message?: string } | null
     throw new Error(body?.message ?? `${res.status} ${res.statusText}`)
@@ -17,4 +19,10 @@ export const api = {
     request<SendMessageResponse>(`/api/sessions/${sessionId}/messages`, { method: 'POST', body: JSON.stringify(body) }),
   resolvePending: (requestId: string, body: ResolvePendingBody) =>
     request<ResolvePendingResponse>(`/api/pending/${requestId}/resolve`, { method: 'POST', body: JSON.stringify(body) }),
+  uploadAttachment: (sessionId: string, file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    return request<UploadAttachmentResponse>(`/api/sessions/${sessionId}/attachments`, { method: 'POST', body: form })
+  },
+  attachmentUrl: (id: string) => `/api/attachments/${id}`,
 }

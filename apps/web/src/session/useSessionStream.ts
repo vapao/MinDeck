@@ -1,10 +1,10 @@
 import { useEffect, useReducer } from 'react'
-import type { AgentEvent, ApprovalDecision, PendingRequest, QuestionAnswers, ServerMessage, Session, SessionStatus } from '@agentdeck/shared'
+import type { AgentEvent, ApprovalDecision, Attachment, PendingRequest, QuestionAnswers, ServerMessage, Session, SessionStatus } from '@agentdeck/shared'
 
 // 会话页的实时状态 = 对事件流做 reduce（方案 §13.1）。一个 seq 只处理一次，重放与 live 共用同一条路径。
 
 export type StreamItem =
-  | { kind: 'user'; key: string; text: string; at: string }
+  | { kind: 'user'; key: string; text: string; attachments: Attachment[]; at: string }
   | { kind: 'assistant'; key: string; messageId: string; text: string; streaming: boolean; at: string }
   | { kind: 'tool'; key: string; toolUseId: string; name: string; input: unknown; output: string | null; isError: boolean; at: string }
   | { kind: 'error'; key: string; message: string; at: string }
@@ -55,7 +55,7 @@ function applyEvent(state: StreamState, e: AgentEvent): StreamState {
   const items = state.items
   switch (e.type) {
     case 'message.user':
-      return { ...state, items: [...items, { kind: 'user', key: `u${e.seq}`, text: e.payload.text, at: e.createdAt }] }
+      return { ...state, items: [...items, { kind: 'user', key: `u${e.seq}`, text: e.payload.text, attachments: e.payload.attachments ?? [], at: e.createdAt }] }
     case 'message.delta':
     case 'message.completed': {
       const { messageId, text } = e.payload

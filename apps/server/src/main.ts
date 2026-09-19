@@ -1,24 +1,29 @@
-import { mkdirSync } from 'node:fs';
+import { createReadStream, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import Fastify from 'fastify';
 import websocket from '@fastify/websocket';
+import multipart from '@fastify/multipart';
 import type { AgentEvent, ClientMessage, CreateSessionBody, ResolvePendingBody, SendMessageBody, ServerMessage } from '@agentdeck/shared';
 import { openStore } from './store/db';
+import { createAttachmentStore, isImageMime, maxAttachmentBytes, maxAttachmentsPerMessage } from './store/attachments';
 import { createHub, HubError } from './hub';
 
 const repoRoot = resolve(import.meta.dirname, '../../..');
 // 端口分配见 ~/Workspace/mac-mini-tailscale-web-ports.md：后端 8004 只监听本机，由前端 dev server 代理
 const port = Number(process.env.AGENTDECK_PORT ?? 8004);
 const dbPath = process.env.AGENTDECK_DB ?? resolve(repoRoot, 'data/agentdeck.db');
+const uploadsDir = process.env.AGENTDECK_UPLOADS ?? resolve(repoRoot, 'data/uploads');
 // 工作区 allowlist（方案 §11.3）：逗号分隔的绝对路径；默认只允许本仓库
 const workspaces = (process.env.AGENTDECK_WORKSPACES ?? repoRoot).split(',').map((p) => resolve(p));
 
 mkdirSync(dirname(dbPath), { recursive: true });
 const store = openStore(dbPath);
-const hub = createHub(store, workspaces);
+const attachments = createAttachmentStore(store, uploadsDir);
+const hub = createHub(store, attachments, workspaces);
 
 const app = Fastify({ logger: true });
 await app.register(websocket);
+await app.register(multipart, { limits: { files: 1, fileSize: maxAttachmentBytes } });
 
 app.setErrorHandler((err: Error & { statusCode?: number }, _req, reply) => {
   if (!(err instanceof HubError)) app.log.error(err);
@@ -35,9 +40,38 @@ app.post<{ Body: CreateSessionBody }>(
 
 app.post<{ Params: { id: string }; Body: SendMessageBody }>(
   '/api/sessions/:id/messages',
-  { schema: { body: { type: 'object', required: ['text'], properties: { text: { type: 'string', minLength: 1 } } } } },
-  (req, reply) => reply.code(202).send({ seq: hub.sendMessage(req.params.id, req.body.text) }),
+  {
+    schema: {
+      body: {
+        type: 'object',
+        required: ['text'],
+        properties: { text: { type: 'string' }, attachmentIds: { type: 'array', items: { type: 'string' }, maxItems: maxAttachmentsPerMessage } },
+      },
+    },
+  },
+  (req, reply) => {
+    const { text, attachmentIds = [] } = req.body;
+    if (!text.trim() && attachmentIds.length === 0) throw new HubError(400, '消息不能为空');
+    return reply.code(202).send({ seq: hub.sendMessage(req.params.id, text, attachmentIds) });
+  },
 );
+
+// multipart 单文件字段 file。只收图片（方案 §9.2）；HEIC 需客户端先转 JPEG（iOS 相册选图默认会转）
+app.post<{ Params: { id: string } }>('/api/sessions/:id/attachments', async (req, reply) => {
+  const session = hub.getSession(req.params.id);
+  const file = await req.file();
+  if (!file) throw new HubError(400, '缺少文件字段 file');
+  if (!isImageMime(file.mimetype)) throw new HubError(415, `不支持的类型 ${file.mimetype}，只接受 PNG / JPEG / WebP / GIF`);
+  const bytes = await file.toBuffer();
+  return reply.code(201).send(attachments.save(session.id, file.filename, file.mimetype, bytes));
+});
+
+app.get<{ Params: { id: string } }>('/api/attachments/:id', (req, reply) => {
+  const a = attachments.get(req.params.id);
+  if (!a) throw new HubError(404, '附件不存在');
+  // id 是随机 UUID 且内容不可变，可长期缓存
+  return reply.type(a.mimeType).header('cache-control', 'private, max-age=31536000, immutable').send(createReadStream(attachments.pathOf(a)));
+});
 
 app.post<{ Params: { id: string }; Body: ResolvePendingBody }>(
   '/api/pending/:id/resolve',

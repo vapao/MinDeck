@@ -3,7 +3,7 @@ import type { PendingRequestBody, ProviderEvent, QuestionSpec, Resolution } from
 import { createNormalizer } from './normalize';
 
 export type ClaudeSession = {
-  send(text: string): void;
+  send(content: SDKUserMessage['message']['content']): void;
   close(): void;
 };
 
@@ -73,8 +73,8 @@ export function startClaudeSession({ cwd, onEvent, onPending, onExit }: StartOpt
   })();
 
   return {
-    send(text) {
-      inbox.push({ type: 'user', message: { role: 'user', content: text }, parent_tool_use_id: null });
+    send(content) {
+      inbox.push({ type: 'user', message: { role: 'user', content }, parent_tool_use_id: null });
     },
     close() {
       inbox.close();

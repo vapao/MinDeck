@@ -15,6 +15,21 @@ export type Session = {
   updatedAt: string;
 };
 
+// ---- 附件（方案 §9）----
+
+/** 图片附件元数据。字节由服务端私有目录保存，客户端只拿 id，通过 GET /api/attachments/:id 取回 */
+export type Attachment = {
+  id: string;
+  sessionId: string;
+  /** 上传时的原始文件名，仅用于展示 */
+  name: string;
+  mimeType: ImageMimeType;
+  size: number;
+  createdAt: string;
+};
+
+export type ImageMimeType = 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif';
+
 // ---- 待处理请求（方案 §10.1）----
 
 export type QuestionSpec = {
@@ -69,7 +84,7 @@ export type EventPayloads = {
   'turn.started': Record<never, never>;
   'turn.completed': { reason: TurnEndReason; durationMs: number; costUsd: number };
   'turn.failed': { message: string };
-  'message.user': { text: string };
+  'message.user': { text: string; attachments: Attachment[] };
   'message.delta': { messageId: string; text: string };
   'message.completed': { messageId: string; text: string };
   'tool.started': { toolUseId: string; name: string; input: unknown };
@@ -105,10 +120,14 @@ export type ProviderEvent<T extends EventType = EventType> = {
 export type CreateSessionBody = { provider: ProviderId; cwd: string };
 export type CreateSessionResponse = Session;
 
-export type SendMessageBody = { text: string };
+/** text 与 attachmentIds 至少有一个非空；附件必须属于同一 session */
+export type SendMessageBody = { text: string; attachmentIds?: string[] };
 export type SendMessageResponse = { seq: number };
 
 export type ListWorkspacesResponse = { cwd: string }[];
+
+/** POST /api/sessions/:id/attachments，multipart 单文件字段 file */
+export type UploadAttachmentResponse = Attachment;
 
 export type ResolvePendingBody = Resolution;
 export type ResolvePendingResponse = { seq: number };

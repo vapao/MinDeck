@@ -17,7 +17,7 @@ import styles from './SessionPage.module.css'
 
 export function SessionPage({ sessionId }: { sessionId: string }) {
   const { session, status, items, lastSeq, connection } = useSessionStream(sessionId)
-  const send = useMutation({ mutationFn: (text: string) => api.sendMessage(sessionId, { text }) })
+  const send = useMutation({ mutationFn: (body: { text: string; attachmentIds: string[] }) => api.sendMessage(sessionId, body) })
   // 同一时刻只会有一个待处理请求在提交；409（已在别处处理）随后会被 resolved 事件覆盖掉卡片
   const resolve = useMutation({ mutationFn: ({ id, body }: { id: string; body: Resolution }) => api.resolvePending(id, body) })
   const pendingProps = (id: string) => ({
@@ -62,7 +62,7 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
           {items.map((it) => {
             switch (it.kind) {
               case 'user':
-                return <UserMessage key={it.key} text={it.text} at={it.at} />
+                return <UserMessage key={it.key} text={it.text} attachments={it.attachments} at={it.at} />
               case 'assistant':
                 return <AssistantMessage key={it.key} text={it.text} streaming={it.streaming} at={it.at} />
               case 'tool':
@@ -103,7 +103,12 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
 
       <footer className={styles.footer}>
         <div className={styles.column}>
-          <Composer disabled={busy || connection !== 'open'} hint={hint} onSend={(text) => send.mutate(text)} />
+          <Composer
+            disabled={busy || connection !== 'open'}
+            hint={hint}
+            upload={(file) => api.uploadAttachment(sessionId, file)}
+            onSend={(text, attachmentIds) => send.mutate({ text, attachmentIds })}
+          />
         </div>
       </footer>
     </div>

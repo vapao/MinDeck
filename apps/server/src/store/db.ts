@@ -1,5 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
-import type { AgentEvent, EventType, PendingRequest, PendingRequestBody, ProviderEvent, Resolution, Session, SessionStatus } from '@agentdeck/shared';
+import type { AgentEvent, Attachment, EventType, PendingRequest, PendingRequestBody, ProviderEvent, Resolution, Session, SessionStatus } from '@agentdeck/shared';
 
 export type Store = ReturnType<typeof openStore>;
 
@@ -32,6 +32,14 @@ export function openStore(path: string) {
       resolution  TEXT,
       created_at  TEXT NOT NULL,
       resolved_at TEXT
+    );
+    CREATE TABLE IF NOT EXISTS attachments (
+      id         TEXT PRIMARY KEY,
+      session_id TEXT    NOT NULL REFERENCES sessions(id),
+      name       TEXT    NOT NULL,
+      mime_type  TEXT    NOT NULL,
+      size       INTEGER NOT NULL,
+      created_at TEXT    NOT NULL
     );
   `);
 
@@ -66,6 +74,10 @@ export function openStore(path: string) {
     `UPDATE pending_requests SET status = ?, resolution = ?, resolved_at = ? WHERE id = ? AND status = 'pending'`,
   );
   const expireAllPending = db.prepare(`UPDATE pending_requests SET status = 'expired', resolved_at = ? WHERE status = 'pending'`);
+  const insertAttachment = db.prepare(
+    `INSERT INTO attachments (id, session_id, name, mime_type, size, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+  );
+  const selectAttachment = db.prepare(`SELECT * FROM attachments WHERE id = ?`);
 
   const rowToSession = (r: Record<string, unknown>): Session => ({
     id: r.id as string,
@@ -83,6 +95,14 @@ export function openStore(path: string) {
     status: r.status as PendingRequest['status'],
     createdAt: r.created_at as string,
     resolvedAt: (r.resolved_at as string | null) ?? null,
+  });
+  const rowToAttachment = (r: Record<string, unknown>): Attachment => ({
+    id: r.id as string,
+    sessionId: r.session_id as string,
+    name: r.name as string,
+    mimeType: r.mime_type as Attachment['mimeType'],
+    size: r.size as number,
+    createdAt: r.created_at as string,
   });
   const rowToEvent = (r: Record<string, unknown>): AgentEvent =>
     ({
@@ -139,6 +159,13 @@ export function openStore(path: string) {
     /** Hub 重启后没有任何 Provider 回调在等这些请求，全部作废 */
     expireAllPending() {
       expireAllPending.run(new Date().toISOString());
+    },
+    createAttachment(a: Attachment) {
+      insertAttachment.run(a.id, a.sessionId, a.name, a.mimeType, a.size, a.createdAt);
+    },
+    getAttachment(id: string): Attachment | undefined {
+      const row = selectAttachment.get(id);
+      return row && rowToAttachment(row);
     },
     close() {
       db.close();
