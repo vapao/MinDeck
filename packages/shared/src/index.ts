@@ -191,6 +191,9 @@ export type DiffResponse = { path: string; diff: string; binary: boolean };
 /** GET /api/sessions/:id/file?path=：超过 512KB 截断；二进制文件 content 为 null */
 export type FileResponse = { path: string; content: string | null; truncated: boolean; binary: boolean };
 
+/** GET /api/sessions/:id/entries?q=：@ 引用补全。q 相对 cwd，`~` 开头相对家目录；目录 path 以 / 结尾 */
+export type EntriesResponse = { entries: { path: string; name: string; dir: boolean }[] };
+
 /** GET / PUT /api/settings */
 export type SettingsResponse = Settings;
 export type UpdateSettingsBody = Settings;

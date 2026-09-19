@@ -14,7 +14,7 @@ Mac Mini 上自托管的 Claude / Codex 多端控制台：Agent 在 Mac Mini 上
 
 ## 当前状态与下一步
 
-- 已完成：方案、Claude / Codex 两侧 P0 验证、工程脚手架、UI 设计稿与规范、**切片 1–10**（切片 1–4 于 2026-09-19 浏览器验收通过；切片 5 于 2026-09-19 在真实 Hub 上用 REST + WS 脚本验收通过；切片 6 于 2026-09-19 在 launchd 托管的 Hub 上经 Tailscale 用桌面浏览器验收：PWA 注册、Hub 重启自动重连、离线期间事件按 seq 回放、390px 视口布局；切片 7、8 于 2026-09-19 桌面浏览器验收；切片 9 于 2026-09-19 用 REST + WS 脚本验收：删除广播、运行中 409、附件目录清理；切片 10 于 2026-09-19 桌面浏览器验收：文件列表、diff、整文件、越界路径拒绝）。
+- 已完成：方案、Claude / Codex 两侧 P0 验证、工程脚手架、UI 设计稿与规范、**切片 1–11**（切片 1–4 于 2026-09-19 浏览器验收通过；切片 5 于 2026-09-19 在真实 Hub 上用 REST + WS 脚本验收通过；切片 6 于 2026-09-19 在 launchd 托管的 Hub 上经 Tailscale 用桌面浏览器验收：PWA 注册、Hub 重启自动重连、离线期间事件按 seq 回放、390px 视口布局；切片 7、8 于 2026-09-19 桌面浏览器验收；切片 9 于 2026-09-19 用 REST + WS 脚本验收：删除广播、运行中 409、附件目录清理；切片 10 于 2026-09-19 桌面浏览器验收：文件列表、diff、整文件、越界路径拒绝；切片 11 的 `@` 引用于 2026-09-19 桌面浏览器验收：目录逐层浏览、键盘选择、`~` 展开、Escape）。
 - **待办：真机 iPhone 走 Tailscale 完整跑一遍**（添加到主屏幕、相册选图、审批、切后台回来重连）——需要开发者手持设备，代码侧切片 6 已完成。
 - 使用定位（2026-09-19 与开发者确认）：Mac Mini 常驻服务端；**MacBook 上的桌面浏览器是主控制端**，手机只是辅助，不追求全功能。易用性切片（7–11）按此排优先级。
 - 实施按垂直切片推进，每片端到端可用：
@@ -31,7 +31,7 @@ Mac Mini 上自托管的 Claude / Codex 多端控制台：Agent 在 Mac Mini 上
 | 8 | 项目管理：`workspaces` 表 + 目录浏览（限家目录内）添加、别名、移除，替代 `AGENTDECK_WORKSPACES`；设置页：Claude / Codex 默认模型与 effort，创建会话时传给 Provider，靠 init 回包校验 | 手机 / 桌面都能加项目；设置的模型出现在会话头部 |
 | 9 | 删除会话：只允许 idle / error 状态（running / waiting_user 返回 409 让用户先中断），级联删 events / pending_requests / attachments 及 `data/uploads/<id>/`；Provider 原生记录（`~/.claude/projects`、Codex thread）不动 | 删后 `data/` 无残留 |
 | 10 | 改动侧栏（桌面端）：cwd 内只读 `git status` / `git diff -- <file>` / 读文件，`turn.completed` 与写类工具完成后节流刷新，非 git 目录隐藏；自解析 unified diff，不引 diff 库、不做语法高亮 | 一轮结束能看到改了哪些文件及 diff |
-| 11 | `@` 文件引用（服务端列目录，`~` 展开为家目录，子一级优先，支持目录；前端补全弹层）；会话中切模型（Codex `turn/start` 按轮传 model / effort；Claude 仅 `setModel()`，effort 无 setter 需 resume 重开，先不做） | 低频，待观察 |
+| 11 | `@` 文件引用（`GET /api/sessions/:id/entries?q=`：相对 cwd，`~` 展开为家目录，直接子项在前、深层匹配在后，目录以 `/` 结尾可继续往里敲；cwd 内递归限 4 层 / 3000 项 / 1.5s，`~` 下只列直接子项；Composer 弹层支持上下键 / Enter / Tab / Escape）。**未做**：会话中切模型（Codex `turn/start` 按轮传 model / effort 很简单；Claude 仅 `setModel()`，effort 无 setter 需 resume 重开）——先看全局默认值够不够用 | 低频，待观察 |
 
 ## 技术栈与命令
 

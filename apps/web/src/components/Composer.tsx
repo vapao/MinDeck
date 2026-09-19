@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react'
-import { ArrowUp, ImagePlus, X } from 'lucide-react'
-import type { Attachment } from '@agentdeck/shared'
+import { useQuery } from '@tanstack/react-query'
+import { ArrowUp, File, Folder, ImagePlus, X } from 'lucide-react'
+import type { Attachment, EntriesResponse } from '@agentdeck/shared'
 import styles from './Composer.module.css'
 
 type Props = {
@@ -10,7 +11,18 @@ type Props = {
   hint: string
   placeholder: string
   upload: (file: File) => Promise<Attachment>
+  /** @ 引用补全：q 是 @ 后面敲的内容 */
+  search: (q: string) => Promise<EntriesResponse>
   onSend: (text: string, attachmentIds: string[]) => void
+}
+
+// 光标前最近的一个 @（前面是行首或空白、到光标之间没有空白）就是正在敲的引用
+function mentionAt(text: string, caret: number): { start: number; query: string } | null {
+  const before = text.slice(0, caret)
+  const at = before.lastIndexOf('@')
+  if (at === -1 || (at > 0 && !/\s/.test(before[at - 1]))) return null
+  const query = before.slice(at + 1)
+  return /\s/.test(query) ? null : { start: at, query }
 }
 
 // 选中即上传，发送时只引用服务端返回的 attachmentId（方案 §9.1）
@@ -18,7 +30,7 @@ type Draft = { key: string; file: File; previewUrl: string } & ({ status: 'uploa
 
 const maxPerMessage = 5
 
-export function Composer({ draftKey, disabled, hint, placeholder, upload, onSend }: Props) {
+export function Composer({ draftKey, disabled, hint, placeholder, upload, search, onSend }: Props) {
   const [text, setText] = useState(() => localStorage.getItem(`draft:${draftKey}`) ?? '')
   useEffect(() => {
     if (text) localStorage.setItem(`draft:${draftKey}`, text)
@@ -27,6 +39,39 @@ export function Composer({ draftKey, disabled, hint, placeholder, upload, onSend
   const [drafts, setDrafts] = useState<Draft[]>([])
   const [dragging, setDragging] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
+  const textarea = useRef<HTMLTextAreaElement>(null)
+
+  // @ 补全：光标位置变化时重新判定；选中目录后保持打开继续往里敲
+  const [mention, setMention] = useState<{ start: number; query: string } | null>(null)
+  const [cursor, setCursor] = useState(0)
+  const entries = useQuery({
+    queryKey: ['entries', draftKey, mention?.query ?? ''],
+    queryFn: () => search(mention!.query),
+    enabled: mention !== null,
+    placeholderData: (prev) => prev,
+  })
+  const options = mention ? (entries.data?.entries ?? []) : []
+  const syncMention = () => {
+    const el = textarea.current
+    if (!el) return
+    setMention(mentionAt(el.value, el.selectionStart))
+    setCursor(0)
+  }
+  const pick = (opt: EntriesResponse['entries'][number]) => {
+    const el = textarea.current
+    if (!el || !mention) return
+    const insert = `@${opt.path}${opt.dir ? '' : ' '}`
+    const next = text.slice(0, mention.start) + insert + text.slice(el.selectionStart)
+    const caret = mention.start + insert.length
+    setText(next)
+    // 等 React 写回 value 后再放光标；目录保持弹层继续浏览
+    requestAnimationFrame(() => {
+      el.focus()
+      el.setSelectionRange(caret, caret)
+      setMention(opt.dir ? { start: mention.start, query: opt.path } : null)
+      setCursor(0)
+    })
+  }
   // 卸载时释放所有预览 URL
   const draftsRef = useRef(drafts)
   useEffect(() => {
@@ -69,7 +114,24 @@ export function Composer({ draftKey, disabled, hint, placeholder, upload, onSend
     setDrafts([])
   }
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+    if (e.nativeEvent.isComposing) return
+    if (mention && options.length > 0) {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault()
+        setCursor((c) => (c + (e.key === 'ArrowDown' ? 1 : options.length - 1)) % options.length)
+        return
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault()
+        pick(options[cursor])
+        return
+      }
+    }
+    if (mention && e.key === 'Escape') {
+      setMention(null)
+      return
+    }
+    if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       submit()
     }
@@ -102,35 +164,76 @@ export function Composer({ draftKey, disabled, hint, placeholder, upload, onSend
         </div>
       )}
       <div className={styles.hint}>{failed ? failed.message : uploading ? '正在上传图片…' : hint}</div>
-      <div
-        className={styles.box}
-        data-dragging={dragging || undefined}
-        onDragOver={(e) => {
-          e.preventDefault()
-          setDragging(true)
-        }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={onDrop}
-      >
-        <input ref={fileInput} type="file" accept="image/*" multiple hidden onChange={(e) => {
-          if (e.target.files) addFiles(e.target.files)
-          e.target.value = ''
-        }} />
-        <button type="button" className={styles.attach} onClick={() => fileInput.current?.click()} disabled={drafts.length >= maxPerMessage} aria-label="添加图片">
-          <ImagePlus size={18} />
-        </button>
-        <textarea
-          className={styles.input}
-          rows={1}
-          value={text}
-          placeholder={placeholder}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={onKeyDown}
-          onPaste={onPaste}
-        />
-        <button type="button" className={styles.send} onClick={submit} disabled={!canSend} aria-label="发送">
-          <ArrowUp size={18} />
-        </button>
+      <div className={styles.boxWrap}>
+        {mention && (
+          <div className={styles.mentions}>
+            {options.length === 0 ? (
+              <div className={styles.mentionEmpty}>{entries.isFetching ? '…' : '没有匹配'}</div>
+            ) : (
+              options.map((opt, i) => (
+                <button
+                  key={opt.path}
+                  type="button"
+                  className={styles.mention}
+                  data-active={i === cursor || undefined}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => pick(opt)}
+                  onMouseEnter={() => setCursor(i)}
+                >
+                  {opt.dir ? <Folder size={14} /> : <File size={14} />}
+                  <code className={styles.mentionPath}>{opt.path}</code>
+                </button>
+              ))
+            )}
+          </div>
+        )}
+        <div
+          className={styles.box}
+          data-dragging={dragging || undefined}
+          onDragOver={(e) => {
+            e.preventDefault()
+            setDragging(true)
+          }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={onDrop}
+        >
+          <input
+            ref={fileInput}
+            type="file"
+            accept="image/*"
+            multiple
+            hidden
+            onChange={(e) => {
+              if (e.target.files) addFiles(e.target.files)
+              e.target.value = ''
+            }}
+          />
+          <button type="button" className={styles.attach} onClick={() => fileInput.current?.click()} disabled={drafts.length >= maxPerMessage} aria-label="添加图片">
+            <ImagePlus size={18} />
+          </button>
+          <textarea
+            ref={textarea}
+            className={styles.input}
+            rows={1}
+            value={text}
+            placeholder={placeholder}
+            onChange={(e) => {
+              setText(e.target.value)
+              syncMention()
+            }}
+            onKeyDown={onKeyDown}
+            onKeyUp={(e) => {
+              // 上下键在弹层里选项，不动光标；左右 / Home / End 会移动光标，重新判定 @ 位置
+            if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Home' || e.key === 'End') syncMention()
+            }}
+            onClick={syncMention}
+            onBlur={() => setMention(null)}
+            onPaste={onPaste}
+          />
+          <button type="button" className={styles.send} onClick={submit} disabled={!canSend} aria-label="发送">
+            <ArrowUp size={18} />
+          </button>
+        </div>
       </div>
     </div>
   )

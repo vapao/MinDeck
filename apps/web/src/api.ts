@@ -1,4 +1,4 @@
-import type { CreateSessionBody, CreateSessionResponse, CreateWorkspaceBody, DeleteSessionResponse, DiffResponse, FileResponse, InterruptResponse, ListChangesResponse, ListDirsResponse, ListSessionsResponse, ListWorkspacesResponse, ResolvePendingBody, ResolvePendingResponse, SendMessageBody, SendMessageResponse, SettingsResponse, UpdateSettingsBody, UpdateWorkspaceBody, UploadAttachmentResponse, Workspace } from '@agentdeck/shared'
+import type { CreateSessionBody, CreateSessionResponse, CreateWorkspaceBody, DeleteSessionResponse, DiffResponse, EntriesResponse, FileResponse, InterruptResponse, ListChangesResponse, ListDirsResponse, ListSessionsResponse, ListWorkspacesResponse, ResolvePendingBody, ResolvePendingResponse, SendMessageBody, SendMessageResponse, SettingsResponse, UpdateSettingsBody, UpdateWorkspaceBody, UploadAttachmentResponse, Workspace } from '@agentdeck/shared'
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   // 只有 JSON body 才声明 content-type：FormData 由浏览器自己设 multipart boundary；无 body 的 DELETE 带上会被 Fastify 按空 JSON 拒绝
@@ -20,6 +20,7 @@ export const api = {
   getSettings: () => request<SettingsResponse>('/api/settings'),
   updateSettings: (body: UpdateSettingsBody) => request<SettingsResponse>('/api/settings', { method: 'PUT', body: JSON.stringify(body) }),
   listSessions: () => request<ListSessionsResponse>('/api/sessions'),
+  listEntries: (sessionId: string, q: string) => request<EntriesResponse>(`/api/sessions/${sessionId}/entries?q=${encodeURIComponent(q)}`),
   listChanges: (sessionId: string) => request<ListChangesResponse>(`/api/sessions/${sessionId}/changes`),
   fileDiff: (sessionId: string, path: string) => request<DiffResponse>(`/api/sessions/${sessionId}/diff?path=${encodeURIComponent(path)}`),
   readFile: (sessionId: string, path: string) => request<FileResponse>(`/api/sessions/${sessionId}/file?path=${encodeURIComponent(path)}`),

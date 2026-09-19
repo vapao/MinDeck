@@ -209,6 +209,7 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
                 hint={hint}
                 placeholder={`给 ${providerName[provider]} 发消息…`}
                 upload={(file) => api.uploadAttachment(sessionId, file)}
+            search={(q) => api.listEntries(sessionId, q)}
                 onSend={(text, attachmentIds) => send.mutate({ text, attachmentIds })}
               />
             </div>

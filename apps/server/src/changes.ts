@@ -1,8 +1,10 @@
 import { execFile } from 'node:child_process';
-import { readFile, realpath } from 'node:fs/promises';
-import { relative, resolve, sep } from 'node:path';
+import type { Dirent } from 'node:fs';
+import { readdir, readFile, realpath } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import { join, relative, resolve, sep } from 'node:path';
 import { promisify } from 'node:util';
-import type { ChangedFile, DiffResponse, FileResponse, ListChangesResponse } from '@agentdeck/shared';
+import type { ChangedFile, DiffResponse, EntriesResponse, FileResponse, ListChangesResponse } from '@agentdeck/shared';
 import { HubError } from './hub';
 
 // 改动侧栏（切片 10）：只读地看工作区里改了什么。全是 git 只读命令 + 读文件，Hub 不写任何东西。
@@ -91,4 +93,60 @@ export async function readWorkspaceFile(cwd: string, rel: string): Promise<FileR
   if (head.includes(0)) return { path: rel, content: null, truncated: false, binary: true };
   const truncated = buf.length > maxFileBytes;
   return { path: rel, content: buf.subarray(0, maxFileBytes).toString('utf8'), truncated, binary: false };
+}
+
+// ---- @ 文件引用补全（切片 11）----
+// q 是用户在 @ 后面敲的内容：`src/comp` → 列 src/ 下名字含 comp 的条目；`~/Doc` → 家目录下。
+// 直接子项排最前；name 非空时再往下搜几层，深层匹配排后面。目录 path 以 / 结尾，前端选中后可以继续往里敲。
+// 只在 cwd 内递归：家目录下有 Library / iCloud 这类无底洞，`~` 路径只列直接子项。
+
+const skipDirs = new Set(['node_modules', '.git', 'dist', 'build', '.next', 'target', '__pycache__']);
+const maxEntries = 50;
+const maxDepth = 4;
+const maxScanned = 3000;
+const scanBudgetMs = 1500;
+
+export async function listEntries(cwd: string, q: string): Promise<EntriesResponse> {
+  const home = homedir();
+  const tilde = q.startsWith('~');
+  const root = tilde ? home : cwd;
+  const rest = tilde ? q.replace(/^~\/?/, '') : q;
+  const slash = rest.lastIndexOf('/');
+  const dirPart = slash === -1 ? '' : rest.slice(0, slash + 1);
+  const name = rest.slice(slash + 1).toLowerCase();
+  const base = resolve(root, dirPart);
+  const prefix = tilde ? `~/${dirPart}` : dirPart;
+  // 相对路径不能靠 .. 逃出 root
+  if (base !== root && !base.startsWith(root + sep)) return { entries: [] };
+
+  const showHidden = name.startsWith('.');
+  const match = (n: string) => n.toLowerCase().includes(name) && (showHidden || !n.startsWith('.'));
+  const entries: EntriesResponse['entries'] = [];
+  let scanned = 0;
+  const deadline = Date.now() + scanBudgetMs;
+
+  async function readDir(dir: string, rel: string, depth: number): Promise<void> {
+    let items: Dirent[];
+    try {
+      items = await readdir(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    scanned += items.length;
+    // 直接子项：名字前缀匹配的排在包含匹配前面，目录排文件前面
+    const here = items
+      .filter((d) => match(d.name))
+      .sort((a, b) => Number(b.isDirectory()) - Number(a.isDirectory()) || Number(b.name.toLowerCase().startsWith(name)) - Number(a.name.toLowerCase().startsWith(name)) || a.name.localeCompare(b.name));
+    for (const d of here) {
+      if (entries.length >= maxEntries) return;
+      entries.push({ path: `${prefix}${rel}${d.name}${d.isDirectory() ? '/' : ''}`, name: d.name, dir: d.isDirectory() });
+    }
+    if (!name || tilde || depth >= maxDepth) return;
+    for (const d of items) {
+      if (entries.length >= maxEntries || scanned >= maxScanned || Date.now() > deadline) return;
+      if (d.isDirectory() && !d.name.startsWith('.') && !skipDirs.has(d.name)) await readDir(join(dir, d.name), `${rel}${d.name}/`, depth + 1);
+    }
+  }
+  await readDir(base, '', 0);
+  return { entries };
 }
