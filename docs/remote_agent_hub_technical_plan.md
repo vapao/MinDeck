@@ -598,6 +598,8 @@ error { code, message }
 
 # 15. MVP 分期
 
+> **实施顺序以 `AGENTS.md` 的垂直切片为准**（2026-09-19 决定）：P1/P2 不按层推进，而是每次打通一条端到端路径。本节保留为范围清单。
+
 ## P0：可行性验证（必须先完成）
 
 - Codex：app-server stdio 初始化、ChatGPT device code 登录、thread/start/resume、图片 localImage、命令审批、requestUserInput、中断。
