@@ -15,6 +15,50 @@ export type Session = {
   updatedAt: string;
 };
 
+// ---- 待处理请求（方案 §10.1）----
+
+export type QuestionSpec = {
+  question: string;
+  header: string;
+  multiSelect: boolean;
+  options: { label: string; description: string }[];
+};
+
+/** 请求内容本身，由 Provider 产出；Hub 落库时补上 id / 状态 / 时间 */
+export type PendingRequestBody =
+  | {
+      kind: 'approval';
+      toolName: string;
+      toolUseId: string;
+      input: unknown;
+      /** Provider 给的完整提示句 / 说明 / 触发原因，有就展示 */
+      title?: string;
+      description?: string;
+      decisionReason?: string;
+      /** "本会话允许 <pattern>" 按钮展示用；为空则不提供该按钮 */
+      sessionAllowPatterns: string[];
+      /** Provider 建议的规则原文，resolve 时原样交还 Provider，UI 不解释 */
+      suggestions: unknown[];
+    }
+  | { kind: 'question'; toolUseId: string; questions: QuestionSpec[] };
+
+export type PendingRequest = PendingRequestBody & {
+  id: string;
+  sessionId: string;
+  status: 'pending' | 'resolved' | 'expired';
+  createdAt: string;
+  resolvedAt: string | null;
+};
+
+export type ApprovalDecision = 'allow_once' | 'allow_session' | 'deny';
+
+/** 每个问题 → 选中的选项 label（单选也是长度 1 的数组） */
+export type QuestionAnswers = Record<string, string[]>;
+
+export type Resolution =
+  | { kind: 'approval'; decision: ApprovalDecision }
+  | { kind: 'question'; answers: QuestionAnswers; response?: string };
+
 // ---- 统一事件 ----
 
 export type TurnEndReason = 'completed' | 'interrupted';
@@ -30,6 +74,10 @@ export type EventPayloads = {
   'message.completed': { messageId: string; text: string };
   'tool.started': { toolUseId: string; name: string; input: unknown };
   'tool.completed': { toolUseId: string; output: string; isError: boolean };
+  'approval.requested': { request: Extract<PendingRequest, { kind: 'approval' }> };
+  'approval.resolved': { requestId: string; decision: ApprovalDecision | 'expired' };
+  'user_input.requested': { request: Extract<PendingRequest, { kind: 'question' }> };
+  'user_input.resolved': { requestId: string; answers: QuestionAnswers | null; response?: string };
   error: { message: string };
   /** Provider 消息中未映射到核心事件的子集，原样保留（AGENTS.md 规则 5） */
   'provider.raw': { kind: string; data: unknown };
@@ -62,6 +110,9 @@ export type SendMessageResponse = { seq: number };
 
 export type ListWorkspacesResponse = { cwd: string }[];
 
+export type ResolvePendingBody = Resolution;
+export type ResolvePendingResponse = { seq: number };
+
 // ---- WebSocket ----
 
 export type ClientMessage =
@@ -70,7 +121,7 @@ export type ClientMessage =
   | { type: 'ping' };
 
 export type ServerMessage =
-  | { type: 'snapshot'; session: Session; lastSeq: number }
+  | { type: 'snapshot'; session: Session; pendingRequests: PendingRequest[]; lastSeq: number }
   | { type: 'event'; event: AgentEvent }
   | { type: 'replay.completed'; lastSeq: number }
   | { type: 'pong' }

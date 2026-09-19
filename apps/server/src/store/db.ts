@@ -1,5 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
-import type { AgentEvent, EventType, ProviderEvent, Session, SessionStatus } from '@agentdeck/shared';
+import type { AgentEvent, EventType, PendingRequest, PendingRequestBody, ProviderEvent, Resolution, Session, SessionStatus } from '@agentdeck/shared';
 
 export type Store = ReturnType<typeof openStore>;
 
@@ -24,6 +24,15 @@ export function openStore(path: string) {
       created_at TEXT    NOT NULL,
       PRIMARY KEY (session_id, seq)
     );
+    CREATE TABLE IF NOT EXISTS pending_requests (
+      id          TEXT PRIMARY KEY,
+      session_id  TEXT NOT NULL REFERENCES sessions(id),
+      status      TEXT NOT NULL,
+      request     TEXT NOT NULL,
+      resolution  TEXT,
+      created_at  TEXT NOT NULL,
+      resolved_at TEXT
+    );
   `);
 
   const insertSession = db.prepare(
@@ -45,6 +54,18 @@ export function openStore(path: string) {
     `SELECT * FROM events WHERE session_id = ? AND seq > ? ORDER BY seq`,
   );
   const selectLastSeq = db.prepare(`SELECT COALESCE(MAX(seq), 0) AS seq FROM events WHERE session_id = ?`);
+  const insertPending = db.prepare(
+    `INSERT INTO pending_requests (id, session_id, status, request, created_at) VALUES (?, ?, 'pending', ?, ?)`,
+  );
+  const selectPending = db.prepare(`SELECT * FROM pending_requests WHERE id = ?`);
+  const selectPendingBySession = db.prepare(
+    `SELECT * FROM pending_requests WHERE session_id = ? AND status = 'pending' ORDER BY created_at`,
+  );
+  // 只有仍是 pending 的行才会被改：多端同时 resolve 时恰好一个成功（方案 §10.1）
+  const settlePending = db.prepare(
+    `UPDATE pending_requests SET status = ?, resolution = ?, resolved_at = ? WHERE id = ? AND status = 'pending'`,
+  );
+  const expireAllPending = db.prepare(`UPDATE pending_requests SET status = 'expired', resolved_at = ? WHERE status = 'pending'`);
 
   const rowToSession = (r: Record<string, unknown>): Session => ({
     id: r.id as string,
@@ -54,6 +75,14 @@ export function openStore(path: string) {
     status: r.status as SessionStatus,
     createdAt: r.created_at as string,
     updatedAt: r.updated_at as string,
+  });
+  const rowToPending = (r: Record<string, unknown>): PendingRequest => ({
+    ...(JSON.parse(r.request as string) as PendingRequestBody),
+    id: r.id as string,
+    sessionId: r.session_id as string,
+    status: r.status as PendingRequest['status'],
+    createdAt: r.created_at as string,
+    resolvedAt: (r.resolved_at as string | null) ?? null,
   });
   const rowToEvent = (r: Record<string, unknown>): AgentEvent =>
     ({
@@ -91,6 +120,25 @@ export function openStore(path: string) {
     },
     lastSeq(sessionId: string): number {
       return selectLastSeq.get(sessionId)!.seq as number;
+    },
+    createPending(request: PendingRequest) {
+      const { id, sessionId, status: _s, createdAt, resolvedAt: _r, ...body } = request;
+      insertPending.run(id, sessionId, JSON.stringify(body), createdAt);
+    },
+    getPending(id: string): PendingRequest | undefined {
+      const row = selectPending.get(id);
+      return row && rowToPending(row);
+    },
+    pendingBySession(sessionId: string): PendingRequest[] {
+      return selectPendingBySession.all(sessionId).map(rowToPending);
+    },
+    /** 原子 resolve：返回 false 表示已被别处处理（或已过期） */
+    resolvePending(id: string, resolution: Resolution | null, status: 'resolved' | 'expired' = 'resolved'): boolean {
+      return settlePending.run(status, resolution && JSON.stringify(resolution), new Date().toISOString(), id).changes === 1;
+    },
+    /** Hub 重启后没有任何 Provider 回调在等这些请求，全部作废 */
+    expireAllPending() {
+      expireAllPending.run(new Date().toISOString());
     },
     close() {
       db.close();

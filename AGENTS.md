@@ -14,9 +14,9 @@ Mac Mini 上自托管的 Claude / Codex 多端控制台：Agent 在 Mac Mini 上
 
 ## 当前状态与下一步
 
-- 已完成：方案、Claude 侧 P0 验证、工程脚手架、UI 设计稿与规范、**切片 1**（2026-09-19 浏览器验收通过）。
+- 已完成：方案、Claude 侧 P0 验证、工程脚手架、UI 设计稿与规范、**切片 1、切片 2**（2026-09-19 浏览器验收通过）。
 - Codex app-server 链路已由开发者人工确认可行，未写 harness。
-- **下一步：切片 2**。实施按垂直切片推进，每片端到端可用：
+- **下一步：切片 3**。实施按垂直切片推进，每片端到端可用：
 
 | 切片 | 内容 | 验收 |
 |---|---|---|
@@ -39,7 +39,7 @@ Mac Mini 上自托管的 Claude / Codex 多端控制台：Agent 在 Mac Mini 上
 pnpm dev:server      # tsx watch apps/server/src/main.ts
 pnpm dev:web         # vite
 pnpm typecheck       # 三个工作区
-pnpm --filter @agentdeck/server test   # tsx --test，目前只有事件 seq 单调性
+pnpm --filter @agentdeck/server test   # tsx --test：事件 seq 单调、PendingRequest 原子 resolve
 pnpm codex:schema    # codex app-server generate-ts → apps/server/src/providers/codex/schema（已 gitignore，按本机 codex 版本生成）
 cd apps/server && node scripts/p0-claude-harness.mjs   # Claude SDK 回归 harness，真实消耗额度
 ```

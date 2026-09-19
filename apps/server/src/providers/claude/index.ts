@@ -1,5 +1,5 @@
-import { query, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
-import type { ProviderEvent } from '@agentdeck/shared';
+import { query, type CanUseTool, type PermissionResult, type PermissionUpdate, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
+import type { PendingRequestBody, ProviderEvent, QuestionSpec, Resolution } from '@agentdeck/shared';
 import { createNormalizer } from './normalize';
 
 export type ClaudeSession = {
@@ -10,14 +10,38 @@ export type ClaudeSession = {
 type StartOptions = {
   cwd: string;
   onEvent(event: ProviderEvent): void;
+  /** 审批 / 提问：等用户在某个设备上处理；signal 触发（如 turn 被中断）时 resolve 为 null */
+  onPending(body: PendingRequestBody, signal: AbortSignal): Promise<Resolution | null>;
   /** 子进程结束（正常关闭或抛错）后调用一次 */
   onExit(error?: unknown): void;
 };
 
 // 一个 Streaming Input 长驻 session（方案 §6.1）。消息通过 inbox 推入，SDK 消息经 normalizer 转成统一事件回调出去。
-export function startClaudeSession({ cwd, onEvent, onExit }: StartOptions): ClaudeSession {
+export function startClaudeSession({ cwd, onEvent, onPending, onExit }: StartOptions): ClaudeSession {
   const inbox = createInbox();
   const normalize = createNormalizer();
+
+  // 审批与 AskUserQuestion 都从这里进来（方案 §6.4）；AskUserQuestion 的回答通过 updatedInput.answers 交还
+  const canUseTool: CanUseTool = async (toolName, input, { signal, suggestions = [], toolUseID, title, description, decisionReason }) => {
+    if (toolName === 'AskUserQuestion') {
+      const questions = input.questions as QuestionSpec[];
+      const r = await onPending({ kind: 'question', toolUseId: toolUseID, questions }, signal);
+      if (r?.kind !== 'question') return deny();
+      const answers = Object.fromEntries(Object.entries(r.answers).map(([q, labels]) => [q, labels.join(', ')]));
+      return { behavior: 'allow', updatedInput: { questions, answers, ...(r.response ? { response: r.response } : {}) } };
+    }
+    const r = await onPending(
+      { kind: 'approval', toolName, toolUseId: toolUseID, input, title, description, decisionReason, sessionAllowPatterns: describeRules(suggestions), suggestions },
+      signal,
+    );
+    if (r?.kind !== 'approval' || r.decision === 'deny') return deny();
+    return {
+      behavior: 'allow',
+      updatedInput: input,
+      // "本会话允许"只写 session 级规则，不落到本机 settings 文件
+      ...(r.decision === 'allow_session' ? { updatedPermissions: suggestions.map((s) => ({ ...s, destination: 'session' as const })) } : {}),
+    };
+  };
 
   const q = query({
     prompt: inbox,
@@ -28,6 +52,7 @@ export function startClaudeSession({ cwd, onEvent, onExit }: StartOptions): Clau
       includePartialMessages: true,
       // 只加载工作区的 project 设置：本机 user 设置是 bypassPermissions，会让审批静默通过（AGENTS.md 规则 2）
       settingSources: ['project'],
+      canUseTool,
     },
   });
 
@@ -55,6 +80,17 @@ export function startClaudeSession({ cwd, onEvent, onExit }: StartOptions): Clau
       inbox.close();
     },
   };
+}
+
+const deny = (): PermissionResult => ({ behavior: 'deny', message: '用户在 AgentDeck 中拒绝了此操作' });
+
+// 把 Provider 建议的规则压成 UI 可读的 pattern，例如 Bash(git status:*)
+function describeRules(suggestions: PermissionUpdate[]): string[] {
+  return suggestions.flatMap((s) =>
+    s.type === 'addRules' || s.type === 'replaceRules'
+      ? s.rules.map((r) => (r.ruleContent ? `${r.toolName}(${r.ruleContent})` : r.toolName))
+      : [],
+  );
 }
 
 // 子进程环境：去掉 CLAUDE* 避免被识别为嵌套 Claude Code 会话；去掉 API Key，复用本机 claude.ai 登录（AGENTS.md 规则 4）

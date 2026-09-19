@@ -1,5 +1,5 @@
 import { useEffect, useReducer } from 'react'
-import type { AgentEvent, ServerMessage, Session, SessionStatus } from '@agentdeck/shared'
+import type { AgentEvent, ApprovalDecision, PendingRequest, QuestionAnswers, ServerMessage, Session, SessionStatus } from '@agentdeck/shared'
 
 // 会话页的实时状态 = 对事件流做 reduce（方案 §13.1）。一个 seq 只处理一次，重放与 live 共用同一条路径。
 
@@ -8,6 +8,10 @@ export type StreamItem =
   | { kind: 'assistant'; key: string; messageId: string; text: string; streaming: boolean; at: string }
   | { kind: 'tool'; key: string; toolUseId: string; name: string; input: unknown; output: string | null; isError: boolean; at: string }
   | { kind: 'error'; key: string; message: string; at: string }
+  | { kind: 'approval'; key: string; request: Extract<PendingRequest, { kind: 'approval' }>; state: PendingState; decision: ApprovalDecision | null; resolvedAt: string | null }
+  | { kind: 'question'; key: string; request: Extract<PendingRequest, { kind: 'question' }>; state: PendingState; answers: QuestionAnswers | null; response: string | null; resolvedAt: string | null }
+
+export type PendingState = 'pending' | 'resolved' | 'expired'
 
 export type StreamState = {
   session: Session | null
@@ -15,11 +19,13 @@ export type StreamState = {
   items: StreamItem[]
   lastSeq: number
   connection: 'connecting' | 'open' | 'closed'
+  /** snapshot 里仍在等待的请求 id；重放结束后据此把陈旧的 pending 卡片标成已过期 */
+  livePendingIds: string[]
 }
 
 type Action = { type: 'server'; message: ServerMessage } | { type: 'connection'; value: StreamState['connection'] } | { type: 'reset' }
 
-const initial: StreamState = { session: null, status: 'idle', items: [], lastSeq: 0, connection: 'connecting' }
+const initial: StreamState = { session: null, status: 'idle', items: [], lastSeq: 0, connection: 'connecting', livePendingIds: [] }
 
 function reduce(state: StreamState, action: Action): StreamState {
   if (action.type === 'reset') return initial
@@ -27,10 +33,19 @@ function reduce(state: StreamState, action: Action): StreamState {
   const m = action.message
   switch (m.type) {
     case 'snapshot':
-      return { ...state, session: m.session, status: m.session.status }
+      return { ...state, session: m.session, status: m.session.status, livePendingIds: m.pendingRequests.map((r) => r.id) }
     case 'event':
       if (m.event.seq <= state.lastSeq) return state
       return applyEvent({ ...state, lastSeq: m.event.seq }, m.event)
+    case 'replay.completed':
+      return {
+        ...state,
+        items: state.items.map((it) =>
+          (it.kind === 'approval' || it.kind === 'question') && it.state === 'pending' && !state.livePendingIds.includes(it.request.id)
+            ? { ...it, state: 'expired' }
+            : it,
+        ),
+      }
     default:
       return state
   }
@@ -64,6 +79,24 @@ function applyEvent(state: StreamState, e: AgentEvent): StreamState {
       if (i === -1) return state
       const cur = items[i] as Extract<StreamItem, { kind: 'tool' }>
       return { ...state, items: items.toSpliced(i, 1, { ...cur, output: e.payload.output, isError: e.payload.isError }) }
+    }
+    case 'approval.requested':
+      return { ...state, items: [...items, { kind: 'approval', key: e.payload.request.id, request: e.payload.request, state: 'pending', decision: null, resolvedAt: null }] }
+    case 'user_input.requested':
+      return { ...state, items: [...items, { kind: 'question', key: e.payload.request.id, request: e.payload.request, state: 'pending', answers: null, response: null, resolvedAt: null }] }
+    case 'approval.resolved': {
+      const i = items.findIndex((it) => it.kind === 'approval' && it.request.id === e.payload.requestId)
+      if (i === -1) return state
+      const cur = items[i] as Extract<StreamItem, { kind: 'approval' }>
+      const { decision } = e.payload
+      const next = decision === 'expired' ? { state: 'expired' as const, decision: null } : { state: 'resolved' as const, decision }
+      return { ...state, items: items.toSpliced(i, 1, { ...cur, ...next, resolvedAt: e.createdAt }) }
+    }
+    case 'user_input.resolved': {
+      const i = items.findIndex((it) => it.kind === 'question' && it.request.id === e.payload.requestId)
+      if (i === -1) return state
+      const cur = items[i] as Extract<StreamItem, { kind: 'question' }>
+      return { ...state, items: items.toSpliced(i, 1, { ...cur, state: e.payload.answers ? 'resolved' : 'expired', answers: e.payload.answers, response: e.payload.response ?? null, resolvedAt: e.createdAt }) }
     }
     case 'turn.failed':
     case 'error':

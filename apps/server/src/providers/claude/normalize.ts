@@ -5,11 +5,15 @@ import type { ProviderEvent } from '@agentdeck/shared';
 // 一个 normalizer 实例对应一个 session：需要跨消息记住当前正在流式输出的 assistant 消息 ID。
 export function createNormalizer() {
   let streamingMessageId: string | null = null;
+  let started = false;
 
   return function normalize(m: SDKMessage): ProviderEvent[] {
     switch (m.type) {
       case 'system':
         if (m.subtype === 'init') {
+          // SDK 每轮都会发一次 init，只有第一次才是"会话建立"
+          if (started) return [];
+          started = true;
           return [{ type: 'session.started', payload: { providerSessionId: m.session_id, model: m.model } }];
         }
         return [raw(m)];

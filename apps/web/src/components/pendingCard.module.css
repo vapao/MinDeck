@@ -1,0 +1,181 @@
+/* ApprovalCard 与 QuestionCard 共用的琥珀卡片样式（设计规范 §3） */
+.card {
+  max-width: min(var(--assistant-w), 100%);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-card);
+  background: var(--accent-bg);
+  overflow: hidden;
+}
+.card[data-state='resolved'],
+.card[data-state='expired'] {
+  opacity: 0.85;
+  border-color: var(--border);
+  background: var(--surface);
+}
+.head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--accent-divider);
+  color: var(--accent-text);
+  font-weight: 500;
+}
+.card[data-state='resolved'] .head,
+.card[data-state='expired'] .head {
+  border-bottom-color: var(--border);
+  color: var(--text-2);
+}
+.headIcon {
+  flex: none;
+  color: var(--accent);
+}
+.card[data-state='resolved'] .headIcon,
+.card[data-state='expired'] .headIcon {
+  color: var(--text-3);
+}
+.headMeta {
+  margin-left: auto;
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+.chip {
+  padding: 0 5px;
+  border: 1px solid var(--accent-border-2);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-2);
+}
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+}
+.label {
+  font-size: 11.5px;
+  letter-spacing: 0.02em;
+  color: var(--text-3);
+}
+.code {
+  margin: 0;
+  padding: 10px 12px;
+  background: var(--surface-3);
+  border-radius: 6px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.text {
+  color: var(--text-2);
+}
+.mono {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--text-2);
+  word-break: break-all;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 14px 14px;
+}
+.primary,
+.secondary,
+.ghost {
+  height: 36px;
+  padding: 0 14px;
+  border-radius: var(--radius-button);
+  font-weight: 500;
+  cursor: pointer;
+}
+.primary {
+  border: 0;
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.secondary {
+  border: 1px solid var(--accent-border-2);
+  background: none;
+  color: var(--accent-text);
+  font-family: var(--font-mono);
+  font-weight: 400;
+}
+.ghost {
+  border: 1px solid var(--border-2);
+  background: none;
+  color: var(--text-2);
+}
+.primary:disabled,
+.secondary:disabled,
+.ghost:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.error {
+  width: 100%;
+  font-size: 12.5px;
+  color: var(--danger);
+}
+.option {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 8px 10px;
+  border: 1px solid var(--border-2);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.option:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--accent-bg-2);
+}
+.option input {
+  margin-top: 3px;
+  accent-color: var(--accent);
+}
+.optionText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.optionDesc {
+  font-size: 12.5px;
+  color: var(--text-3);
+}
+.other {
+  height: 36px;
+  padding: 0 10px;
+  background: var(--surface);
+  border: 1px solid var(--border-2);
+  border-radius: 6px;
+  outline: none;
+}
+.other:focus {
+  border-color: var(--text-4);
+}
+@media (max-width: 1023px) {
+  .actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+  .primary {
+    grid-column: 1 / -1;
+    height: 46px;
+  }
+  .secondary,
+  .ghost {
+    height: 44px;
+  }
+}

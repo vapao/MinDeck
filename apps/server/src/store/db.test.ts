@@ -19,3 +19,16 @@ test('event seq is strictly monotonic per session', () => {
   assert.deepEqual(store.eventsAfter('a', 3).map((e) => e.seq), [4, 5]);
   assert.deepEqual(store.eventsAfter('b', 0).map((e) => e.seq), [1, 2, 3]);
 });
+
+// 规则：一个 PendingRequest 只能被 resolve 一次；第二个设备的 resolve 必须失败（方案 §10.1）。
+test('pending request resolves atomically exactly once', () => {
+  const store = openStore(':memory:');
+  const now = new Date().toISOString();
+  store.createSession({ id: 's', provider: 'claude', cwd: '/tmp', providerSessionId: null, status: 'idle', createdAt: now, updatedAt: now });
+  store.createPending({ id: 'p1', sessionId: 's', status: 'pending', createdAt: now, resolvedAt: null, kind: 'approval', toolName: 'Bash', toolUseId: 't', input: {}, sessionAllowPatterns: [], suggestions: [] });
+
+  assert.equal(store.resolvePending('p1', { kind: 'approval', decision: 'allow_once' }), true);
+  assert.equal(store.resolvePending('p1', { kind: 'approval', decision: 'deny' }), false);
+  assert.equal(store.getPending('p1')?.status, 'resolved');
+  assert.deepEqual(store.pendingBySession('s'), []);
+});
