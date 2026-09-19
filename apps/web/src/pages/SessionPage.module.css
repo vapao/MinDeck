@@ -5,7 +5,8 @@
 }
 .topbar {
   flex: none;
-  height: var(--topbar-h);
+  /* 全屏 PWA 下状态栏透明，顶栏自己让出安全区 */
+  height: calc(var(--topbar-h) + env(safe-area-inset-top));
   display: flex;
   align-items: center;
   gap: 10px;
@@ -82,6 +83,8 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   padding: 28px 16px;
 }
 .column {

@@ -14,8 +14,9 @@ Mac Mini 上自托管的 Claude / Codex 多端控制台：Agent 在 Mac Mini 上
 
 ## 当前状态与下一步
 
-- 已完成：方案、Claude / Codex 两侧 P0 验证、工程脚手架、UI 设计稿与规范、**切片 1–5**（切片 1–4 于 2026-09-19 浏览器验收通过；切片 5 于 2026-09-19 在真实 Hub 上用 REST + WS 脚本验收通过，浏览器端只做了 typecheck；切片 3 真机 iPhone 相册选图待切片 6 走 Tailscale 时一并验）。
-- **下一步：切片 6**。实施按垂直切片推进，每片端到端可用：
+- 已完成：方案、Claude / Codex 两侧 P0 验证、工程脚手架、UI 设计稿与规范、**切片 1–6**（切片 1–4 于 2026-09-19 浏览器验收通过；切片 5 于 2026-09-19 在真实 Hub 上用 REST + WS 脚本验收通过；切片 6 于 2026-09-19 在 launchd 托管的 Hub 上经 Tailscale 用桌面浏览器验收：PWA 注册、Hub 重启自动重连、离线期间事件按 seq 回放、390px 视口布局）。
+- **待办：真机 iPhone 走 Tailscale 完整跑一遍**（添加到主屏幕、相册选图、审批、切后台回来重连）——需要开发者手持设备，代码侧切片 6 已完成。
+- 实施按垂直切片推进，每片端到端可用：
 
 | 切片 | 内容 | 验收 |
 |---|---|---|
@@ -37,6 +38,9 @@ Mac Mini 上自托管的 Claude / Codex 多端控制台：Agent 在 Mac Mini 上
 ```
 pnpm dev:server      # tsx watch apps/server/src/main.ts
 pnpm dev:web         # vite
+pnpm build           # 前端构建到 apps/web/dist，Hub 启动时若该目录存在就直接托管（SPA 回退 + PWA）
+pnpm start           # tsx apps/server/src/main.ts（生产，不 watch）
+scripts/launchd.sh install | uninstall | restart | status | logs   # 常驻：先 pnpm build，再写 ~/Library/LaunchAgents/com.agentdeck.hub.plist 并加载；日志 data/logs/hub.log
 pnpm typecheck       # 三个工作区
 pnpm --filter @agentdeck/server test   # tsx --test：事件 seq 单调、PendingRequest 原子 resolve、附件路径/会话边界
 pnpm codex:schema    # codex app-server generate-ts → apps/server/src/providers/codex/schema（已 gitignore，按本机 codex 版本生成）
@@ -65,6 +69,8 @@ cd apps/server && node scripts/p0-codex-harness.mjs    # Codex app-server 回归
 - YAGNI：只解决当前切片的需求，抽象等重复出现再提。Provider 在 `apps/server/src/providers/` 里是目录，不拆包。
 - 只在规则被明确固定、且破坏会静默失败时写测试（事件 seq 单调、PendingRequest 原子 resolve、附件路径边界这类）。UI、时序、样式不写测试。
 - 错误只在真正的边界处理（用户输入、Provider 进程、外部 API），内部代码让异常抛出。
-- 端口按 `~/Workspace/mac-mini-tailscale-web-ports.md` 分配：后端 8004（只监听 127.0.0.1）、前端 5180、Tailscale HTTPS 8450（`tailscale serve --bg --https=8450 5180`）。开发时 `pnpm dev:server` + `pnpm dev:web`，vite 代理 `/api` 与 `/ws` 到 8004。工作区 allowlist 用 `AGENTDECK_WORKSPACES`（逗号分隔绝对路径）配置，默认只允许本仓库；SQLite 在 `data/`、上传图片在 `data/uploads/<sessionId>/`（`AGENTDECK_UPLOADS` 可改；已 gitignore）。
+- 端口按 `~/Workspace/mac-mini-tailscale-web-ports.md` 分配：Hub 8004（只监听 127.0.0.1）、vite 5180、Tailscale HTTPS 8450。**生产映射到 Hub**：`tailscale serve --bg --https=8450 8004`（Hub 托管 `apps/web/dist`，方案 §11.2）；要在手机上看 HMR 时临时 `tailscale serve --bg --https=8450 5180`，用完切回。开发时 `pnpm dev:server` + `pnpm dev:web`，vite 代理 `/api` 与 `/ws` 到 8004（先 `scripts/launchd.sh uninstall` 或改 `AGENTDECK_PORT`，否则 8004 被常驻 Hub 占着）。
+- launchd 不读 `~/.zshrc`：`scripts/launchd.sh install` 会把当前 shell 的 `http_proxy` / `https_proxy` / `all_proxy` / `no_proxy` 写进 plist（本机访问 Anthropic 走代理，缺了 Claude 报 `403 Request not allowed`），并把 `~/.local/bin`（claude / codex）加进 PATH。改了代理配置要重新 install。
+- WS 握手校验 Origin 与 Host 一致（§11.3），Node 脚本不带 Origin 可直连；Tailscale Serve 会透传原始 Host。工作区 allowlist 用 `AGENTDECK_WORKSPACES`（逗号分隔绝对路径）配置，默认只允许本仓库；SQLite 在 `data/`、上传图片在 `data/uploads/<sessionId>/`（`AGENTDECK_UPLOADS` 可改；已 gitignore）。
 - 提交前 `pnpm typecheck`。commit 用 conventional 格式，不加 Co-Authored-By。
 - 回复与文档使用简体中文；代码标识符、路径、命令保持原文。

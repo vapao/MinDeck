@@ -5,6 +5,8 @@
   "scripts": {
     "dev:server": "pnpm --filter @agentdeck/server dev",
     "dev:web": "pnpm --filter @agentdeck/web dev",
+    "build": "pnpm --filter @agentdeck/web build",
+    "start": "pnpm --filter @agentdeck/server start",
     "typecheck": "pnpm -r typecheck",
     "codex:schema": "codex app-server generate-ts --out apps/server/src/providers/codex/schema"
   }

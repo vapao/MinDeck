@@ -1,4 +1,4 @@
-import { useEffect, useReducer } from 'react'
+import { useEffect, useReducer, useRef } from 'react'
 import type { AgentEvent, ApprovalDecision, Attachment, PendingRequest, QuestionAnswers, ServerMessage, Session, SessionStatus, UsageInfo } from '@agentdeck/shared'
 
 // 会话页的实时状态 = 对事件流做 reduce（方案 §13.1）。一个 seq 只处理一次，重放与 live 共用同一条路径。
@@ -19,30 +19,48 @@ export type StreamState = {
   status: SessionStatus
   items: StreamItem[]
   lastSeq: number
-  connection: 'connecting' | 'open' | 'closed'
+  /** connecting：首次连接；reconnecting：掉线后自动重连中；open：已连上 */
+  connection: 'connecting' | 'reconnecting' | 'open'
+  /** 最近一次重连补齐的事件范围，给 ConnectionBanner 用；几秒后清空 */
+  replay: { from: number; to: number } | null
   /** snapshot 里仍在等待的请求 id；重放结束后据此把陈旧的 pending 卡片标成已过期 */
   livePendingIds: string[]
   /** 账号级额度，按 rateLimitType 存最新值 */
   usage: Record<string, UsageInfo>
 }
 
-type Action = { type: 'server'; message: ServerMessage } | { type: 'connection'; value: StreamState['connection'] } | { type: 'reset' }
+type Action =
+  | { type: 'server'; message: ServerMessage }
+  | { type: 'connection'; value: StreamState['connection'] }
+  | { type: 'replay.dismiss' }
+  | { type: 'reset' }
 
-const initial: StreamState = { session: null, status: 'idle', items: [], lastSeq: 0, connection: 'connecting', livePendingIds: [], usage: {} }
+const initial: StreamState = { session: null, status: 'idle', items: [], lastSeq: 0, connection: 'connecting', replay: null, livePendingIds: [], usage: {} }
 
 function reduce(state: StreamState, action: Action): StreamState {
   if (action.type === 'reset') return initial
   if (action.type === 'connection') return { ...state, connection: action.value }
+  if (action.type === 'replay.dismiss') return { ...state, replay: null }
   const m = action.message
   switch (m.type) {
     case 'snapshot':
-      return { ...state, session: m.session, status: m.session.status, livePendingIds: m.pendingRequests.map((r) => r.id), usage: m.usage }
+      // 重连时的 snapshot 记下本地已有的 seq，replay.completed 时据此算出补齐了多少
+      return {
+        ...state,
+        session: m.session,
+        status: m.session.status,
+        livePendingIds: m.pendingRequests.map((r) => r.id),
+        usage: m.usage,
+        replay: state.connection === 'reconnecting' ? { from: state.lastSeq, to: state.lastSeq } : null,
+      }
     case 'event':
       if (m.event.seq <= state.lastSeq) return state
       return applyEvent({ ...state, lastSeq: m.event.seq }, m.event)
     case 'replay.completed':
       return {
         ...state,
+        connection: 'open',
+        replay: state.replay && { ...state.replay, to: state.lastSeq },
         items: state.items.map((it) =>
           (it.kind === 'approval' || it.kind === 'question') && it.state === 'pending' && !state.livePendingIds.includes(it.request.id)
             ? { ...it, state: 'expired' }
@@ -116,19 +134,81 @@ function applyEvent(state: StreamState, e: AgentEvent): StreamState {
   }
 }
 
+// 心跳：iOS 切后台 / 网络切换时 socket 常常"假活"，收不到 close；ping 后超时没回应就主动关掉触发重连
+const pingInterval = 25_000
+const pongTimeout = 10_000
+const maxBackoff = 15_000
+
 export function useSessionStream(sessionId: string): StreamState {
   const [state, dispatch] = useReducer(reduce, initial)
+  // 重连时带上已有 seq，只补缺的事件；放 ref 是为了不让连接 effect 依赖 state
+  const lastSeq = useRef(0)
+  useEffect(() => {
+    lastSeq.current = state.lastSeq
+  }, [state.lastSeq])
 
   useEffect(() => {
     dispatch({ type: 'reset' })
-    const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`)
-    ws.onopen = () => {
-      dispatch({ type: 'connection', value: 'open' })
-      ws.send(JSON.stringify({ type: 'subscribe', sessionId, afterSeq: 0 }))
+    // reset 要到下次渲染才反映到 ref，切换会话时不能带着上一个会话的 seq 去订阅
+    lastSeq.current = 0
+    let ws: WebSocket | null = null
+    let stopped = false
+    let attempts = 0
+    let retryTimer: ReturnType<typeof setTimeout> | undefined
+    let pingTimer: ReturnType<typeof setInterval> | undefined
+    let pongTimer: ReturnType<typeof setTimeout> | undefined
+    let dismissTimer: ReturnType<typeof setTimeout> | undefined
+
+    const clearHeartbeat = () => {
+      clearInterval(pingTimer)
+      clearTimeout(pongTimer)
     }
-    ws.onmessage = (ev) => dispatch({ type: 'server', message: JSON.parse(ev.data as string) as ServerMessage })
-    ws.onclose = () => dispatch({ type: 'connection', value: 'closed' })
-    return () => ws.close()
+    const connect = () => {
+      clearTimeout(retryTimer)
+      if (stopped || (ws && ws.readyState <= WebSocket.OPEN)) return
+      const socket = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`)
+      ws = socket
+      socket.onopen = () => {
+        attempts = 0
+        socket.send(JSON.stringify({ type: 'subscribe', sessionId, afterSeq: lastSeq.current }))
+        pingTimer = setInterval(() => {
+          socket.send(JSON.stringify({ type: 'ping' }))
+          pongTimer = setTimeout(() => socket.close(), pongTimeout)
+        }, pingInterval)
+      }
+      socket.onmessage = (ev) => {
+        const message = JSON.parse(ev.data as string) as ServerMessage
+        if (message.type === 'pong') return clearTimeout(pongTimer)
+        dispatch({ type: 'server', message })
+        if (message.type === 'replay.completed') {
+          clearTimeout(dismissTimer)
+          dismissTimer = setTimeout(() => dispatch({ type: 'replay.dismiss' }), 5000)
+        }
+      }
+      socket.onclose = () => {
+        clearHeartbeat()
+        if (stopped) return
+        dispatch({ type: 'connection', value: 'reconnecting' })
+        retryTimer = setTimeout(connect, Math.min(maxBackoff, 1000 * 2 ** attempts++))
+      }
+    }
+    // 回到前台 / 网络恢复时不等退避，立刻重试
+    const wake = () => {
+      if (document.visibilityState === 'visible') connect()
+    }
+    document.addEventListener('visibilitychange', wake)
+    window.addEventListener('online', wake)
+    connect()
+
+    return () => {
+      stopped = true
+      document.removeEventListener('visibilitychange', wake)
+      window.removeEventListener('online', wake)
+      clearTimeout(retryTimer)
+      clearTimeout(dismissTimer)
+      clearHeartbeat()
+      ws?.close()
+    }
   }, [sessionId])
 
   return state

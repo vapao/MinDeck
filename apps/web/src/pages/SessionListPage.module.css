@@ -7,7 +7,7 @@
   flex: none;
   display: flex;
   align-items: center;
-  height: var(--topbar-h);
+  height: calc(var(--topbar-h) + env(safe-area-inset-top));
   padding: 0 16px;
   padding-top: env(safe-area-inset-top);
   font-size: 17px;

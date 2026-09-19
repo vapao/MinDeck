@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, type UIEvent } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { ChevronLeft, Square } from 'lucide-react'
 import type { Resolution } from '@agentdeck/shared'
@@ -13,13 +13,14 @@ import { ToolCard } from '../components/ToolCard'
 import { ErrorCard } from '../components/ErrorCard'
 import { InterruptedRow } from '../components/InterruptedRow'
 import { RateMeter } from '../components/RateMeter'
+import { ConnectionBanner } from '../components/ConnectionBanner'
 import { ApprovalCard } from '../components/ApprovalCard'
 import { QuestionCard } from '../components/QuestionCard'
 import { Composer } from '../components/Composer'
 import styles from './SessionPage.module.css'
 
 export function SessionPage({ sessionId }: { sessionId: string }) {
-  const { session, status, items, lastSeq, connection, usage } = useSessionStream(sessionId)
+  const { session, status, items, lastSeq, connection, replay, usage } = useSessionStream(sessionId)
   const queryClient = useQueryClient()
   const send = useMutation({
     mutationFn: (body: { text: string; attachmentIds: string[] }) => api.sendMessage(sessionId, body),
@@ -34,9 +35,15 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
     error: resolve.error && resolve.variables?.id === id ? resolve.error.message : null,
   })
   const bottom = useRef<HTMLDivElement>(null)
+  // 用户往上翻看历史时不再自动跟到底部；回到底部附近后恢复跟随
+  const follow = useRef(true)
+  const onScroll = (e: UIEvent<HTMLElement>) => {
+    const el = e.currentTarget
+    follow.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+  }
 
   useEffect(() => {
-    bottom.current?.scrollIntoView({ block: 'end' })
+    if (follow.current) bottom.current?.scrollIntoView({ block: 'end' })
   }, [items])
 
   const running = status === 'running' || status === 'waiting_user'
@@ -46,8 +53,8 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
     ? send.error.message
     : interrupt.error
       ? interrupt.error.message
-      : connection === 'closed'
-        ? '连接已断开，刷新页面重连'
+      : connection !== 'open'
+        ? '等待连接…'
         : status === 'waiting_user'
           ? `处理上方的请求后 ${provider} 才会继续`
           : status === 'running'
@@ -76,10 +83,12 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
             中断
           </button>
         )}
-        <StatusPill status={connection === 'closed' ? 'error' : status} />
+        <StatusPill status={status} />
       </header>
 
-      <main className={styles.stream}>
+      <ConnectionBanner connection={connection} replay={replay} />
+
+      <main className={styles.stream} onScroll={onScroll}>
         <div className={styles.column}>
           {items.map((it) => {
             switch (it.kind) {

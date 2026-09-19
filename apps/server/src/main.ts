@@ -1,20 +1,23 @@
-import { createReadStream, mkdirSync } from 'node:fs';
+import { createReadStream, existsSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import Fastify from 'fastify';
 import websocket from '@fastify/websocket';
 import multipart from '@fastify/multipart';
+import fastifyStatic from '@fastify/static';
 import type { AgentEvent, ClientMessage, CreateSessionBody, ResolvePendingBody, SendMessageBody, ServerMessage } from '@agentdeck/shared';
 import { openStore } from './store/db';
 import { createAttachmentStore, isImageMime, maxAttachmentBytes, maxAttachmentsPerMessage } from './store/attachments';
 import { createHub, HubError } from './hub';
 
 const repoRoot = resolve(import.meta.dirname, '../../..');
-// 端口分配见 ~/Workspace/mac-mini-tailscale-web-ports.md：后端 8004 只监听本机，由前端 dev server 代理
+// 端口分配见 ~/Workspace/mac-mini-tailscale-web-ports.md：8004 只监听本机；开发时由 vite dev server 代理，生产由 Tailscale Serve 8450 映射到这里
 const port = Number(process.env.AGENTDECK_PORT ?? 8004);
 const dbPath = process.env.AGENTDECK_DB ?? resolve(repoRoot, 'data/agentdeck.db');
 const uploadsDir = process.env.AGENTDECK_UPLOADS ?? resolve(repoRoot, 'data/uploads');
 // 工作区 allowlist（方案 §11.3）：逗号分隔的绝对路径；默认只允许本仓库
 const workspaces = (process.env.AGENTDECK_WORKSPACES ?? repoRoot).split(',').map((p) => resolve(p));
+// 生产模式由 Hub 直接托管前端构建产物（方案 §11.2：只监听本机，Tailscale Serve 映射到这个端口）；目录不存在则只提供 API，前端走 vite dev server
+const webDist = process.env.AGENTDECK_WEB_DIST ?? resolve(repoRoot, 'apps/web/dist');
 
 mkdirSync(dirname(dbPath), { recursive: true });
 const store = openStore(dbPath);
@@ -29,6 +32,20 @@ app.setErrorHandler((err: Error & { statusCode?: number }, _req, reply) => {
   if (!(err instanceof HubError)) app.log.error(err);
   return reply.code(err.statusCode ?? 500).send({ message: err.message });
 });
+
+if (existsSync(webDist)) {
+  await app.register(fastifyStatic, {
+    root: webDist,
+    // vite 产物按内容哈希命名可永久缓存；index.html / sw.js / manifest 必须每次回源，否则 PWA 更新不到
+    setHeaders: (reply, path) => reply.header('cache-control', path.includes('/assets/') ? 'public, max-age=31536000, immutable' : 'no-cache'),
+  });
+  // SPA 路由（/new、/s/:id）直接打开或刷新时回 index.html
+  app.setNotFoundHandler((req, reply) => {
+    if (req.method === 'GET' && !req.url.startsWith('/api/') && !req.url.startsWith('/ws')) return reply.sendFile('index.html');
+    return reply.code(404).send({ message: 'Not Found' });
+  });
+  app.log.info({ webDist }, 'serving web build');
+}
 
 app.get('/api/workspaces', () => workspaces.map((cwd) => ({ cwd })));
 
@@ -86,7 +103,10 @@ app.post<{ Params: { id: string }; Body: ResolvePendingBody }>(
   (req) => ({ seq: hub.resolvePending(req.params.id, req.body) }),
 );
 
-app.get('/ws', { websocket: true }, (socket) => {
+// 浏览器允许任意站点跨站发起 WebSocket（§11.3 Origin 检查）：Origin 存在时必须与访问的 Host 一致；非浏览器客户端没有 Origin，放行
+const checkOrigin = (req: { headers: { origin?: string; host?: string } }) => !req.headers.origin || req.headers.origin.endsWith(`//${req.headers.host}`);
+
+app.get('/ws', { websocket: true, preValidation: (req, reply, done) => (checkOrigin(req) ? done() : void reply.code(403).send({ message: 'Origin 不匹配' })) }, (socket) => {
   const send = (m: ServerMessage) => socket.send(JSON.stringify(m));
   const subscriptions = new Map<string, () => void>();
 
