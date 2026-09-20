@@ -210,7 +210,7 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
           return <ToolGroup key={e.key} items={e.items} />
         case 'process':
           return (
-            <ProcessBlock key={e.key} summary={e.summary} open={opened.has(e.key)} onToggle={() => toggleProcess(e.key)}>
+            <ProcessBlock key={e.key} steps={e.steps} tools={e.tools} open={opened.has(e.key)} onToggle={() => toggleProcess(e.key)}>
               {renderEntries(groupTools(e.items))}
             </ProcessBlock>
           )

@@ -22,6 +22,12 @@
   background: var(--hover);
   color: var(--text-2);
 }
+.title {
+  flex: none;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-2);
+}
 .chevron {
   flex: none;
   color: var(--text-4);

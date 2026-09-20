@@ -8,7 +8,7 @@ export type Entry =
   | StreamItem
   | { kind: 'tools'; key: string; items: ToolItem[] }
   /** 一轮已结束时的中间过程：工具卡、中间文本、处理完的审批 / 提问 */
-  | { kind: 'process'; key: string; items: StreamItem[]; summary: string }
+  | { kind: 'process'; key: string; items: StreamItem[]; steps: number; tools: string }
 
 export function layout(items: StreamItem[]): Entry[] {
   const out: Entry[] = []
@@ -29,7 +29,7 @@ function collapse(turn: StreamItem[]): Entry[] {
   const isProcess = (it: StreamItem, i: number) => i !== finalIdx && it.kind !== 'user' && it.kind !== 'error' && it.kind !== 'turn'
   const process = turn.filter(isProcess)
   if (process.length === 0) return turn
-  const block: Entry = { kind: 'process', key: `p${turn[turn.length - 1].key}`, items: process, summary: summarize(process) }
+  const block: Entry = { kind: 'process', key: `p${turn[turn.length - 1].key}`, items: process, steps: process.length, tools: summarizeTools(process) }
   const out: Entry[] = []
   turn.forEach((it, i) => {
     if (!isProcess(it, i)) out.push(it)
@@ -38,11 +38,14 @@ function collapse(turn: StreamItem[]): Entry[] {
   return out
 }
 
-function summarize(process: StreamItem[]): string {
+// 用到的工具按次数降序：`Bash ×2 · Skill`；没有工具调用（只有中间文本 / 提问）时为空
+function summarizeTools(process: StreamItem[]): string {
   const counts = new Map<string, number>()
   for (const it of process) if (it.kind === 'tool') counts.set(it.name, (counts.get(it.name) ?? 0) + 1)
-  const names = [...counts].sort((a, b) => b[1] - a[1]).map(([name, n]) => (n > 1 ? `${name} ×${n}` : name))
-  return [`${process.length} ${process.length === 1 ? 'step' : 'steps'}`, ...names].join(' · ')
+  return [...counts]
+    .sort((a, b) => b[1] - a[1])
+    .map(([name, n]) => (n > 1 ? `${name} ×${n}` : name))
+    .join(' · ')
 }
 
 export function groupTools(items: StreamItem[]): Entry[] {
