@@ -167,7 +167,7 @@ export function createHub(store: Store, attachments: AttachmentStore) {
       if (effort && !effortOptions[provider].some((o) => o.value === effort)) throw new HubError(400, `${provider} does not support effort ${effort}`);
       if (!permissionModeOptions.some((o) => o.value === permissionMode)) throw new HubError(400, `Unsupported permission mode ${permissionMode}`);
       const now = new Date().toISOString();
-      const session: Session = { id: randomUUID(), provider, cwd, providerSessionId: null, status: 'idle', title: null, model, effort, permissionMode, createdAt: now, updatedAt: now };
+      const session: Session = { id: randomUUID(), provider, cwd, providerSessionId: null, status: 'idle', title: null, model, effort, permissionMode, archivedAt: null, createdAt: now, updatedAt: now };
       store.createSession(session);
       return session;
     },
@@ -188,6 +188,14 @@ export function createHub(store: Store, attachments: AttachmentStore) {
     getSession,
     listSessions: store.listSessions,
     usage,
+
+    /** 归档只是隐藏：跟删除一样只允许 idle / error，避免运行中的会话从侧栏消失后没人盯；取消归档没有限制 */
+    setArchived(sessionId: string, archived: boolean): Session {
+      const session = getSession(sessionId);
+      if (archived && (session.status === 'running' || session.status === 'waiting_user')) throw new HubError(409, 'Session is running; stop it or wait for it to finish before archiving');
+      store.setSessionArchivedAt(sessionId, archived ? new Date().toISOString() : null);
+      return getSession(sessionId);
+    },
 
     /** 只删 idle / error 的会话：运行中的让用户先中断或等结束，Hub 不处理关 Provider 的时序 */
     deleteSession(sessionId: string) {
@@ -214,6 +222,8 @@ export function createHub(store: Store, attachments: AttachmentStore) {
         throw new HubError(400, (err as Error).message);
       }
       const provider = ensureProvider(session);
+      // 从归档里点进来继续聊：一旦又活起来就得回到侧栏，否则会在看不见的地方跑
+      if (session.archivedAt) store.setSessionArchivedAt(sessionId, null);
       const { seq } = emit(sessionId, { type: 'message.user', payload: { text, attachments: files } });
       // 一个 Session 同时只允许一个 active turn（方案 §8.3）：进行中就排队，本轮结束后由 onEvent 接着发
       const queued = session.status === 'running' || session.status === 'waiting_user';

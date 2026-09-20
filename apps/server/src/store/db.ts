@@ -52,9 +52,9 @@ export function openStore(path: string) {
       value TEXT NOT NULL
     );
   `);
-  // 旧库没有就补上（SQLite 没有 ADD COLUMN IF NOT EXISTS）：model / effort 是切片 8 加的，permission_mode 是权限模式那次加的
+  // 旧库没有就补上（SQLite 没有 ADD COLUMN IF NOT EXISTS）：model / effort 是切片 8 加的，permission_mode 是权限模式那次加的，archived_at 是切片 12 加的
   const sessionCols = new Set((db.prepare(`PRAGMA table_info(sessions)`).all() as { name: string }[]).map((c) => c.name));
-  for (const col of ['model', 'effort', 'permission_mode']) if (!sessionCols.has(col)) db.exec(`ALTER TABLE sessions ADD COLUMN ${col} TEXT`);
+  for (const col of ['model', 'effort', 'permission_mode', 'archived_at']) if (!sessionCols.has(col)) db.exec(`ALTER TABLE sessions ADD COLUMN ${col} TEXT`);
 
   const insertSession = db.prepare(
     `INSERT INTO sessions (id, provider, cwd, provider_session_id, status, model, effort, permission_mode, created_at, updated_at)
@@ -68,6 +68,8 @@ export function openStore(path: string) {
   const selectSession = db.prepare(`SELECT ${sessionColumns} FROM sessions WHERE id = ?`);
   const selectSessions = db.prepare(`SELECT ${sessionColumns} FROM sessions ORDER BY updated_at DESC`);
   const updateStatus = db.prepare(`UPDATE sessions SET status = ?, updated_at = ? WHERE id = ?`);
+  // 归档不动 updated_at：它不是会话活动，取消归档后仍按原来的活动时间排
+  const updateArchivedAt = db.prepare(`UPDATE sessions SET archived_at = ? WHERE id = ?`);
   const updateProviderSessionId = db.prepare(
     `UPDATE sessions SET provider_session_id = ?, updated_at = ? WHERE id = ?`,
   );
@@ -124,6 +126,7 @@ export function openStore(path: string) {
     effort: (r.effort as string | null) ?? null,
     // 旧行没有这一列：一直以来的实际行为就是审批，落库时按这个兜底
     permissionMode: (r.permission_mode as PermissionMode | null) ?? 'approval',
+    archivedAt: (r.archived_at as string | null) ?? null,
     createdAt: r.created_at as string,
     updatedAt: r.updated_at as string,
   });
@@ -179,6 +182,9 @@ export function openStore(path: string) {
     },
     setSessionStatus(id: string, status: SessionStatus) {
       updateStatus.run(status, new Date().toISOString(), id);
+    },
+    setSessionArchivedAt(id: string, archivedAt: string | null) {
+      updateArchivedAt.run(archivedAt, id);
     },
     setProviderSessionId(id: string, providerSessionId: string) {
       updateProviderSessionId.run(providerSessionId, new Date().toISOString(), id);

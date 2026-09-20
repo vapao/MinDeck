@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type UIEvent } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { ChevronLeft, GitBranch, MessageSquarePlus, Trash2 } from 'lucide-react'
+import { Archive, ArchiveRestore, ChevronLeft, GitBranch, MessageSquarePlus } from 'lucide-react'
 import type { Resolution } from '@agentdeck/shared'
 import { api } from '../api'
 import { formatTokens, providerName } from '../format'
@@ -28,34 +28,35 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
   const queryClient = useQueryClient()
   // 标题由首条消息生成，snapshot 里的 session 不会跟着更新；列表查询在发送成功后会失效重取，从它读最新值
   const sessions = useSessions()
-  const title = sessions.data?.find((s) => s.id === sessionId)?.title ?? session?.title ?? 'New session'
+  const listed = sessions.data?.find((s) => s.id === sessionId)
+  const title = listed?.title ?? session?.title ?? 'New session'
+  const archived = Boolean(listed?.archivedAt)
   const send = useMutation({
     mutationFn: (body: { text: string; attachmentIds: string[] }) => api.sendMessage(sessionId, body),
-    // 首条消息决定列表里的标题
+    // 首条消息决定列表里的标题；归档中的会话发消息后服务端会自动取消归档
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['sessions'] }),
   })
   const interrupt = useMutation({ mutationFn: () => api.interrupt(sessionId) })
-  // "新开一轮" = 同工作区同 Agent 起一个新会话，等价于 CLI 的 /clear。多数时候旧会话已经没用，所以顺带问一句要不要删。
-  // 先建新的、切过去，再删旧的：这样旧会话的 session.deleted 不会打到还开着的页面上；删失败（如刚好又跑起来 409）只提示
+  // "新开一轮" = 同工作区同 Agent 起一个新会话，等价于 CLI 的 /clear。多数时候旧会话已经没用，所以顺带问一句要不要归档。
+  // 先建新的、切过去，再归档旧的；归档失败（如刚好又跑起来 409）只提示
   const fresh = useMutation({
     mutationFn: async (discard: boolean) => {
       const s = await api.createSession({ provider: session!.provider, cwd: session!.cwd })
       navigate(`/s/${s.id}`)
-      if (discard) await api.deleteSession(sessionId).catch((err: Error) => dialog.alert({ title: 'New session created, but the old one was not deleted', message: err.message }))
+      if (discard) await api.updateSession(sessionId, { archived: true }).catch((err: Error) => dialog.alert({ title: 'New session created, but the old one was not archived', message: err.message }))
     },
     onSettled: () => queryClient.invalidateQueries({ queryKey: ['sessions'] }),
   })
   const onFresh = async () => {
-    // 运行中的会话删不了（服务端 409），不问直接保留
-    const canDiscard = status === 'idle' || status === 'error'
+    // 运行中或已归档的不问，直接保留
+    const canDiscard = !archived && (status === 'idle' || status === 'error')
     const discard =
       canDiscard &&
       (await dialog.confirm({
-        title: 'Delete the current session when starting fresh?',
-        message: 'The session and all its history will be deleted permanently. Choose "Keep" to leave it in the list and still start fresh.',
-        ok: 'Delete and start fresh',
+        title: 'Move the current session to inactive when starting fresh?',
+        message: 'Inactive sessions keep their history and stay reachable from the "Inactive" tab. Choose "Keep" to leave it under "Active" and still start fresh.',
+        ok: 'Move to inactive and start fresh',
         cancel: 'Keep and start fresh',
-        danger: true,
       }))
     // null = 直接关掉弹窗，什么也不做
     if (discard === null) return
@@ -67,18 +68,15 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
     busy: resolve.isPending && resolve.variables?.id === id,
     error: resolve.error && resolve.variables?.id === id ? resolve.error.message : null,
   })
-  // 运行中的服务端会 409，消息原样给用户看；成功后列表刷新并回首页
-  const remove = useMutation({
-    mutationFn: () => api.deleteSession(sessionId),
-    onSuccess: () => {
+  // 归档：运行中的服务端会 409，消息原样给用户看；成功后回首页。取消归档留在本页。永久删除只在侧栏「Inactive」页签
+  const setArchived = useMutation({
+    mutationFn: (archived: boolean) => api.updateSession(sessionId, { archived }),
+    onSuccess: (_, archived) => {
       queryClient.invalidateQueries({ queryKey: ['sessions'] })
-      navigate('/')
+      if (archived) navigate('/')
     },
-    onError: (err) => dialog.alert({ title: 'Delete failed', message: err.message }),
+    onError: (err) => dialog.alert({ title: 'Archive failed', message: err.message }),
   })
-  const onDelete = async () => {
-    if (await dialog.confirm({ title: 'Delete this session?', message: 'The session and all its history will be deleted permanently.', ok: 'Delete', danger: true })) remove.mutate()
-  }
   // 在别处被删了：离开页面
   useEffect(() => {
     if (gone) {
@@ -226,7 +224,7 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
           <ChevronLeft size={20} />
         </button>
         <span className={styles.title} title={session?.cwd}>{title}</span>
-        <button type="button" className={styles.fresh} onClick={onFresh} disabled={!session || fresh.isPending} title="Start a new session in the same workspace with a fresh context; optionally delete this one">
+        <button type="button" className={styles.fresh} onClick={onFresh} disabled={!session || fresh.isPending} title="Start a new session in the same workspace with a fresh context; optionally archive this one">
           <MessageSquarePlus size={16} />
           <span className={styles.freshLabel}>Start fresh</span>
         </button>
@@ -235,9 +233,15 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
             <GitBranch size={16} />
           </button>
         )}
-        <button type="button" className={styles.iconButton} data-danger onClick={onDelete} disabled={!session || remove.isPending} aria-label="Delete session" title="Delete the session and all its history">
-          <Trash2 size={16} />
-        </button>
+        {archived ? (
+          <button type="button" className={styles.iconButton} onClick={() => setArchived.mutate(false)} disabled={setArchived.isPending} aria-label="Move back to active" title="Inactive: move it back to the Active tab">
+            <ArchiveRestore size={16} />
+          </button>
+        ) : (
+          <button type="button" className={styles.iconButton} onClick={() => setArchived.mutate(true)} disabled={!session || setArchived.isPending} aria-label="Move to inactive" title="Move to the Inactive tab; history is kept">
+            <Archive size={16} />
+          </button>
+        )}
       </header>
 
       <ConnectionBanner connection={connection} replay={replay} />

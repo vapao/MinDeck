@@ -1,7 +1,7 @@
 import { AlertTriangle, FolderOpen, Plus, Settings } from 'lucide-react'
 import { navigate } from '../router'
 import { useSessions } from '../session/useSessions'
-import { SessionList } from '../components/SessionList'
+import { SessionTabs } from '../components/SessionList'
 import styles from './SessionListPage.module.css'
 
 // 移动端会话列表（UI 规范 §4 移动）
@@ -29,7 +29,7 @@ export function SessionListPage() {
         </button>
       )}
       <main className={styles.list}>
-        {sessions.error ? <div className={styles.error}>{sessions.error.message}</div> : <SessionList sessions={sessions.data ?? []} onSelect={(id) => navigate(`/s/${id}`)} />}
+        {sessions.error ? <div className={styles.error}>{sessions.error.message}</div> : <SessionTabs sessions={sessions.data ?? []} />}
       </main>
       <footer className={styles.footer}>
         <button type="button" className={styles.newButton} onClick={() => navigate('/new')}>

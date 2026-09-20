@@ -3,7 +3,7 @@ import { navigate, usePathname } from './router'
 import { useMediaQuery } from './session/useMediaQuery'
 import { useSessions } from './session/useSessions'
 import { notificationsSupported, useNotificationPermission, useNotifications } from './session/useNotifications'
-import { SessionList } from './components/SessionList'
+import { SessionTabs } from './components/SessionList'
 import { RateMeter } from './components/RateMeter'
 import { useResizable } from './components/Resizer'
 import { NewSessionPage } from './pages/NewSessionPage'
@@ -55,7 +55,7 @@ function Sidebar({ activeId }: { activeId?: string }) {
         )}
       </div>
       <div className={styles.sidebarList}>
-        <SessionList sessions={sessions.data ?? []} activeId={activeId} onSelect={(id) => navigate(`/s/${id}`)} />
+        <SessionTabs sessions={sessions.data ?? []} activeId={activeId} />
       </div>
       <button type="button" className={styles.newButton} onClick={() => navigate('/new')}>
         <Plus size={16} />

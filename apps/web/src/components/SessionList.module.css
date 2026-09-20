@@ -15,21 +15,91 @@
 }
 .groupHead {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: 4px 10px 5px;
+  gap: 4px;
+  width: 100%;
+  padding: 4px 6px 5px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: none;
   font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;
   color: var(--text-4);
+  cursor: pointer;
+}
+.groupHead:hover {
+  color: var(--text-2);
 }
 .groupName {
+  flex: 1;
+  text-align: left;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .groupCount {
   color: var(--text-4);
+}
+.tabs {
+  display: flex;
+  gap: 2px;
+  margin: 0 6px 8px;
+  padding: 2px;
+  border-radius: var(--radius-control);
+  background: var(--surface-2);
+}
+.tab {
+  flex: 1;
+  height: 24px;
+  border: 0;
+  border-radius: calc(var(--radius-control) - 2px);
+  background: none;
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.tab:hover {
+  color: var(--text);
+}
+.tab[aria-selected='true'] {
+  background: var(--surface);
+  color: var(--text-strong);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+.row {
+  position: relative;
+}
+/* 行操作盖在右上角，桌面 hover 时才出现，盖住时间那一角；移动端没有 hover，常显 */
+.actions {
+  position: absolute;
+  top: 7px;
+  right: 8px;
+  display: none;
+  gap: 2px;
+}
+.row:hover .actions {
+  display: flex;
+}
+.action {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: var(--surface-2);
+  color: var(--text-3);
+  cursor: pointer;
+}
+.action:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.action[data-danger]:hover {
+  background: var(--danger-bg);
+  color: var(--danger);
 }
 .item {
   display: flex;
@@ -120,6 +190,11 @@
 @media (max-width: 1023px) {
   .item {
     min-height: 64px;
+  }
+  .actions {
+    display: flex;
+    top: 8px;
+    right: 36px;
   }
   .chevron {
     display: block;

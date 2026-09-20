@@ -6,7 +6,7 @@ import Fastify from 'fastify';
 import websocket from '@fastify/websocket';
 import multipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
-import type { ClientMessage, CreateSessionBody, CreateWorkspaceBody, ListDirsResponse, ResolvePendingBody, SendMessageBody, ServerMessage, UpdateSettingsBody, UpdateWorkspaceBody, UsageResponse, Workspace } from '@agentdeck/shared';
+import type { ClientMessage, CreateSessionBody, CreateWorkspaceBody, ListDirsResponse, ResolvePendingBody, SendMessageBody, ServerMessage, UpdateSessionBody, UpdateSettingsBody, UpdateWorkspaceBody, UsageResponse, Workspace } from '@agentdeck/shared';
 import { openStore } from './store/db';
 import { createAttachmentStore, isImageMime, maxAttachmentBytes, maxAttachmentsPerMessage } from './store/attachments';
 import { createHub, HubError } from './hub';
@@ -157,6 +157,12 @@ app.get<{ Params: { id: string }; Querystring: { path: string } }>('/api/session
 app.get<{ Params: { id: string }; Querystring: { path: string } }>('/api/sessions/:id/file', pathQuery, (req) => readWorkspaceFile(hub.getSession(req.params.id).cwd, req.query.path));
 
 app.get<{ Params: { id: string }; Querystring: { q?: string } }>('/api/sessions/:id/entries', (req) => listEntries(hub.getSession(req.params.id).cwd, req.query.q ?? ''));
+
+app.patch<{ Params: { id: string }; Body: UpdateSessionBody }>(
+  '/api/sessions/:id',
+  { schema: { body: { type: 'object', required: ['archived'], properties: { archived: { type: 'boolean' } } } } },
+  (req) => hub.setArchived(req.params.id, req.body.archived),
+);
 
 app.delete<{ Params: { id: string } }>('/api/sessions/:id', (req) => {
   hub.deleteSession(req.params.id);

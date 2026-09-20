@@ -18,6 +18,8 @@ export type Session = {
   effort: string | null;
   /** 创建时定下，会话生命周期内不变（同 model / effort）：审批走 Hub 审批卡，还是完全跳过审批 */
   permissionMode: PermissionMode;
+  /** 归档只是从侧栏隐藏，事件流与 Provider 原生记录都还在；再给它发消息会自动取消归档 */
+  archivedAt: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -213,6 +215,10 @@ export type SendMessageResponse = { seq: number; queued: boolean };
 
 /** POST /api/sessions/:id/interrupt，无 body；未在运行时 409 */
 export type InterruptResponse = { ok: true };
+
+/** PATCH /api/sessions/:id：归档 / 取消归档；归档 running / waiting_user 的会话 409（跟删除一样让用户先中断） */
+export type UpdateSessionBody = { archived: boolean };
+export type UpdateSessionResponse = Session;
 
 /** DELETE /api/sessions/:id：连同事件、待处理请求、附件（含文件）一起删；running / waiting_user 时 409 */
 export type DeleteSessionResponse = { ok: true };
