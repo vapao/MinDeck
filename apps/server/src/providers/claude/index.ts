@@ -43,9 +43,13 @@ export function startClaudeSession({ cwd, resume, model, effort, permissionMode,
       effort: effort as EffortLevel | undefined,
       env: childEnv(),
       permissionMode: sdkPermissionMode,
+      // 不设 systemPrompt 时 SDK 只给"最小提示词"，跟 CLI 不一样；用 preset 对齐
+      systemPrompt: { type: 'preset', preset: 'claude_code' },
       includePartialMessages: true,
-      // 只加载工作区的 project 设置：本机 user 设置是 bypassPermissions，会让审批静默通过（AGENTS.md 规则 2）
-      settingSources: ['project'],
+      // 加载 user 是为了拿 ~/.claude/CLAUDE.md、个人 skill 和插件；但本机 settings.json 的 defaultMode 是 bypassPermissions，
+      // 会压过 permissionMode 选项，所以用 flag 层（最高优先级）把它按会话强制回来，并在 init 回包里复核（AGENTS.md 规则 2）
+      settingSources: ['user', 'project'],
+      settings: { permissions: { defaultMode: sdkPermissionMode } },
       canUseTool,
     },
   });
@@ -54,7 +58,7 @@ export function startClaudeSession({ cwd, resume, model, effort, permissionMode,
     try {
       for await (const m of q) {
         if (m.type === 'system' && m.subtype === 'init' && m.permissionMode !== sdkPermissionMode) {
-          onEvent({ type: 'error', payload: { message: `工作区 settings 把 permissionMode 改成了 ${m.permissionMode}，跟 Hub 要求的 ${sdkPermissionMode} 不一致，已拒绝启动` } });
+          onEvent({ type: 'error', payload: { message: `settings 把 permissionMode 改成了 ${m.permissionMode}，跟 Hub 要求的 ${sdkPermissionMode} 不一致，已拒绝启动` } });
           inbox.close();
           return;
         }

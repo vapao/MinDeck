@@ -57,7 +57,7 @@ cd apps/server && node scripts/p0-codex-harness.mjs    # Codex app-server 回归
 ## 本项目已定的规则（来自 P0 验证，不要回退）
 
 1. **`tsconfig.base.json` 用 `moduleResolution: "bundler"` + `noEmit`**，不是 NodeNext：Codex `generate-ts` 输出无扩展名相对导入。server 由 tsx 运行，不产出 tsc 编译物，launchd 也按 `tsx` 跑。
-2. **Claude Provider 的 `settingSources` 只取 `project`**，并在 init 消息里校验实际 `permissionMode` 与会话的 `permissionMode`（'approval' → SDK `default`；'bypass' → SDK `bypassPermissions`）一致，不符时拒绝启动 session。原因：开发者本机 `~/.claude/settings.json` 是 `bypassPermissions`，加载 `user` 会让审批在 Hub 没打算这么做时也静默通过。
+2. **Claude Provider 加载 `settingSources: ['user', 'project']`，但用 flag 层 `settings: { permissions: { defaultMode } }` 按会话强制权限模式**（'approval' → SDK `default`；'bypass' → SDK `bypassPermissions`），并在 init 消息里校验实际 `permissionMode` 与传的一致，不符时拒绝启动 session。原因：开发者本机 `~/.claude/settings.json` 是 `bypassPermissions`，直接加载 `user` 会压过 `permissionMode` 选项让审批静默通过（P0 验证）；而不加载 `user` 又拿不到 `~/.claude/CLAUDE.md`、`~/.claude/skills/` 个人 skill 和 `enabledPlugins` 插件（这些只随 user 源发现，没有独立选项）。flag 层压得住 defaultMode 已于 2026-09-20 用真实会话验证。**系统提示词用 `systemPrompt: { type: 'preset', preset: 'claude_code' }`**：不设时 SDK 只给最小提示词（无安全规则、编码指引、环境上下文），跟 CLI 不一致。
 3. **interrupt 后的 turn 返回 `result.subtype = "error_during_execution"`**（`errors` 含 `[ede_diagnostic] … stop_reason=null`），normalizer 必须映射为"用户中断"而非错误；在该 result 之后立刻关闭输入流 SDK 会抛 `Claude Code returned an error result`，关 session 前先处理。
 4. **认证**：不设 `ANTHROPIC_API_KEY`，SDK 复用本机 `claude` 的 claude.ai 登录（init `apiKeySource: "none"`），并推送 `rate_limit_event`（含 `five_hour` / `seven_day` 利用率）——额度条直接用它。此方式仅限自用，不可对外提供。
 5. **SDK 消息类型有 40 余种**，normalizer 只显式映射 §7.2 需要的子集，其余归入 `provider.raw` 保留不映射。
