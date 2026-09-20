@@ -1,4 +1,5 @@
-import type { ComponentProps } from 'react'
+import { useRef, useState, type ComponentProps } from 'react'
+import { Check, Copy } from 'lucide-react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import styles from './AssistantMessage.module.css'
@@ -10,6 +11,29 @@ const components = {
     void node
     return <a {...props} target="_blank" rel="noreferrer" />
   },
+  pre({ node, ...props }: ComponentProps<'pre'> & { node?: unknown }) {
+    void node
+    return <CodeBlock {...props} />
+  },
+}
+
+/** 代码块右上角挂一个复制按钮；文本直接取渲染后的 textContent，不用再从 AST 里拼 */
+function CodeBlock(props: ComponentProps<'pre'>) {
+  const pre = useRef<HTMLPreElement>(null)
+  const [copied, setCopied] = useState(false)
+  const copy = async () => {
+    await navigator.clipboard.writeText(pre.current!.textContent ?? '')
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }
+  return (
+    <div className={styles.code}>
+      <pre ref={pre} {...props} />
+      <button type="button" className={styles.copy} onClick={copy} aria-label="Copy code" title="Copy">
+        {copied ? <Check size={13} /> : <Copy size={13} />}
+      </button>
+    </div>
+  )
 }
 
 type Props = { text: string; streaming: boolean }

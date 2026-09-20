@@ -22,29 +22,20 @@
 .head:hover {
   background: var(--hover);
 }
-.lines {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
 .title {
+  flex: none;
   font-size: 12px;
   font-weight: 500;
   color: var(--text-2);
 }
 .icon {
   flex: none;
-  color: var(--ok);
 }
-[data-state='running'] > .icon,
-[data-state='running'] > .head > .icon {
+[data-state='running'] > .icon {
   color: var(--running);
   animation: spin 1s linear infinite;
 }
-[data-state='failed'] > .icon,
-[data-state='failed'] > .head > .icon {
+[data-state='failed'] > .icon {
   color: var(--danger);
 }
 .name {
@@ -54,6 +45,7 @@
   color: var(--text);
 }
 .summary {
+  flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;

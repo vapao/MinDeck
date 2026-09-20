@@ -3,7 +3,7 @@ export function summarizeToolInput(input: unknown): string {
   if (typeof input !== 'object' || input === null) return '';
   const o = input as Record<string, unknown>;
   let summary = '';
-  for (const k of ['command', 'file_path', 'pattern', 'path', 'url', 'query', 'description']) {
+  for (const k of ['command', 'file_path', 'pattern', 'path', 'url', 'query', 'skill', 'description']) {
     if (typeof o[k] === 'string') {
       summary = o[k];
       break;
