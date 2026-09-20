@@ -6,7 +6,7 @@ import Fastify from 'fastify';
 import websocket from '@fastify/websocket';
 import multipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
-import type { AgentEvent, ClientMessage, CreateSessionBody, CreateWorkspaceBody, ListDirsResponse, ResolvePendingBody, SendMessageBody, ServerMessage, UpdateSettingsBody, UpdateWorkspaceBody, UsageResponse, Workspace } from '@agentdeck/shared';
+import type { ClientMessage, CreateSessionBody, CreateWorkspaceBody, ListDirsResponse, ResolvePendingBody, SendMessageBody, ServerMessage, UpdateSettingsBody, UpdateWorkspaceBody, UsageResponse, Workspace } from '@agentdeck/shared';
 import { openStore } from './store/db';
 import { createAttachmentStore, isImageMime, maxAttachmentBytes, maxAttachmentsPerMessage } from './store/attachments';
 import { createHub, HubError } from './hub';
@@ -61,9 +61,9 @@ app.post<{ Body: CreateWorkspaceBody }>(
   { schema: { body: { type: 'object', required: ['path', 'alias'], properties: { path: { type: 'string' }, alias: { type: 'string', minLength: 1 } } } } },
   (req, reply) => {
     const path = resolve(req.body.path);
-    if (!insideHome(path)) throw new HubError(400, '只能添加家目录内的目录');
-    if (!existsSync(path) || !statSync(path).isDirectory()) throw new HubError(400, '目录不存在');
-    if (store.getWorkspaceByPath(path)) throw new HubError(409, '该目录已添加');
+    if (!insideHome(path)) throw new HubError(400, 'Only directories inside the home folder can be added');
+    if (!existsSync(path) || !statSync(path).isDirectory()) throw new HubError(400, 'Directory not found');
+    if (store.getWorkspaceByPath(path)) throw new HubError(409, 'Directory already added');
     const w: Workspace = { id: randomUUID(), path, alias: req.body.alias.trim(), createdAt: new Date().toISOString() };
     store.createWorkspace(w);
     return reply.code(201).send(w);
@@ -74,22 +74,22 @@ app.patch<{ Params: { id: string }; Body: UpdateWorkspaceBody }>(
   '/api/workspaces/:id',
   { schema: { body: { type: 'object', required: ['alias'], properties: { alias: { type: 'string', minLength: 1 } } } } },
   (req) => {
-    if (!store.setWorkspaceAlias(req.params.id, req.body.alias.trim())) throw new HubError(404, '工作区不存在');
+    if (!store.setWorkspaceAlias(req.params.id, req.body.alias.trim())) throw new HubError(404, 'Workspace not found');
     return store.getWorkspace(req.params.id);
   },
 );
 
 // 只从列表移除；该目录下已有的会话及其记录不动
 app.delete<{ Params: { id: string } }>('/api/workspaces/:id', (req) => {
-  if (!store.deleteWorkspace(req.params.id)) throw new HubError(404, '工作区不存在');
+  if (!store.deleteWorkspace(req.params.id)) throw new HubError(404, 'Workspace not found');
   return { ok: true };
 });
 
 // 目录浏览（给添加工作区用）：只列家目录内的子目录，跳过隐藏目录；读不了的目录（权限）直接跳过
 app.get<{ Querystring: { path?: string } }>('/api/fs/dirs', (req): ListDirsResponse => {
   const path = resolve(req.query.path ?? home);
-  if (!insideHome(path)) throw new HubError(400, '只能浏览家目录内的目录');
-  if (!existsSync(path) || !statSync(path).isDirectory()) throw new HubError(404, '目录不存在');
+  if (!insideHome(path)) throw new HubError(400, 'Only directories inside the home folder can be browsed');
+  if (!existsSync(path) || !statSync(path).isDirectory()) throw new HubError(404, 'Directory not found');
   const dirs = readdirSync(path, { withFileTypes: true })
     .filter((d) => d.isDirectory() && !d.name.startsWith('.'))
     .map((d) => ({ name: d.name, path: resolve(path, d.name) }))
@@ -145,7 +145,7 @@ app.post<{ Params: { id: string }; Body: SendMessageBody }>(
   },
   (req, reply) => {
     const { text, attachmentIds = [] } = req.body;
-    if (!text.trim() && attachmentIds.length === 0) throw new HubError(400, '消息不能为空');
+    if (!text.trim() && attachmentIds.length === 0) throw new HubError(400, 'Message is empty');
     return reply.code(202).send(hub.sendMessage(req.params.id, text, attachmentIds));
   },
 );
@@ -172,15 +172,15 @@ app.post<{ Params: { id: string } }>('/api/sessions/:id/interrupt', async (req) 
 app.post<{ Params: { id: string } }>('/api/sessions/:id/attachments', async (req, reply) => {
   const session = hub.getSession(req.params.id);
   const file = await req.file();
-  if (!file) throw new HubError(400, '缺少文件字段 file');
-  if (!isImageMime(file.mimetype)) throw new HubError(415, `不支持的类型 ${file.mimetype}，只接受 PNG / JPEG / WebP / GIF`);
+  if (!file) throw new HubError(400, 'Missing file field "file"');
+  if (!isImageMime(file.mimetype)) throw new HubError(415, `Unsupported type ${file.mimetype}; only PNG / JPEG / WebP / GIF are accepted`);
   const bytes = await file.toBuffer();
   return reply.code(201).send(attachments.save(session.id, file.filename, file.mimetype, bytes));
 });
 
 app.get<{ Params: { id: string } }>('/api/attachments/:id', (req, reply) => {
   const a = attachments.get(req.params.id);
-  if (!a) throw new HubError(404, '附件不存在');
+  if (!a) throw new HubError(404, 'Attachment not found');
   // id 是随机 UUID 且内容不可变，可长期缓存
   return reply.type(a.mimeType).header('cache-control', 'private, max-age=31536000, immutable').send(createReadStream(attachments.pathOf(a)));
 });
@@ -194,7 +194,7 @@ app.post<{ Params: { id: string }; Body: ResolvePendingBody }>(
 // 浏览器允许任意站点跨站发起 WebSocket（§11.3 Origin 检查）：Origin 存在时必须与访问的 Host 一致；非浏览器客户端没有 Origin，放行
 const checkOrigin = (req: { headers: { origin?: string; host?: string } }) => !req.headers.origin || req.headers.origin.endsWith(`//${req.headers.host}`);
 
-app.get('/ws', { websocket: true, preValidation: (req, reply, done) => (checkOrigin(req) ? done() : void reply.code(403).send({ message: 'Origin 不匹配' })) }, (socket) => {
+app.get('/ws', { websocket: true, preValidation: (req, reply, done) => (checkOrigin(req) ? done() : void reply.code(403).send({ message: 'Origin mismatch' })) }, (socket) => {
   const send = (m: ServerMessage) => socket.send(JSON.stringify(m));
   const subscriptions = new Map<string, () => void>();
 
@@ -203,7 +203,7 @@ app.get('/ws', { websocket: true, preValidation: (req, reply, done) => (checkOri
     try {
       msg = JSON.parse(data.toString());
     } catch {
-      return send({ type: 'error', code: 'bad_json', message: '消息不是合法 JSON' });
+      return send({ type: 'error', code: 'bad_json', message: 'Message is not valid JSON' });
     }
     switch (msg.type) {
       case 'ping':
@@ -226,7 +226,7 @@ app.get('/ws', { websocket: true, preValidation: (req, reply, done) => (checkOri
         send({ type: 'replay.completed', lastSeq: hub.lastSeq(msg.sessionId) });
         subscriptions.set(
           msg.sessionId,
-          hub.subscribe(msg.sessionId, (event: AgentEvent) => send({ type: 'event', event }), () => {
+          hub.subscribe(msg.sessionId, send, () => {
             send({ type: 'session.deleted' });
             subscriptions.delete(msg.sessionId);
           }),

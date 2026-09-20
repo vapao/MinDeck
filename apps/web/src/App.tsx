@@ -48,9 +48,9 @@ function Sidebar({ activeId }: { activeId?: string }) {
           AgentDeck
         </span>
         {notificationsSupported && notify.permission === 'default' && (
-          <button type="button" className={styles.bell} onClick={notify.request} title="会话等待审批或完成时弹系统通知">
+          <button type="button" className={styles.bell} onClick={notify.request} title="System notification when a session needs approval or finishes">
             <Bell size={14} />
-            开启通知
+            Enable notifications
           </button>
         )}
       </div>
@@ -59,17 +59,17 @@ function Sidebar({ activeId }: { activeId?: string }) {
       </div>
       <button type="button" className={styles.newButton} onClick={() => navigate('/new')}>
         <Plus size={16} />
-        新建会话
+        New session
       </button>
       <RateMeter />
       <nav className={styles.nav}>
         <button type="button" className={styles.navButton} onClick={() => navigate('/workspaces')}>
           <FolderOpen size={14} />
-          项目
+          Projects
         </button>
         <button type="button" className={styles.navButton} onClick={() => navigate('/settings')}>
           <Settings size={14} />
-          设置
+          Settings
         </button>
       </nav>
     </aside>

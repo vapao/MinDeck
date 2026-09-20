@@ -8,7 +8,7 @@ export function ConnectionBanner({ connection, replay }: Pick<StreamState, 'conn
     return (
       <div className={styles.banner} data-offline>
         <WifiOff size={14} />
-        连接已断开，正在重连…
+        Connection lost, reconnecting…
       </div>
     )
   }
@@ -17,7 +17,7 @@ export function ConnectionBanner({ connection, replay }: Pick<StreamState, 'conn
     return (
       <div className={styles.banner}>
         <RefreshCw size={14} />
-        {n === 0 ? '已重新连接，没有错过事件' : `已重新连接 · 回放 ${n} 条事件`}
+        {n === 0 ? 'Reconnected, no events missed' : `Reconnected · replayed ${n} ${n === 1 ? 'event' : 'events'}`}
         {n > 0 && (
           <code className={styles.seq}>
             seq {replay.from} → {replay.to}

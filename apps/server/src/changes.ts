@@ -21,8 +21,8 @@ async function git(cwd: string, args: string[], okExitCodes: number[] = [0]): Pr
   } catch (err) {
     const e = err as { code?: number | string; stdout?: string; stderr?: string; killed?: boolean };
     if (typeof e.code === 'number' && okExitCodes.includes(e.code)) return e.stdout ?? '';
-    if (e.killed) throw new HubError(504, 'git 超时');
-    throw new HubError(500, `git 失败：${(e.stderr ?? '').trim() || String(e.code)}`);
+    if (e.killed) throw new HubError(504, 'git timed out');
+    throw new HubError(500, `git failed: ${(e.stderr ?? '').trim() || String(e.code)}`);
   }
 }
 
@@ -46,7 +46,7 @@ async function insideCwd(cwd: string, rel: string): Promise<string> {
     // 文件不存在（已删除的文件看 diff 时）：按字面路径判断
     real = abs;
   }
-  if (real !== root && !real.startsWith(root + sep) && abs !== root && !abs.startsWith(root + sep)) throw new HubError(400, '路径不在工作区内');
+  if (real !== root && !real.startsWith(root + sep) && abs !== root && !abs.startsWith(root + sep)) throw new HubError(400, 'Path is outside the workspace');
   return abs;
 }
 
@@ -102,7 +102,7 @@ export async function readWorkspaceFile(cwd: string, rel: string): Promise<FileR
   try {
     buf = await readFile(abs);
   } catch {
-    throw new HubError(404, '文件不存在');
+    throw new HubError(404, 'File not found');
   }
   const head = buf.subarray(0, Math.min(buf.length, 8000));
   if (head.includes(0)) return { path: rel, content: null, truncated: false, binary: true };

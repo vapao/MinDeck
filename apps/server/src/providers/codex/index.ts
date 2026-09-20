@@ -31,7 +31,7 @@ function appServer() {
     },
     async onRequest(r) {
       const t = threads.get(threadIdOf(r.params) ?? '');
-      if (!t) throw new RpcError(-32001, '该 thread 不属于任何 AgentDeck 会话');
+      if (!t) throw new RpcError(-32001, 'Thread does not belong to any AgentDeck session');
       return t.onRequest(r);
     },
     onExit(error) {
@@ -90,7 +90,7 @@ export function startCodexSession({ cwd, resume, model, effort, permissionMode, 
           // Codex 按问题 id 收答案，Hub 的 QuestionAnswers 按问题文本；这里做双向映射。Codex 的问题都是单选，"其它"自由文本走 response
           const questions: QuestionSpec[] = r.params.questions.map((q) => ({ question: q.question, header: q.header, multiSelect: false, options: q.options ?? [] }));
           const res = await onPending({ kind: 'question', toolUseId: r.params.itemId, questions }, abort.signal);
-          if (res?.kind !== 'question') throw new RpcError(-32000, '用户没有回答');
+          if (res?.kind !== 'question') throw new RpcError(-32000, 'The user did not answer');
           const answers = Object.fromEntries(
             r.params.questions.map((q) => [q.id, { answers: res.answers[q.question]?.length ? res.answers[q.question] : res.response ? [res.response] : [] }]),
           );
@@ -98,8 +98,7 @@ export function startCodexSession({ cwd, resume, model, effort, permissionMode, 
         }
         default:
           // 其余服务端请求（MCP elicitation、动态工具等）一律按不支持回复，Codex 会把该调用当失败继续
-          onEvent({ type: 'provider.raw', payload: { kind: `unsupported_request/${r.method}`, data: r.params } });
-          throw new RpcError(-32601, `AgentDeck 不支持 ${r.method}`);
+          throw new RpcError(-32601, `AgentDeck does not support ${r.method}`);
       }
     },
     onExit,
@@ -118,7 +117,7 @@ export function startCodexSession({ cwd, resume, model, effort, permissionMode, 
   const opened = ready.then(async () => {
     const res = (resume ? await rpc.request('thread/resume', { threadId: resume, ...policy }) : await rpc.request('thread/start', policy)) as ThreadStartResponse;
     if (res.approvalPolicy !== policy.approvalPolicy || res.sandbox.type !== expectedSandboxType) {
-      throw new Error(`Codex 没有接受 Hub 的审批策略（approvalPolicy=${JSON.stringify(res.approvalPolicy)}，sandbox=${res.sandbox.type}），已拒绝启动`);
+      throw new Error(`Codex did not accept the Hub approval policy (approvalPolicy=${JSON.stringify(res.approvalPolicy)}, sandbox=${res.sandbox.type}); refusing to start`);
     }
     threadId = res.thread.id;
     threads.set(threadId, handler);
@@ -143,7 +142,7 @@ export function startCodexSession({ cwd, resume, model, effort, permissionMode, 
           },
           () => {}, // thread 没开起来已经走了 onExit，不再重复报
         )
-        .catch((err: Error) => onEvent({ type: 'turn.failed', payload: { message: `Codex 拒绝开始本轮：${err.message}` } }));
+        .catch((err: Error) => onEvent({ type: 'turn.failed', payload: { message: `Codex refused to start the turn: ${err.message}` } }));
     },
     async interrupt() {
       if (!threadId || !turnId) return;

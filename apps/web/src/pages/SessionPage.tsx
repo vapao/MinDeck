@@ -12,7 +12,7 @@ import { useSessions } from '../session/useSessions'
 import { ChangesPanel } from '../components/ChangesPanel'
 import { UserMessage } from '../components/UserMessage'
 import { AssistantMessage } from '../components/AssistantMessage'
-import { ToolCard, ToolGroup } from '../components/ToolCard'
+import { ToolGroup } from '../components/ToolCard'
 import { ProcessBlock } from '../components/ProcessBlock'
 import { ErrorCard } from '../components/ErrorCard'
 import { TurnRow, WorkingRow } from '../components/TurnRow'
@@ -28,7 +28,7 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
   const queryClient = useQueryClient()
   // 标题由首条消息生成，snapshot 里的 session 不会跟着更新；列表查询在发送成功后会失效重取，从它读最新值
   const sessions = useSessions()
-  const title = sessions.data?.find((s) => s.id === sessionId)?.title ?? session?.title ?? '新会话'
+  const title = sessions.data?.find((s) => s.id === sessionId)?.title ?? session?.title ?? 'New session'
   const send = useMutation({
     mutationFn: (body: { text: string; attachmentIds: string[] }) => api.sendMessage(sessionId, body),
     // 首条消息决定列表里的标题
@@ -41,7 +41,7 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
     mutationFn: async (discard: boolean) => {
       const s = await api.createSession({ provider: session!.provider, cwd: session!.cwd })
       navigate(`/s/${s.id}`)
-      if (discard) await api.deleteSession(sessionId).catch((err: Error) => dialog.alert({ title: '新会话已建好，但旧会话没删掉', message: err.message }))
+      if (discard) await api.deleteSession(sessionId).catch((err: Error) => dialog.alert({ title: 'New session created, but the old one was not deleted', message: err.message }))
     },
     onSettled: () => queryClient.invalidateQueries({ queryKey: ['sessions'] }),
   })
@@ -51,10 +51,10 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
     const discard =
       canDiscard &&
       (await dialog.confirm({
-        title: '新开一轮时删除当前会话？',
-        message: '会连同它的全部记录一起删除，不可恢复。选「保留」则当前会话留在列表里，同样新开一轮。',
-        ok: '删除并新开',
-        cancel: '保留并新开',
+        title: 'Delete the current session when starting fresh?',
+        message: 'The session and all its history will be deleted permanently. Choose "Keep" to leave it in the list and still start fresh.',
+        ok: 'Delete and start fresh',
+        cancel: 'Keep and start fresh',
         danger: true,
       }))
     // null = 直接关掉弹窗，什么也不做
@@ -74,10 +74,10 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
       queryClient.invalidateQueries({ queryKey: ['sessions'] })
       navigate('/')
     },
-    onError: (err) => dialog.alert({ title: '删除失败', message: err.message }),
+    onError: (err) => dialog.alert({ title: 'Delete failed', message: err.message }),
   })
   const onDelete = async () => {
-    if (await dialog.confirm({ title: '删除这个会话？', message: '会话及其全部记录将被删除，不可恢复。', ok: '删除', danger: true })) remove.mutate()
+    if (await dialog.confirm({ title: 'Delete this session?', message: 'The session and all its history will be deleted permanently.', ok: 'Delete', danger: true })) remove.mutate()
   }
   // 在别处被删了：离开页面
   useEffect(() => {
@@ -139,11 +139,11 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
   const hint = mutationError
     ? mutationError.message
     : connection !== 'open'
-      ? '等待连接…'
+      ? 'Connecting…'
       : status === 'waiting_user'
-        ? `处理上方的请求后 ${provider} 才会继续`
+        ? `${provider} will continue once you handle the request above`
         : status === 'running'
-          ? '当前有一轮在运行，发送将作为追加指令排队'
+          ? 'A turn is running; your message will be queued as a follow-up'
           : ''
   // 状态区：Provider · 模型 · 思考等级 · 上下文用量；init 前模型取创建时指定的；没指定 effort（用 Provider 默认）就不显示
   const meta = [providerName[provider], model ?? session?.model, session?.effort, context !== null && formatTokens(context)].filter(Boolean).join(' · ')
@@ -154,8 +154,6 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
         return <UserMessage key={it.key} text={it.text} attachments={it.attachments} at={it.at} />
       case 'assistant':
         return <AssistantMessage key={it.key} text={it.text} streaming={it.streaming} />
-      case 'tool':
-        return <ToolCard key={it.key} name={it.name} input={it.input} output={it.output} isError={it.isError} />
       case 'error':
         return <ErrorCard key={it.key} message={it.message} />
       case 'turn':
@@ -203,7 +201,7 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
     list.map((e) => {
       switch (e.kind) {
         case 'tools':
-          return <ToolGroup key={e.key}>{e.items.map(renderItem)}</ToolGroup>
+          return <ToolGroup key={e.key} items={e.items} />
         case 'process':
           return (
             <ProcessBlock key={e.key} summary={e.summary} open={opened.has(e.key)} onToggle={() => toggleProcess(e.key)}>
@@ -218,20 +216,20 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
   return (
     <div className={styles.page}>
       <header className={styles.topbar}>
-        <button type="button" className={styles.back} onClick={() => navigate('/')} aria-label="返回">
+        <button type="button" className={styles.back} onClick={() => navigate('/')} aria-label="Back">
           <ChevronLeft size={20} />
         </button>
         <span className={styles.title} title={session?.cwd}>{title}</span>
-        <button type="button" className={styles.fresh} onClick={onFresh} disabled={!session || fresh.isPending} title="同工作区新开一个会话，清空上下文；可选删除当前会话">
+        <button type="button" className={styles.fresh} onClick={onFresh} disabled={!session || fresh.isPending} title="Start a new session in the same workspace with a fresh context; optionally delete this one">
           <MessageSquarePlus size={16} />
-          <span className={styles.freshLabel}>新开一轮</span>
+          <span className={styles.freshLabel}>Start fresh</span>
         </button>
         {desktop && (
-          <button type="button" className={styles.iconButton} data-active={showChanges || undefined} onClick={toggleChanges} aria-label="改动侧栏" title="显示 / 隐藏改动侧栏">
+          <button type="button" className={styles.iconButton} data-active={showChanges || undefined} onClick={toggleChanges} aria-label="Changes panel" title="Show / hide the changes panel">
             <GitBranch size={16} />
           </button>
         )}
-        <button type="button" className={styles.iconButton} data-danger onClick={onDelete} disabled={!session || remove.isPending} aria-label="删除会话" title="删除会话及其全部记录">
+        <button type="button" className={styles.iconButton} data-danger onClick={onDelete} disabled={!session || remove.isPending} aria-label="Delete session" title="Delete the session and all its history">
           <Trash2 size={16} />
         </button>
       </header>
@@ -259,7 +257,7 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
                 meta={meta}
                 hint={hint}
                 hintError={mutationError !== null}
-                placeholder={`给 ${providerName[provider]} 发消息 · Enter 发送 · Shift+Enter 换行`}
+                placeholder={`Message ${providerName[provider]} · Enter to send · Shift+Enter for a new line`}
                 upload={(file) => api.uploadAttachment(sessionId, file)}
                 search={(q) => api.listEntries(sessionId, q)}
                 onSend={(text, attachmentIds) => send.mutate({ text, attachmentIds })}

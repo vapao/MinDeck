@@ -1,5 +1,4 @@
 .card {
-  max-width: min(var(--assistant-w), 100%);
   padding: 10px 14px;
   border: 1px solid var(--danger-border);
   border-radius: var(--radius-card);

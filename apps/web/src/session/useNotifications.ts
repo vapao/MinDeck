@@ -8,7 +8,7 @@ import { navigate } from '../router'
 
 export const notificationsSupported = 'Notification' in window
 
-const outcomes: Partial<Record<SessionStatus, string>> = { waiting_user: '等待你处理', idle: '已完成', error: '出错了' }
+const outcomes: Partial<Record<SessionStatus, string>> = { waiting_user: 'Waiting for you', idle: 'Finished', error: 'Failed' }
 
 export function useNotifications(sessions: Session[] | undefined, activeId: string | undefined) {
   const prev = useRef<Map<string, SessionStatus> | null>(null)
@@ -26,7 +26,7 @@ export function useNotifications(sessions: Session[] | undefined, activeId: stri
       if (!text || s.status === was) continue
       // 正盯着这个会话且窗口在前台时不弹
       if (s.id === activeId && document.visibilityState === 'visible') continue
-      const n = new Notification(`${s.title ?? '新会话'} · ${text}`, { body: s.cwd.split('/').pop(), tag: s.id })
+      const n = new Notification(`${s.title ?? 'New session'} · ${text}`, { body: s.cwd.split('/').pop(), tag: s.id })
       n.onclick = () => {
         window.focus()
         navigate(`/s/${s.id}`)

@@ -28,7 +28,7 @@ export function RateMeter() {
           {g.items.map((u) => {
             const pct = Math.round(u.utilization * 100)
             return (
-              <div key={u.rateLimitType} className={styles.meter} title={`${label(u)} 额度已用 ${pct}%${u.resetsAt ? `，${formatUntil(u.resetsAt)} 后重置` : ''}`}>
+              <div key={u.rateLimitType} className={styles.meter} title={`${label(u)} usage ${pct}%${u.resetsAt ? `, resets in ${formatUntil(u.resetsAt)}` : ''}`}>
                 <span className={styles.label}>{label(u)}</span>
                 <div className={styles.bar}>
                   <div className={styles.fill} style={{ width: `${Math.min(100, pct)}%` }} />

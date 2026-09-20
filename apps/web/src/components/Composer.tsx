@@ -163,8 +163,8 @@ export function Composer({ draftKey, disabled, running, interrupting, onInterrup
             <div key={d.key} className={styles.chip} data-status={d.status} title={d.status === 'error' ? d.message : d.file.name}>
               <img className={styles.chipThumb} src={d.previewUrl} alt="" />
               <code className={styles.chipName}>{d.file.name}</code>
-              <span className={styles.chipMeta}>{d.status === 'uploading' ? '上传中…' : d.status === 'error' ? '上传失败' : formatSize(d.file.size)}</span>
-              <button type="button" className={styles.chipRemove} onClick={() => remove(d.key)} aria-label="移除">
+              <span className={styles.chipMeta}>{d.status === 'uploading' ? 'Uploading…' : d.status === 'error' ? 'Upload failed' : formatSize(d.file.size)}</span>
+              <button type="button" className={styles.chipRemove} onClick={() => remove(d.key)} aria-label="Remove">
                 <X size={14} />
               </button>
             </div>
@@ -175,7 +175,7 @@ export function Composer({ draftKey, disabled, running, interrupting, onInterrup
         {mention && (
           <div className={styles.mentions}>
             {options.length === 0 ? (
-              <div className={styles.mentionEmpty}>{entries.isFetching ? '…' : '没有匹配'}</div>
+              <div className={styles.mentionEmpty}>{entries.isFetching ? '…' : 'No matches'}</div>
             ) : (
               options.map((opt, i) => (
                 <button
@@ -235,21 +235,21 @@ export function Composer({ draftKey, disabled, running, interrupting, onInterrup
                 e.target.value = ''
               }}
             />
-            <button type="button" className={styles.attach} onClick={() => fileInput.current?.click()} disabled={drafts.length >= maxPerMessage} aria-label="添加图片" title="添加图片">
+            <button type="button" className={styles.attach} onClick={() => fileInput.current?.click()} disabled={drafts.length >= maxPerMessage} aria-label="Add image" title="Add image">
               <ImagePlus size={16} />
             </button>
             <span className={styles.meta}>{meta}</span>
             {(failed || uploading || hint) && (
               <span className={styles.hint} data-error={(failed || hintError) || undefined}>
-                {failed ? failed.message : uploading ? '正在上传图片…' : hint}
+                {failed ? failed.message : uploading ? 'Uploading images…' : hint}
               </span>
             )}
             {running ? (
-              <button type="button" className={styles.stop} onClick={onInterrupt} disabled={interrupting} aria-label="中断" title="中断当前这一轮">
+              <button type="button" className={styles.stop} onClick={onInterrupt} disabled={interrupting} aria-label="Stop" title="Stop the current turn">
                 <Square size={14} />
               </button>
             ) : (
-              <button type="button" className={styles.send} onClick={submit} disabled={!canSend} aria-label="发送">
+              <button type="button" className={styles.send} onClick={submit} disabled={!canSend} aria-label="Send">
                 <ArrowUp size={16} />
               </button>
             )}

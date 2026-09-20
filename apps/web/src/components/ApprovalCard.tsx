@@ -16,14 +16,14 @@ type Props = {
   onResolve: (decision: ApprovalDecision) => void
 }
 
-const decisionLabel: Record<ApprovalDecision, string> = { allow_once: '已允许', allow_session: '已允许（本会话）', deny: '已拒绝' }
+const decisionLabel: Record<ApprovalDecision, string> = { allow_once: 'Allowed', allow_session: 'Allowed (this session)', deny: 'Denied' }
 
 export function ApprovalCard({ request, cwd, state, decision, resolvedAt, busy, error, onResolve }: Props) {
   const elapsed = useElapsed(request.createdAt, state === 'pending')
   const input = request.input as Record<string, unknown>
   const command = typeof input.command === 'string' ? input.command : null
   const filePath = typeof input.file_path === 'string' ? input.file_path : null
-  const headline = state === 'pending' ? '需要你的批准' : state === 'expired' ? '审批已失效' : `审批 · ${decisionLabel[decision!]}`
+  const headline = state === 'pending' ? 'Approval needed' : state === 'expired' ? 'Approval expired' : `Approval · ${decisionLabel[decision!]}`
 
   return (
     <div className={styles.card} data-state={state}>
@@ -31,7 +31,7 @@ export function ApprovalCard({ request, cwd, state, decision, resolvedAt, busy, 
         <ShieldAlert size={16} className={styles.headIcon} />
         {headline}
         <span className={styles.chip}>{request.toolName}</span>
-        <span className={styles.headMeta}>{state === 'pending' ? `等待 ${formatElapsed(elapsed)}` : resolvedAt ? formatTime(resolvedAt) : ''}</span>
+        <span className={styles.headMeta}>{state === 'pending' ? `Waiting ${formatElapsed(elapsed)}` : resolvedAt ? formatTime(resolvedAt) : ''}</span>
       </div>
       <div className={styles.body}>
         {request.title && <div className={styles.text}>{request.title}</div>}
@@ -45,12 +45,12 @@ export function ApprovalCard({ request, cwd, state, decision, resolvedAt, busy, 
         {state === 'pending' && (
           <>
             <div className={styles.field}>
-              <span className={styles.label}>目录</span>
+              <span className={styles.label}>Directory</span>
               <span className={styles.mono}>{cwd}</span>
             </div>
             {(request.description || request.decisionReason) && (
               <div className={styles.field}>
-                <span className={styles.label}>原因</span>
+                <span className={styles.label}>Reason</span>
                 <span className={styles.text}>{request.description ?? request.decisionReason}</span>
               </div>
             )}
@@ -60,15 +60,15 @@ export function ApprovalCard({ request, cwd, state, decision, resolvedAt, busy, 
       {state === 'pending' && (
         <div className={styles.actions}>
           <button type="button" className={styles.primary} disabled={busy} onClick={() => onResolve('allow_once')}>
-            允许一次
+            Allow once
           </button>
           {request.sessionAllowPatterns.length > 0 && (
             <button type="button" className={styles.secondary} disabled={busy} onClick={() => onResolve('allow_session')}>
-              本会话允许 {request.sessionAllowPatterns.join(', ')}
+              Allow for this session: {request.sessionAllowPatterns.join(', ')}
             </button>
           )}
           <button type="button" className={styles.ghost} disabled={busy} onClick={() => onResolve('deny')}>
-            拒绝
+            Deny
           </button>
           {error && <div className={styles.error}>{error}</div>}
         </div>

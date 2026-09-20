@@ -36,12 +36,12 @@ export function NewSessionPage() {
         <h1 className={styles.brand}>AgentDeck</h1>
         <label className={styles.field}>
           <span className={styles.labelRow}>
-            工作区
+            Workspace
             <button type="button" className={styles.link} onClick={() => navigate('/workspaces')}>
-              管理项目
+              Manage projects
             </button>
           </span>
-          <Select value={selected} onChange={setCwd} disabled={!workspaces.data} placeholder="还没有项目" options={(workspaces.data ?? []).map((w) => ({ value: w.path, label: w.alias, hint: w.path }))} />
+          <Select value={selected} onChange={setCwd} disabled={!workspaces.data} placeholder="No projects yet" options={(workspaces.data ?? []).map((w) => ({ value: w.path, label: w.alias, hint: w.path }))} />
         </label>
         <label className={styles.field}>
           <span>Agent</span>
@@ -49,18 +49,18 @@ export function NewSessionPage() {
         </label>
         <div className={styles.pair}>
           <label className={styles.field}>
-            <span>模型</span>
-            <Select value={model} onChange={(v) => patch('model', v)} options={[{ value: '', label: '默认' }, ...modelOptions[provider]]} />
+            <span>Model</span>
+            <Select value={model} onChange={(v) => patch('model', v)} options={[{ value: '', label: 'Default' }, ...modelOptions[provider]]} />
           </label>
           <label className={styles.field}>
-            <span>思考等级</span>
-            <Select value={effort} onChange={(v) => patch('effort', v)} options={[{ value: '', label: '默认' }, ...effortOptions[provider]]} />
+            <span>Effort</span>
+            <Select value={effort} onChange={(v) => patch('effort', v)} options={[{ value: '', label: 'Default' }, ...effortOptions[provider]]} />
           </label>
         </div>
         <label className={styles.field}>
-          <span>权限模式</span>
+          <span>Permission mode</span>
           <Select value={permissionMode} onChange={(v) => patch('permissionMode', v)} options={[...permissionModeOptions]} />
-          {permissionMode === 'bypass' && <div className={styles.error}>不经审批直接执行任意命令，风险自负</div>}
+          {permissionMode === 'bypass' && <div className={styles.error}>Runs any command without approval. Use at your own risk.</div>}
         </label>
         <button
           type="button"
@@ -70,9 +70,9 @@ export function NewSessionPage() {
             if (
               permissionMode === 'bypass' &&
               !(await dialog.confirm({
-                title: '新建一个跳过审批的会话？',
-                message: '这个会话将完全跳过审批，不经确认直接执行任意命令，风险自负。',
-                ok: '仍然新建',
+                title: 'Create a session that bypasses approval?',
+                message: 'This session will skip approval entirely and run any command without confirmation. Use at your own risk.',
+                ok: 'Create anyway',
                 danger: true,
               }))
             )
@@ -80,9 +80,9 @@ export function NewSessionPage() {
             create.mutate({ provider, cwd: selected, model, effort, permissionMode: permissionMode as PermissionMode })
           }}
         >
-          新建 {providerName[provider]} 会话
+          New {providerName[provider]} session
         </button>
-        {workspaces.data?.length === 0 && <div className={styles.error}>还没有项目，先去「管理项目」添加一个</div>}
+        {workspaces.data?.length === 0 && <div className={styles.error}>No projects yet. Add one under "Manage projects" first.</div>}
         {(create.error ?? workspaces.error) && <div className={styles.error}>{(create.error ?? workspaces.error)!.message}</div>}
       </div>
     </div>

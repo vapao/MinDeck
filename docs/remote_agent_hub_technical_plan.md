@@ -301,8 +301,8 @@ subscribe(session: ProviderSession, emit: (event: AgentEvent) => void): Unsubscr
 |-----------------------------------------------|---------------------------------------|
 | session.started / session.resumed             | 建立/恢复 Provider 会话               |
 | turn.started / turn.completed / turn.failed   | 一轮工作的生命周期                    |
-| message.delta / message.completed             | Assistant 文本流                      |
-| tool.started / tool.progress / tool.completed | Read/Bash/Edit/MCP 等工具卡片         |
+| message.delta / message.completed             | Assistant 文本流（delta 只广播不落库） |
+| tool.started / tool.completed                 | 工具卡：只记 name + 一行 summary 与成败，不存输出 |
 | file.changed                                  | 结构化文件变更/diff 摘要              |
 | approval.requested / approval.resolved        | 命令/文件/权限审批                    |
 | user_input.requested / user_input.resolved    | Agent 向用户发起的问题                |
@@ -346,7 +346,7 @@ Hub 为每个 Session 保存一条递增序号的标准化事件流。它服务�
 event = {
 sessionId: "sess_...",
 seq: 1042,
-type: "message.delta",
+type: "message.completed",
 provider: "claude",
 providerEventId: "...",
 payload: {...},
@@ -721,7 +721,7 @@ error { code, message }
 
 **4. `rateLimitInfo` 对 Claude 可立即实现。**`rate_limit_event.rate_limit_info` 含 `status`、`rateLimitType`（`five_hour` / `seven_day` / `seven_day_opus` 等）、`utilization`、`resetsAt`。§7.3 中 Claude 的 `rateLimitInfo` 取 `true`，P3 的额度面板不必等待。
 
-**5. SDK 消息类型远多于 §7.2 的核心事件。**一次 session 内观察到 `system/hook_started`、`system/hook_response`、`system/status`、`rate_limit_event` 等；`SDKMessage` 联合类型共 40 余种。normalizer 应显式处理需要的子集，其余归入 `provider.raw` 事件保留而不映射，避免每次 SDK 升级都要补类型。
+**5. SDK 消息类型远多于 §7.2 的核心事件。**一次 session 内观察到 `system/hook_started`、`system/hook_response`、`system/status`、`rate_limit_event` 等；`SDKMessage` 联合类型共 40 余种。normalizer 应显式处理需要的子集，其余直接丢弃（最初设计为归入 `provider.raw` 保留，2026-09-20 取消：没有消费者，只是撑大库和回放），避免每次 SDK 升级都要补类型。
 
 ## 16.2 Codex P0 验证记录（2026-09-19，切片 5）
 
@@ -753,7 +753,7 @@ error { code, message }
 
 **5. 一个 Hub 进程一个 app-server（§5.1）可行。**`account/rateLimits/updated` 等账号级通知没有 `threadId`，广播给所有会话，各自 normalizer 按内容去重后落库。app-server 每个 thread 启动时会拉起本机配置的 MCP server（`mcpServer/startupStatus/updated`）与 hooks，约 3s。
 
-**6. 高频通知不落库。**`item/reasoning/*Delta`、`item/commandExecution/outputDelta` 直接丢弃；`thread/tokenUsage/updated`、`thread/status/changed` 等归入 `provider.raw`。
+**6. 高频通知不落库。**`item/reasoning/*Delta`、`item/commandExecution/outputDelta` 直接丢弃；`thread/tokenUsage/updated` 映射为 `context.updated`，其余未映射通知也直接丢弃。
 
 # 17. 决策记录
 

@@ -14,7 +14,7 @@ type Props = {
 }
 
 // 原生 <select> 的弹层不跟随主题，这里用按钮 + 自绘列表替代；键盘：上下 / Enter / Escape，与 Composer 的 @ 弹层一致
-export function Select({ value, options, onChange, disabled, placeholder = '请选择' }: Props) {
+export function Select({ value, options, onChange, disabled, placeholder = 'Select' }: Props) {
   const [open, setOpen] = useState(false)
   const [active, setActive] = useState(0)
   const root = useRef<HTMLDivElement>(null)

@@ -6,7 +6,8 @@ import type { AgentEvent, ApprovalDecision, Attachment, PendingRequest, Question
 export type StreamItem =
   | { kind: 'user'; key: string; text: string; attachments: Attachment[]; at: string }
   | { kind: 'assistant'; key: string; messageId: string; text: string; streaming: boolean }
-  | { kind: 'tool'; key: string; toolUseId: string; name: string; input: unknown; output: string | null; isError: boolean; at: string }
+  /** done 为 false 表示还在跑；服务端不保存工具输出，卡片只显示做了什么 */
+  | { kind: 'tool'; key: string; toolUseId: string; name: string; summary: string; done: boolean; isError: boolean; at: string }
   | { kind: 'error'; key: string; message: string; at: string }
   /** 一轮结束的落款：完成 / 中断 及用时 */
   | { kind: 'turn'; key: string; reason: TurnEndReason; durationMs: number; at: string }
@@ -64,6 +65,9 @@ function reduce(state: StreamState, action: Action): StreamState {
     case 'event':
       if (m.event.seq <= state.lastSeq) return state
       return applyEvent({ ...state, lastSeq: m.event.seq }, m.event)
+    // 流式片段不占 seq：追加到对应消息上，没见过这条消息就新开一条
+    case 'message.delta':
+      return { ...state, items: mergeAssistantText(state.items, m.messageId, m.text, false) }
     case 'session.deleted':
       return { ...state, gone: true }
     case 'error':
@@ -84,34 +88,31 @@ function reduce(state: StreamState, action: Action): StreamState {
   }
 }
 
+// completed 携带完整文本，覆盖 delta 拼接结果（掉线期间丢掉的片段由此补齐）
+function mergeAssistantText(items: StreamItem[], messageId: string, text: string, done: boolean): StreamItem[] {
+  const i = items.findIndex((it) => it.kind === 'assistant' && it.messageId === messageId)
+  if (i === -1) return [...items, { kind: 'assistant', key: messageId, messageId, text, streaming: !done }]
+  const cur = items[i] as Extract<StreamItem, { kind: 'assistant' }>
+  return items.toSpliced(i, 1, { ...cur, text: done ? text : cur.text + text, streaming: !done })
+}
+
 function applyEvent(state: StreamState, e: AgentEvent): StreamState {
   const items = state.items
   switch (e.type) {
     case 'message.user':
       return { ...state, items: [...items, { kind: 'user', key: `u${e.seq}`, text: e.payload.text, attachments: e.payload.attachments ?? [], at: e.createdAt }] }
-    case 'message.delta':
-    case 'message.completed': {
-      const { messageId, text } = e.payload
-      const done = e.type === 'message.completed'
-      const i = items.findIndex((it) => it.kind === 'assistant' && it.messageId === messageId)
-      if (i === -1) {
-        return { ...state, items: [...items, { kind: 'assistant', key: messageId, messageId, text, streaming: !done }] }
-      }
-      const cur = items[i] as Extract<StreamItem, { kind: 'assistant' }>
-      // completed 携带完整文本，覆盖 delta 拼接结果
-      const next = { ...cur, text: done ? text : cur.text + text, streaming: !done }
-      return { ...state, items: items.toSpliced(i, 1, next) }
-    }
+    case 'message.completed':
+      return { ...state, items: mergeAssistantText(items, e.payload.messageId, e.payload.text, true) }
     case 'tool.started':
       return {
         ...state,
-        items: [...items, { kind: 'tool', key: e.payload.toolUseId, toolUseId: e.payload.toolUseId, name: e.payload.name, input: e.payload.input, output: null, isError: false, at: e.createdAt }],
+        items: [...items, { kind: 'tool', key: e.payload.toolUseId, toolUseId: e.payload.toolUseId, name: e.payload.name, summary: e.payload.summary, done: false, isError: false, at: e.createdAt }],
       }
     case 'tool.completed': {
       const i = items.findIndex((it) => it.kind === 'tool' && it.toolUseId === e.payload.toolUseId)
       if (i === -1) return state
       const cur = items[i] as Extract<StreamItem, { kind: 'tool' }>
-      return { ...state, changesVersion: state.changesVersion + 1, items: items.toSpliced(i, 1, { ...cur, output: e.payload.output, isError: e.payload.isError }) }
+      return { ...state, changesVersion: state.changesVersion + 1, items: items.toSpliced(i, 1, { ...cur, done: true, isError: e.payload.isError }) }
     }
     case 'approval.requested':
       return { ...state, items: [...items, { kind: 'approval', key: e.payload.request.id, request: e.payload.request, state: 'pending', decision: null, resolvedAt: null }] }

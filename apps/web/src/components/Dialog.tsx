@@ -77,7 +77,7 @@ function Modal({ request }: { request: Request }) {
       <form className={styles.box} onSubmit={onSubmit}>
         <div className={styles.head}>
           <div className={styles.title}>{request.title}</div>
-          <button type="button" className={styles.close} onClick={() => el.current!.close()} aria-label="关闭">
+          <button type="button" className={styles.close} onClick={() => el.current!.close()} aria-label="Close">
             <X size={16} />
           </button>
         </div>
@@ -95,11 +95,11 @@ function Modal({ request }: { request: Request }) {
         <div className={styles.actions}>
           {request.kind !== 'alert' && (
             <button type="button" className={styles.secondary} onClick={cancel}>
-              {request.cancel ?? '取消'}
+              {request.cancel ?? 'Cancel'}
             </button>
           )}
           <button type="submit" className={styles.primary} data-danger={(request.kind === 'confirm' && request.danger) || undefined} autoFocus={request.kind !== 'prompt'}>
-            {request.ok ?? '确定'}
+            {request.ok ?? 'OK'}
           </button>
         </div>
       </form>

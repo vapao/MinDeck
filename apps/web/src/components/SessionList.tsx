@@ -5,7 +5,7 @@ import { api } from '../api'
 import { formatTime } from '../format'
 import styles from './SessionList.module.css'
 
-const statusText: Record<SessionStatus, string> = { running: '运行中', waiting_user: '等待你', idle: '空闲', error: '出错' }
+const statusText: Record<SessionStatus, string> = { running: 'Running', waiting_user: 'Waiting for you', idle: 'Idle', error: 'Error' }
 
 type Props = { sessions: Session[]; activeId?: string; onSelect: (id: string) => void }
 
@@ -17,7 +17,7 @@ export function SessionList({ sessions, activeId, onSelect }: Props) {
   const workspaces = useQuery({ queryKey: ['workspaces'], queryFn: api.listWorkspaces })
   const aliasOf = (cwd: string) => workspaces.data?.find((w) => w.path === cwd)?.alias ?? cwd.split('/').pop()
 
-  if (sessions.length === 0) return <div className={styles.empty}>还没有会话</div>
+  if (sessions.length === 0) return <div className={styles.empty}>No sessions yet</div>
   return (
     <div className={styles.list}>
       {[...groups].map(([cwd, items]) => (
@@ -31,7 +31,7 @@ export function SessionList({ sessions, activeId, onSelect }: Props) {
               <span className={styles.dot} data-status={s.status} />
               <span className={styles.body}>
                 <span className={styles.titleRow}>
-                  <span className={styles.title}>{s.title ?? '新会话'}</span>
+                  <span className={styles.title}>{s.title ?? 'New session'}</span>
                   <span className={styles.time}>{formatTime(s.updatedAt)}</span>
                 </span>
                 <span className={styles.metaRow}>

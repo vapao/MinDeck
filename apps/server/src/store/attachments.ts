@@ -37,7 +37,7 @@ export function createAttachmentStore(store: Store, root: string) {
     forMessage(sessionId: string, ids: string[]): Attachment[] {
       return ids.map((id) => {
         const a = store.getAttachment(id);
-        if (!a || a.sessionId !== sessionId) throw new Error(`附件 ${id} 不存在或不属于该会话`);
+        if (!a || a.sessionId !== sessionId) throw new Error(`Attachment ${id} not found or belongs to another session`);
         return a;
       });
     },

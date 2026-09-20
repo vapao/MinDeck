@@ -42,7 +42,7 @@ function summarize(process: StreamItem[]): string {
   const counts = new Map<string, number>()
   for (const it of process) if (it.kind === 'tool') counts.set(it.name, (counts.get(it.name) ?? 0) + 1)
   const names = [...counts].sort((a, b) => b[1] - a[1]).map(([name, n]) => (n > 1 ? `${name} ×${n}` : name))
-  return [`${process.length} 步`, ...names].join(' · ')
+  return [`${process.length} ${process.length === 1 ? 'step' : 'steps'}`, ...names].join(' · ')
 }
 
 export function groupTools(items: StreamItem[]): Entry[] {

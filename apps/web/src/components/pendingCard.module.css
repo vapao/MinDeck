@@ -1,6 +1,5 @@
 /* ApprovalCard 与 QuestionCard 共用的琥珀卡片样式（设计规范 §3） */
 .card {
-  max-width: min(var(--assistant-w), 100%);
   border: 1px solid var(--accent-border);
   border-radius: var(--radius-card);
   background: var(--accent-bg);

@@ -1,4 +1,4 @@
-import type { ImageMimeType, PendingRequestBody, PermissionMode, ProviderEvent, Resolution } from '@agentdeck/shared';
+import type { ImageMimeType, PendingRequestBody, PermissionMode, ProviderOutput, Resolution } from '@agentdeck/shared';
 
 /** Hub 发给 Provider 的一条用户消息；图片已经落在本机磁盘，各 Provider 自己决定按路径还是按字节送 */
 export type OutgoingMessage = {
@@ -23,7 +23,7 @@ export type StartOptions = {
   effort?: string;
   /** 'approval'（默认）走 Hub 审批卡；'bypass' 让 Provider 不经审批直接执行，风险自负 */
   permissionMode: PermissionMode;
-  onEvent(event: ProviderEvent): void;
+  onEvent(event: ProviderOutput): void;
   /** 审批 / 提问：等用户在某个设备上处理；signal 触发（如 turn 被中断）时 resolve 为 null */
   onPending(body: PendingRequestBody, signal: AbortSignal): Promise<Resolution | null>;
   /** Provider 进程结束（正常关闭或抛错）后调用一次 */

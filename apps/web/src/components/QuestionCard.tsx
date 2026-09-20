@@ -33,8 +33,8 @@ export function QuestionCard({ request, provider, state, answers, response, reso
     <div className={styles.card} data-state={state}>
       <div className={styles.head}>
         <CircleHelp size={16} className={styles.headIcon} />
-        {state === 'pending' ? `${provider} 想确认` : state === 'expired' ? '提问已失效' : '提问 · 已回答'}
-        <span className={styles.headMeta}>{state === 'pending' ? (request.questions.some((q) => q.multiSelect) ? '可多选' : '单选') : resolvedAt ? formatTime(resolvedAt) : ''}</span>
+        {state === 'pending' ? `${provider} is asking` : state === 'expired' ? 'Question expired' : 'Question · answered'}
+        <span className={styles.headMeta}>{state === 'pending' ? (request.questions.some((q) => q.multiSelect) ? 'Multi-select' : 'Single choice') : resolvedAt ? formatTime(resolvedAt) : ''}</span>
       </div>
       <div className={styles.body}>
         {request.questions.map((q) => (
@@ -57,20 +57,20 @@ export function QuestionCard({ request, provider, state, answers, response, reso
                 </label>
               ))
             ) : (
-              <div>{answers?.[q.question]?.join('、') ?? '—'}</div>
+              <div>{answers?.[q.question]?.join(', ') ?? '—'}</div>
             )}
           </div>
         ))}
         {state === 'pending' ? (
-          <input className={styles.other} value={other} placeholder="其它（自由输入）" onChange={(e) => setOther(e.target.value)} />
+          <input className={styles.other} value={other} placeholder="Other (free text)" onChange={(e) => setOther(e.target.value)} />
         ) : (
-          response && <div className={styles.text}>其它：{response}</div>
+          response && <div className={styles.text}>Other: {response}</div>
         )}
       </div>
       {state === 'pending' && (
         <div className={styles.actions}>
           <button type="button" className={styles.primary} disabled={busy || !complete} onClick={() => onSubmit(picked, other.trim() || undefined)}>
-            提交回答
+            Submit
           </button>
           {error && <div className={styles.error}>{error}</div>}
         </div>

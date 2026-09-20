@@ -12,7 +12,7 @@ export default defineConfig({
       manifest: {
         name: 'AgentDeck',
         short_name: 'AgentDeck',
-        description: 'Claude / Codex 多端控制台',
+        description: 'Multi-device console for Claude / Codex',
         lang: 'zh-CN',
         display: 'standalone',
         background_color: '#111214',

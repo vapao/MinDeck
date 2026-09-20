@@ -1,7 +1,8 @@
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk';
-import type { ProviderEvent } from '@agentdeck/shared';
+import type { ProviderEvent, ProviderOutput } from '@agentdeck/shared';
+import { summarizeToolInput } from '../summary';
 
-// SDK 消息 → 统一事件。只显式映射 §7.2 需要的子集，其余归入 provider.raw（AGENTS.md 规则 5）。
+// SDK 消息 → 统一事件。只显式映射 §7.2 需要的子集，其余直接丢弃（AGENTS.md 规则 5）。
 // 一个 normalizer 实例对应一个 session：需要跨消息记住当前正在流式输出的 assistant 消息 ID。
 export function createNormalizer(resumed: boolean) {
   let streamingMessageId: string | null = null;
@@ -12,7 +13,7 @@ export function createNormalizer(resumed: boolean) {
   // AskUserQuestion 的 tool_use / tool_result 不开工具卡：提问与回答由 canUseTool 产生的 user_input 事件承载，再出一张卡是冗余
   const hiddenToolIds = new Set<string>();
 
-  function normalize(m: SDKMessage): ProviderEvent[] {
+  function normalize(m: SDKMessage): ProviderOutput[] {
     switch (m.type) {
       case 'system':
         if (m.subtype === 'init') {
@@ -21,7 +22,7 @@ export function createNormalizer(resumed: boolean) {
           started = true;
           return [{ type: resumed ? 'session.resumed' : 'session.started', payload: { providerSessionId: m.session_id, model: m.model } }];
         }
-        return [raw(m)];
+        return [];
 
       case 'rate_limit_event': {
         // 实际消息里各窗口的利用率在 unifiedWindows（SDK 类型未声明）；顶层字段只有 rateLimitType / resetsAt
@@ -42,7 +43,7 @@ export function createNormalizer(resumed: boolean) {
         const e = m.event;
         if (e.type === 'message_start') streamingMessageId = e.message.id;
         if (e.type === 'content_block_delta' && e.delta.type === 'text_delta' && streamingMessageId) {
-          return [{ type: 'message.delta', payload: { messageId: streamingMessageId, text: e.delta.text } }];
+          return [{ type: 'message.delta', messageId: streamingMessageId, text: e.delta.text }];
         }
         return [];
       }
@@ -62,23 +63,18 @@ export function createNormalizer(resumed: boolean) {
         for (const b of m.message.content) {
           if (b.type !== 'tool_use') continue;
           if (b.name === 'AskUserQuestion') hiddenToolIds.add(b.id);
-          else events.push({ type: 'tool.started', payload: { toolUseId: b.id, name: b.name, input: b.input } });
+          else events.push({ type: 'tool.started', payload: { toolUseId: b.id, name: b.name, summary: summarizeToolInput(b.input) } });
         }
         streamingMessageId = null;
         return events;
       }
 
       case 'user': {
-        // 只关心 tool_result；其余 user 消息是 Hub 自己发出去的回显，UI 已经有了
+        // 只关心 tool_result 的成败；输出本身不保存（用户不看，白占体积）。其余 user 消息是 Hub 自己发出去的回显，UI 已经有了
         if (typeof m.message.content === 'string') return [];
-        return m.message.content.flatMap((b): ProviderEvent[] => {
-          if (b.type !== 'tool_result' || hiddenToolIds.has(b.tool_use_id)) return [];
-          const output =
-            typeof b.content === 'string'
-              ? b.content
-              : (b.content ?? []).map((c) => (c.type === 'text' ? c.text : `[${c.type}]`)).join('\n');
-          return [{ type: 'tool.completed', payload: { toolUseId: b.tool_use_id, output, isError: b.is_error === true } }];
-        });
+        return m.message.content.flatMap((b): ProviderEvent[] =>
+          b.type !== 'tool_result' || hiddenToolIds.has(b.tool_use_id) ? [] : [{ type: 'tool.completed', payload: { toolUseId: b.tool_use_id, isError: b.is_error === true } }],
+        );
       }
 
       case 'result': {
@@ -95,7 +91,7 @@ export function createNormalizer(resumed: boolean) {
       }
 
       default:
-        return [raw(m)];
+        return [];
     }
   }
 
@@ -106,9 +102,4 @@ export function createNormalizer(resumed: boolean) {
       interrupting = true;
     },
   };
-}
-
-function raw(m: SDKMessage): ProviderEvent<'provider.raw'> {
-  const kind = 'subtype' in m && typeof m.subtype === 'string' ? `${m.type}/${m.subtype}` : m.type;
-  return { type: 'provider.raw', payload: { kind, data: m } };
 }

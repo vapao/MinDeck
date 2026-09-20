@@ -86,14 +86,14 @@ export function ChangesPanel({ sessionId, version }: Props) {
       <aside className={styles.panel} style={{ width }}>
         <div {...handle} />
         <header className={styles.head}>
-          <button type="button" className={styles.iconButton} onClick={() => setSelected(null)} aria-label="返回列表">
+          <button type="button" className={styles.iconButton} onClick={() => setSelected(null)} aria-label="Back to list">
             <ChevronLeft size={16} />
           </button>
           <code className={styles.path} title={selected}>{selected}</code>
           <button type="button" className={styles.iconButton} data-active={view === 'diff' || undefined} onClick={() => setView('diff')} title="Diff">
             <FileDiff size={15} />
           </button>
-          <button type="button" className={styles.iconButton} data-active={view === 'file' || undefined} onClick={() => setView('file')} title="整个文件">
+          <button type="button" className={styles.iconButton} data-active={view === 'file' || undefined} onClick={() => setView('file')} title="Whole file">
             <FileCode size={15} />
           </button>
         </header>
@@ -107,10 +107,10 @@ export function ChangesPanel({ sessionId, version }: Props) {
     <aside className={styles.panel} style={{ width }}>
       <div {...handle} />
       <header className={styles.head}>
-        <span className={styles.title}>改动</span>
+        <span className={styles.title}>Changes</span>
         {changes.data?.git && <code className={styles.count}>{files.length}</code>}
         <span style={{ flex: 1 }} />
-        <button type="button" className={styles.iconButton} onClick={() => refetch()} disabled={changes.isFetching} aria-label="刷新">
+        <button type="button" className={styles.iconButton} onClick={() => refetch()} disabled={changes.isFetching} aria-label="Refresh">
           <RefreshCw size={14} className={changes.isFetching ? styles.spin : undefined} />
         </button>
       </header>
@@ -118,9 +118,9 @@ export function ChangesPanel({ sessionId, version }: Props) {
         {changes.error ? (
           <div className={styles.empty}>{changes.error.message}</div>
         ) : changes.data && !changes.data.git ? (
-          <div className={styles.empty}>不是 git 仓库</div>
+          <div className={styles.empty}>Not a git repository</div>
         ) : files.length === 0 ? (
-          <div className={styles.empty}>{changes.data ? '工作区干净' : '…'}</div>
+          <div className={styles.empty}>{changes.data ? 'Working tree clean' : '…'}</div>
         ) : (
           <Tree node={buildTree(files)} depth={0} onSelect={setSelected} />
         )}
@@ -134,11 +134,11 @@ function DiffView({ sessionId, path }: { sessionId: string; path: string }) {
   const q = useQuery({ queryKey: ['diff', sessionId, path], queryFn: () => api.fileDiff(sessionId, path), staleTime: 0 })
   if (q.error) return <div className={styles.empty}>{q.error.message}</div>
   if (!q.data) return <div className={styles.empty}>…</div>
-  if (q.data.binary) return <div className={styles.empty}>二进制文件</div>
+  if (q.data.binary) return <div className={styles.empty}>Binary file</div>
   const lines = q.data.diff.split('\n')
   // 只展示 hunk 内容：文件头四行对用户没信息量
   const body = lines.slice(lines.findIndex((l) => l.startsWith('@@')))
-  if (body.length === 0 || !body[0].startsWith('@@')) return <div className={styles.empty}>没有差异</div>
+  if (body.length === 0 || !body[0].startsWith('@@')) return <div className={styles.empty}>No differences</div>
   return (
     <pre className={styles.code}>
       {body.map((l, i) => (
@@ -154,7 +154,7 @@ function FileView({ sessionId, path }: { sessionId: string; path: string }) {
   const q = useQuery({ queryKey: ['file', sessionId, path], queryFn: () => api.readFile(sessionId, path), staleTime: 0 })
   if (q.error) return <div className={styles.empty}>{q.error.message}</div>
   if (!q.data) return <div className={styles.empty}>…</div>
-  if (q.data.binary || q.data.content === null) return <div className={styles.empty}>二进制文件</div>
+  if (q.data.binary || q.data.content === null) return <div className={styles.empty}>Binary file</div>
   const lines = q.data.content.split('\n')
   return (
     <pre className={styles.code}>
@@ -164,7 +164,7 @@ function FileView({ sessionId, path }: { sessionId: string; path: string }) {
           {l || ' '}
         </div>
       ))}
-      {q.data.truncated && <div className={styles.empty}>文件过大，只显示前 512KB</div>}
+      {q.data.truncated && <div className={styles.empty}>File too large, showing the first 512KB</div>}
     </pre>
   )
 }

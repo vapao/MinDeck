@@ -33,9 +33,9 @@ export function SettingsPage() {
     for (const p of ['claude', 'codex'] as const) {
       if (draft[p].permissionMode !== 'bypass' || saved.data?.[p].permissionMode === 'bypass') continue
       const ok = await dialog.confirm({
-        title: `把 ${providerName[p]} 的默认权限模式设为「完全跳过审批」？`,
-        message: '之后新建的会话不经审批直接执行任意命令，任何能连上这台 Hub 的设备都能触发，风险自负。',
-        ok: '设为跳过审批',
+        title: `Set the default permission mode for ${providerName[p]} to bypass approval?`,
+        message: 'New sessions will run any command without approval, and any device that can reach this Hub can trigger it. Use at your own risk.',
+        ok: 'Bypass approval',
         danger: true,
       })
       if (!ok) return
@@ -47,36 +47,36 @@ export function SettingsPage() {
     <div className={styles.page}>
       <div className={styles.card}>
         <div className={styles.head}>
-          <button type="button" className={styles.back} onClick={() => navigate('/')} aria-label="返回">
+          <button type="button" className={styles.back} onClick={() => navigate('/')} aria-label="Back">
             <ChevronLeft size={18} />
           </button>
-          <h1 className={styles.title}>设置</h1>
+          <h1 className={styles.title}>Settings</h1>
         </div>
         {draft &&
           (['claude', 'codex'] as const).map((p) => (
             <div key={p} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <div className={styles.section}>{providerName[p]} 默认值</div>
+              <div className={styles.section}>{providerName[p]} defaults</div>
               <label className={styles.field}>
-                <span>模型（留空用 {providerName[p]} 自己的默认）</span>
-                <Select value={draft[p].model} onChange={(v) => patch(p, 'model', v)} options={[{ value: '', label: '默认' }, ...modelOptions[p]]} />
+                <span>Model (leave empty for {providerName[p]}'s own default)</span>
+                <Select value={draft[p].model} onChange={(v) => patch(p, 'model', v)} options={[{ value: '', label: 'Default' }, ...modelOptions[p]]} />
               </label>
               <label className={styles.field}>
-                <span>思考等级</span>
-                <Select value={draft[p].effort} onChange={(v) => patch(p, 'effort', v)} options={[{ value: '', label: '默认' }, ...effortOptions[p]]} />
+                <span>Effort</span>
+                <Select value={draft[p].effort} onChange={(v) => patch(p, 'effort', v)} options={[{ value: '', label: 'Default' }, ...effortOptions[p]]} />
               </label>
               <label className={styles.field}>
-                <span>权限模式</span>
+                <span>Permission mode</span>
                 <Select value={draft[p].permissionMode} onChange={(v) => patch(p, 'permissionMode', v)} options={[...permissionModeOptions]} />
-                {draft[p].permissionMode === 'bypass' && <div className={styles.error}>不经审批直接执行任意命令，任何能连上这台 Hub 的设备都能触发，风险自负</div>}
+                {draft[p].permissionMode === 'bypass' && <div className={styles.error}>Runs any command without approval; any device that can reach this Hub can trigger it. Use at your own risk.</div>}
               </label>
             </div>
           ))}
         <div className={styles.actions}>
           <button type="button" className={styles.primary} disabled={!dirty || save.isPending} onClick={onSave}>
-            保存
+            Save
           </button>
         </div>
-        {save.error ? <div className={styles.error}>{save.error.message}</div> : save.isSuccess && !dirty ? <div className={styles.ok}>已保存，对之后新建的会话生效</div> : null}
+        {save.error ? <div className={styles.error}>{save.error.message}</div> : save.isSuccess && !dirty ? <div className={styles.ok}>Saved. Applies to sessions created from now on.</div> : null}
         {saved.error && <div className={styles.error}>{saved.error.message}</div>}
       </div>
     </div>

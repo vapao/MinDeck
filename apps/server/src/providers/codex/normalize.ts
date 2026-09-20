@@ -1,15 +1,16 @@
-import type { ProviderEvent } from '@agentdeck/shared';
+import type { ProviderEvent, ProviderOutput } from '@agentdeck/shared';
+import { summarizeToolInput } from '../summary';
 import type { ServerNotification } from './schema';
 import type { ThreadItem } from './schema/v2';
 
-// app-server 通知 → 统一事件。只显式映射 §7.2 需要的子集，高频 delta（reasoning / 命令输出）直接丢弃，其余归入 provider.raw（AGENTS.md 规则 5）。
+// app-server 通知 → 统一事件。只显式映射 §7.2 需要的子集，其余（含 reasoning / 命令输出 delta）直接丢弃（AGENTS.md 规则 5）。
 // 一个 normalizer 实例对应一个 thread：需要跨通知记住正在流式输出的 agentMessage。
 export function createNormalizer() {
   let streaming: { id: string; text: string } | null = null;
   let lastUsage = '';
   let lastContext = 0;
 
-  function normalize(n: ServerNotification): ProviderEvent[] {
+  function normalize(n: ServerNotification): ProviderOutput[] {
     switch (n.method) {
       case 'item/started':
         if (n.params.item.type === 'agentMessage') {
@@ -21,7 +22,7 @@ export function createNormalizer() {
       case 'item/agentMessage/delta':
         if (!streaming || streaming.id !== n.params.itemId) return [];
         streaming.text += n.params.delta;
-        return [{ type: 'message.delta', payload: { messageId: n.params.itemId, text: n.params.delta } }];
+        return [{ type: 'message.delta', messageId: n.params.itemId, text: n.params.delta }];
 
       case 'item/completed': {
         const item = n.params.item;
@@ -66,53 +67,37 @@ export function createNormalizer() {
         );
       }
 
-      // 高频 delta，UI 不展示；agentMessage 的 delta 已在上面处理
-      case 'item/reasoning/summaryTextDelta':
-      case 'item/reasoning/textDelta':
-      case 'item/reasoning/summaryPartAdded':
-      case 'item/commandExecution/outputDelta':
-      case 'item/fileChange/outputDelta':
-      // 生命周期由 Hub 自己记（turn.started 在 dispatch 时发出；userMessage 是 Hub 发出去的回显）
-      case 'turn/started':
-      case 'thread/started':
-        return [];
-
       default:
-        return [{ type: 'provider.raw', payload: { kind: n.method, data: n.params } }];
+        return [];
     }
   }
 
   return { normalize };
 }
 
-// 工具类 item：commandExecution / fileChange / mcpToolCall 各开一张工具卡；其余 item 保留原样
+// 工具类 item：commandExecution / fileChange / mcpToolCall 各开一张工具卡，只记做了什么，不记输出 / diff（改动侧栏另有 git diff）
 function itemStarted(item: ThreadItem): ProviderEvent[] {
   switch (item.type) {
     case 'commandExecution':
-      return [{ type: 'tool.started', payload: { toolUseId: item.id, name: 'shell', input: { command: stripShellWrapper(item.command), cwd: item.cwd } } }];
+      return [{ type: 'tool.started', payload: { toolUseId: item.id, name: 'shell', summary: stripShellWrapper(item.command) } }];
     case 'fileChange':
-      return [{ type: 'tool.started', payload: { toolUseId: item.id, name: 'apply_patch', input: { path: item.changes.map((c) => `${c.kind} ${c.path}`).join(', ') } } }];
+      return [{ type: 'tool.started', payload: { toolUseId: item.id, name: 'apply_patch', summary: item.changes.map((c) => `${c.kind} ${c.path}`).join(', ') } }];
     case 'mcpToolCall':
-      return [{ type: 'tool.started', payload: { toolUseId: item.id, name: `${item.server}/${item.tool}`, input: item.arguments } }];
-    case 'userMessage':
-      return [];
+      return [{ type: 'tool.started', payload: { toolUseId: item.id, name: `${item.server}/${item.tool}`, summary: summarizeToolInput(item.arguments) } }];
     default:
-      return [{ type: 'provider.raw', payload: { kind: `item/started/${item.type}`, data: item } }];
+      return [];
   }
 }
 
 function itemCompleted(item: ThreadItem): ProviderEvent[] {
   switch (item.type) {
     case 'commandExecution':
-      return [{ type: 'tool.completed', payload: { toolUseId: item.id, output: item.aggregatedOutput ?? (item.status === 'declined' ? '用户拒绝执行' : ''), isError: item.status !== 'completed' } }];
     case 'fileChange':
-      return [{ type: 'tool.completed', payload: { toolUseId: item.id, output: item.changes.map((c) => c.diff).join('\n'), isError: item.status !== 'completed' } }];
+      return [{ type: 'tool.completed', payload: { toolUseId: item.id, isError: item.status !== 'completed' } }];
     case 'mcpToolCall':
-      return [{ type: 'tool.completed', payload: { toolUseId: item.id, output: item.error ? item.error.message : JSON.stringify(item.result?.content ?? null, null, 2), isError: item.error !== null } }];
-    case 'userMessage':
-      return [];
+      return [{ type: 'tool.completed', payload: { toolUseId: item.id, isError: item.error !== null } }];
     default:
-      return [{ type: 'provider.raw', payload: { kind: `item/completed/${item.type}`, data: item } }];
+      return [];
   }
 }
 

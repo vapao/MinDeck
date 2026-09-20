@@ -9,7 +9,7 @@ export function WorkingRow({ since }: { since: string }) {
   const sec = useElapsed(since, true)
   return (
     <div className={styles.row}>
-      <span className={styles.shimmer}>处理中 · {formatElapsed(sec)}</span>
+      <span className={styles.shimmer}>Working · {formatElapsed(sec)}</span>
     </div>
   )
 }
@@ -17,12 +17,12 @@ export function WorkingRow({ since }: { since: string }) {
 /** 一轮结束的落款；Hub 重启补记的中断没有用时（durationMs = 0） */
 export function TurnRow({ reason, durationMs, at }: { reason: TurnEndReason; durationMs: number; at: string }) {
   const Icon = reason === 'completed' ? Check : Square
-  const elapsed = durationMs > 0 ? ` · 用时 ${formatElapsed(Math.round(durationMs / 1000))}` : ''
+  const elapsed = durationMs > 0 ? ` · ${formatElapsed(Math.round(durationMs / 1000))}` : ''
   return (
     <div className={styles.row} data-reason={reason}>
       <Icon size={12} />
       <span>
-        {reason === 'completed' ? '已完成' : '已中断'}
+        {reason === 'completed' ? 'Completed' : 'Stopped'}
         {elapsed} · {formatTime(at)}
       </span>
     </div>

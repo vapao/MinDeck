@@ -1,68 +1,59 @@
-.card {
-  max-width: min(var(--assistant-w), 100%);
-  border: 1px solid var(--border-2);
-  border-radius: var(--radius-card);
-  background: var(--surface);
-  overflow: hidden;
-}
-.card[data-state='failed'] {
-  border-color: var(--danger-border);
-}
 .group {
-  max-width: min(var(--assistant-w), 100%);
   border: 1px solid var(--border-2);
   border-radius: var(--radius-card);
   background: var(--surface);
   overflow: hidden;
 }
-.group .card {
-  max-width: none;
-  border: 0;
-  border-radius: 0;
-}
-.group .card + .card {
-  border-top: 1px solid var(--border);
-}
-.group .head {
-  min-height: 28px;
-  padding: 3px 10px;
+.group[data-state='failed'] {
+  border-color: var(--danger-border);
 }
 .head {
   width: 100%;
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 34px;
+  min-height: 38px;
   padding: 6px 10px;
   border: 0;
   background: none;
   text-align: left;
   cursor: pointer;
 }
-.head:hover:not(:disabled) {
+.head:hover {
   background: var(--hover);
 }
-.head:disabled {
-  cursor: default;
+.lines {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.title {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-2);
 }
 .icon {
   flex: none;
   color: var(--ok);
 }
-.card[data-state='running'] .icon {
+[data-state='running'] > .icon,
+[data-state='running'] > .head > .icon {
   color: var(--running);
   animation: spin 1s linear infinite;
 }
-.card[data-state='failed'] .icon {
+[data-state='failed'] > .icon,
+[data-state='failed'] > .head > .icon {
   color: var(--danger);
 }
 .name {
   flex: none;
+  font-size: 12px;
   font-weight: 500;
   color: var(--text);
 }
 .summary {
-  flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -78,20 +69,22 @@
 .chevron[data-open='true'] {
   transform: rotate(90deg);
 }
-.output {
-  margin: 0;
-  padding: 10px;
-  max-height: 320px;
-  overflow: auto;
+/* 展开后逐条列出，行距压紧 */
+.items {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 2px 10px 10px;
   border-top: 1px solid var(--border);
-  font-size: 12px;
-  line-height: 1.45;
-  color: var(--text-2);
-  white-space: pre-wrap;
-  word-break: break-all;
 }
-.card[data-state='failed'] .output {
-  color: var(--danger);
+.card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+}
+.card .icon {
+  color: var(--text-4);
 }
 @keyframes spin {
   to {

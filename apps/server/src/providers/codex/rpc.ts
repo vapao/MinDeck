@@ -50,7 +50,7 @@ export function spawnAppServer({ onNotification, onRequest, onExit }: RpcHandler
 
   child.on('exit', (code, signal) => {
     exited = true;
-    const reason = new Error(`codex app-server 已退出（${signal ?? `code ${code}`}）`);
+    const reason = new Error(`codex app-server exited (${signal ?? `code ${code}`})`);
     for (const p of pending.values()) p.reject(reason);
     pending.clear();
     onExit(code === 0 || signal === 'SIGTERM' ? undefined : reason);

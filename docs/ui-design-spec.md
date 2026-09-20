@@ -58,7 +58,7 @@
 | `--radius-card` 8px | 卡片、工具卡、审批卡、输入区、弹窗、菜单 |
 | 其它 | 徽标 4px；发送 / 中断按钮 50%（28px 圆） |
 | 触控目标 | 移动端 ≥ 44px；桌面按钮高 29–30px、下拉 / 输入框 32px、图标按钮 28px |
-| 桌面 | 侧栏 280，顶栏 52，消息列最大宽 820，助手消息最大宽 720，用户气泡最大宽 600 |
+| 桌面 | 侧栏 280，顶栏 52，消息列与输入框同宽 880；助手消息、工具组、审批 / 提问 / 报错卡撑满列宽，用户气泡最大宽 660 |
 | 移动 | 顶部安全区 54，底部安全区 30，底栏输入区最小高 44 |
 | 间距阶梯 | 4 · 6 · 8 · 10 · 12 · 14 · 16 · 20 · 24 · 28 |
 
@@ -84,10 +84,7 @@
 | `session.status` | `StatusPill` | 五态：运行中（ok）、等待审批 / 等待回答（accent）、空闲（text-3）、出错（danger）。带 6px 圆点。列表项和顶栏共用。 |
 | `message.*`（user） | `UserMessage` | 靠右，气泡 `--surface-3`，圆角 `12 12 4 12`。上方小字"你 · 设备 · 时间"。附件以缩略图 + 文件名 + 来源列在气泡内。 |
 | `message.delta / completed`（assistant） | `AssistantMessage` | 不做气泡，也不带发送者 / 时间头部（时间由 `TurnRow` 落款承担）。流式时末尾 8×15 实心光标。行内代码用 `--surface-3` 底。 |
-| `tool.started` | `ToolCard`（running） | 单行：旋转圆环 + 工具名（text-2, 500）+ 参数摘要（等宽）+ 已用时。 |
-| `tool.completed` | `ToolCard`（collapsed） | 单行：绿勾 + 工具名 + 摘要 + 结果计数/耗时 + 右箭头。默认折叠。 |
-| `tool.completed` + `file.changed` | `ToolCard`（expanded） | Edit/Write 默认展开，头部带 `+n −m`，正文是 diff：删除行 danger/danger-bg，新增行 ok/ok-bg，hunk 头 text-3。 |
-| `tool.completed`（失败） | `ToolCard`（failed） | 边框 `--danger-border`，红叉，右侧 `exit N`，正文显示 stderr 前几行（等宽、danger）。 |
+| 连续的 `tool.started / completed` | `ToolGroup` | 对齐 Turnwork 的命令组：一张卡默认折叠，头部两行——"Ran N tools"（运行中为 "Running N tools" + 旋转圆环）+ 最新一个工具的 `name summary`（等宽、单行省略）+ 右箭头；任一失败时边框 `--danger-border`、红叉。点开逐条列出（图标 + 工具名 + 摘要）。服务端不保存工具输出，没有可展开的正文；改动看侧栏 diff。 |
 | `approval.requested` | `ApprovalCard` | 边框 `--accent`，底 `--accent-bg`。头部：警告图标 + "需要你的批准" + 工具名芯片 + 等待时长。正文**必须**完整展示 command（等宽块）、目录、原因；file-change 类型列出文件与 `+n −m`。按钮：主按钮"允许一次"（实心琥珀），次级"本会话允许 &lt;pattern&gt;"（琥珀描边），"拒绝"（灰描边）。桌面横排，移动端主按钮全宽 46px、次级两个并排 44px。不提供"永远允许"。 |
 | `approval.resolved` | `ApprovalCard`（resolved） | 保留在流中，`opacity: 0.85`，边框改 `--border`，头部改为"命令审批 · 已允许/已拒绝"+ 处理设备与时间，正文只留一行等宽命令。按钮移除。 |
 | `user_input.requested` | `QuestionCard` | 同琥珀卡片。头部：问号图标 + "&lt;Provider&gt; 想确认" + "单选/可多选"。选项是真实的 `<label><input type=radio|checkbox>`，选中项底 `--accent-bg-2` 边 `--accent`；末尾一个"其它"文本输入。主按钮"提交回答"。 |
@@ -103,7 +100,7 @@
 
 ### 桌面（≥ 1024）
 
-三栏：侧栏 280（`--panel`，右边线）· 主区（顶栏 56 + 消息流 + 输入区）。消息流居中 820 列，上内边距 28。输入区：附件芯片行 + 提示文字，下方输入框（`--surface`、`--border-2`、12px 圆角），右侧附件按钮与发送按钮各 36px。有一轮在运行时提示"当前有一轮在运行，发送将作为追加指令排队"，顶栏显示"中断"按钮（danger 描边）。
+三栏：侧栏 280（`--panel`，右边线）· 主区（顶栏 56 + 消息流 + 输入区）。消息流居中 880 列（与输入框同宽），上内边距 28。输入区：附件芯片行 + 提示文字，下方输入框（`--surface`、`--border-2`、12px 圆角），右侧附件按钮与发送按钮各 36px。有一轮在运行时提示"当前有一轮在运行，发送将作为追加指令排队"，顶栏显示"中断"按钮（danger 描边）。
 
 侧栏结构：品牌行（Logo + 名称 + 连接状态）→ 按工作区分组的会话列表（组头：名称 + 等宽计数；项：圆点 + 标题 + 时间 / Provider 芯片 + 状态文字）→ 底部"新建会话" → 额度区（`RateMeter`）→ "项目 / 设置"。选中项底 `--surface-3`。
 

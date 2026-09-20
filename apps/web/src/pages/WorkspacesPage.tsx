@@ -16,11 +16,11 @@ export function WorkspacesPage() {
   const [adding, setAdding] = useState(false)
 
   const onRename = async (id: string, current: string) => {
-    const alias = (await dialog.prompt({ title: '项目别名', initial: current, ok: '保存' }))?.trim()
+    const alias = (await dialog.prompt({ title: 'Project alias', initial: current, ok: 'Save' }))?.trim()
     if (alias && alias !== current) rename.mutate({ id, alias })
   }
   const onRemove = async (id: string, alias: string) => {
-    if (await dialog.confirm({ title: `从列表移除「${alias}」？`, message: '该目录下已有的会话不受影响。', ok: '移除', danger: true })) remove.mutate(id)
+    if (await dialog.confirm({ title: `Remove "${alias}" from the list?`, message: 'Existing sessions in this directory are not affected.', ok: 'Remove', danger: true })) remove.mutate(id)
   }
   const error = workspaces.error ?? remove.error ?? rename.error
 
@@ -28,13 +28,13 @@ export function WorkspacesPage() {
     <div className={styles.page}>
       <div className={styles.card}>
         <div className={styles.head}>
-          <button type="button" className={styles.back} onClick={() => navigate('/')} aria-label="返回">
+          <button type="button" className={styles.back} onClick={() => navigate('/')} aria-label="Back">
             <ChevronLeft size={18} />
           </button>
-          <h1 className={styles.title}>项目</h1>
+          <h1 className={styles.title}>Projects</h1>
         </div>
         <div className={styles.rows}>
-          {workspaces.data?.length === 0 && <div className={styles.empty}>还没有项目</div>}
+          {workspaces.data?.length === 0 && <div className={styles.empty}>No projects yet</div>}
           {workspaces.data?.map((w) => (
             <div key={w.id} className={styles.row}>
               <Folder size={16} />
@@ -42,10 +42,10 @@ export function WorkspacesPage() {
                 <span className={styles.rowTitle}>{w.alias}</span>
                 <code className={styles.rowPath} title={w.path}>{w.path}</code>
               </div>
-              <button type="button" className={styles.rowButton} onClick={() => onRename(w.id, w.alias)} aria-label="改别名">
+              <button type="button" className={styles.rowButton} onClick={() => onRename(w.id, w.alias)} aria-label="Rename">
                 <Pencil size={14} />
               </button>
-              <button type="button" className={styles.rowButton} data-danger onClick={() => onRemove(w.id, w.alias)} disabled={remove.isPending} aria-label="移除">
+              <button type="button" className={styles.rowButton} data-danger onClick={() => onRemove(w.id, w.alias)} disabled={remove.isPending} aria-label="Remove">
                 <Trash2 size={14} />
               </button>
             </div>
@@ -57,7 +57,7 @@ export function WorkspacesPage() {
           <div className={styles.actions}>
             <button type="button" className={styles.primary} onClick={() => setAdding(true)}>
               <FolderPlus size={16} style={{ verticalAlign: '-3px', marginRight: 6 }} />
-              添加项目
+              Add project
             </button>
           </div>
         )}
@@ -88,7 +88,7 @@ function DirPicker({ onDone }: { onDone: () => void }) {
 
   return (
     <>
-      <div className={styles.section}>选择项目根目录</div>
+      <div className={styles.section}>Choose the project root</div>
       <div className={styles.rows}>
         <div className={styles.crumb}>{current ?? '…'}</div>
         <div className={styles.dirList}>
@@ -105,16 +105,16 @@ function DirPicker({ onDone }: { onDone: () => void }) {
               <ChevronRight size={14} />
             </button>
           ))}
-          {dirs.data?.dirs.length === 0 && <div className={styles.empty}>没有子目录</div>}
+          {dirs.data?.dirs.length === 0 && <div className={styles.empty}>No subdirectories</div>}
         </div>
       </div>
       <label className={styles.field}>
-        <span>别名</span>
+        <span>Alias</span>
         <input className={styles.input} value={alias} placeholder={current?.split('/').pop()} onChange={(e) => setAlias(e.target.value)} />
       </label>
       <div className={styles.actions}>
         <button type="button" className={styles.secondary} onClick={onDone}>
-          取消
+          Cancel
         </button>
         <button
           type="button"
@@ -122,7 +122,7 @@ function DirPicker({ onDone }: { onDone: () => void }) {
           disabled={!current || create.isPending}
           onClick={() => create.mutate({ path: current!, alias: alias.trim() || current!.split('/').pop()! })}
         >
-          添加当前目录
+          Add this directory
         </button>
       </div>
       {(dirs.error ?? create.error) && <div className={styles.error}>{(dirs.error ?? create.error)!.message}</div>}

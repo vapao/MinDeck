@@ -14,10 +14,10 @@ export function SessionListPage() {
       <header className={styles.brand}>
         AgentDeck
         <span className={styles.nav}>
-          <button type="button" className={styles.navButton} onClick={() => navigate('/workspaces')} aria-label="项目">
+          <button type="button" className={styles.navButton} onClick={() => navigate('/workspaces')} aria-label="Projects">
             <FolderOpen size={18} />
           </button>
-          <button type="button" className={styles.navButton} onClick={() => navigate('/settings')} aria-label="设置">
+          <button type="button" className={styles.navButton} onClick={() => navigate('/settings')} aria-label="Settings">
             <Settings size={18} />
           </button>
         </span>
@@ -25,7 +25,7 @@ export function SessionListPage() {
       {waiting.length > 0 && (
         <button type="button" className={styles.banner} onClick={() => navigate(`/s/${waiting[0].id}`)}>
           <AlertTriangle size={16} />
-          {waiting.length} 项等待你处理
+          {waiting.length} {waiting.length === 1 ? 'session needs' : 'sessions need'} your attention
         </button>
       )}
       <main className={styles.list}>
@@ -34,7 +34,7 @@ export function SessionListPage() {
       <footer className={styles.footer}>
         <button type="button" className={styles.newButton} onClick={() => navigate('/new')}>
           <Plus size={18} />
-          新建会话
+          New session
         </button>
       </footer>
     </div>

@@ -58,7 +58,7 @@ export function startClaudeSession({ cwd, resume, model, effort, permissionMode,
     try {
       for await (const m of q) {
         if (m.type === 'system' && m.subtype === 'init' && m.permissionMode !== sdkPermissionMode) {
-          onEvent({ type: 'error', payload: { message: `settings 把 permissionMode 改成了 ${m.permissionMode}，跟 Hub 要求的 ${sdkPermissionMode} 不一致，已拒绝启动` } });
+          onEvent({ type: 'error', payload: { message: `settings changed permissionMode to ${m.permissionMode}, but the Hub requires ${sdkPermissionMode}; refusing to start` } });
           inbox.close();
           return;
         }
@@ -90,7 +90,7 @@ export function startClaudeSession({ cwd, resume, model, effort, permissionMode,
   };
 }
 
-const deny = (): PermissionResult => ({ behavior: 'deny', message: '用户在 AgentDeck 中拒绝了此操作' });
+const deny = (): PermissionResult => ({ behavior: 'deny', message: 'The user denied this action in AgentDeck' });
 
 // 把 Provider 建议的规则压成 UI 可读的 pattern，例如 Bash(git status:*)
 function describeRules(suggestions: PermissionUpdate[]): string[] {

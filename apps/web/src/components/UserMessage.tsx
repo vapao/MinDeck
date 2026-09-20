@@ -6,7 +6,7 @@ import styles from './UserMessage.module.css'
 export function UserMessage({ text, attachments, at }: { text: string; attachments: Attachment[]; at: string }) {
   return (
     <div className={styles.row}>
-      <div className={styles.meta}>你 · {formatTime(at)}</div>
+      <div className={styles.meta}>You · {formatTime(at)}</div>
       <div className={styles.bubble}>
         {attachments.length > 0 && (
           <div className={styles.images}>

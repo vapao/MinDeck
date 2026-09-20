@@ -37,8 +37,8 @@ export type SelectOption = { value: string; label: string };
  */
 export type PermissionMode = 'approval' | 'bypass';
 export const permissionModeOptions: readonly SelectOption[] = [
-  { value: 'approval', label: '审批' },
-  { value: 'bypass', label: '完全跳过审批' },
+  { value: 'approval', label: 'Ask for approval' },
+  { value: 'bypass', label: 'Bypass approval' },
 ];
 
 /** 应用级默认值：新建会话时未覆盖就用它；model / effort 空字符串 = 交给 Provider 默认 */
@@ -165,17 +165,15 @@ export type EventPayloads = {
   /** 最近一次模型调用的上下文大小（prompt 侧 token 数，含缓存），Composer 状态区展示 */
   'context.updated': { tokens: number };
   'message.user': { text: string; attachments: Attachment[] };
-  'message.delta': { messageId: string; text: string };
   'message.completed': { messageId: string; text: string };
-  'tool.started': { toolUseId: string; name: string; input: unknown };
-  'tool.completed': { toolUseId: string; output: string; isError: boolean };
+  /** 工具调用只记"做了什么"：summary 是服务端算好的一行（命令 / 文件路径 / pattern…），完整 input 和输出都不保存 */
+  'tool.started': { toolUseId: string; name: string; summary: string };
+  'tool.completed': { toolUseId: string; isError: boolean };
   'approval.requested': { request: Extract<PendingRequest, { kind: 'approval' }> };
   'approval.resolved': { requestId: string; decision: ApprovalDecision | 'expired' };
   'user_input.requested': { request: Extract<PendingRequest, { kind: 'question' }> };
   'user_input.resolved': { requestId: string; answers: QuestionAnswers | null; response?: string };
   error: { message: string };
-  /** Provider 消息中未映射到核心事件的子集，原样保留（AGENTS.md 规则 5） */
-  'provider.raw': { kind: string; data: unknown };
 };
 
 export type EventType = keyof EventPayloads;
@@ -194,6 +192,10 @@ export type AgentEvent<T extends EventType = EventType> = {
 export type ProviderEvent<T extends EventType = EventType> = {
   [K in T]: { type: K; payload: EventPayloads[K] };
 }[T];
+
+/** 流式文本片段：不落库、不占 seq，只实时广播；掉线期间丢的片段由 message.completed 的全文补齐 */
+export type MessageDelta = { type: 'message.delta'; messageId: string; text: string };
+export type ProviderOutput = ProviderEvent | MessageDelta;
 
 // ---- REST ----
 
@@ -261,6 +263,7 @@ export type ClientMessage =
 export type ServerMessage =
   | { type: 'snapshot'; session: Session; pendingRequests: PendingRequest[]; lastSeq: number }
   | { type: 'event'; event: AgentEvent }
+  | MessageDelta
   | { type: 'replay.completed'; lastSeq: number }
   /** 订阅中的会话被删除；客户端应离开该页且不再重连 */
   | { type: 'session.deleted' }
