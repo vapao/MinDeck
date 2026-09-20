@@ -7,7 +7,7 @@ test('event seq is strictly monotonic per session', () => {
   const store = openStore(':memory:');
   const now = new Date().toISOString();
   for (const id of ['a', 'b']) {
-    store.createSession({ id, provider: 'claude', cwd: '/tmp', providerSessionId: null, status: 'idle', title: null, model: null, effort: null, createdAt: now, updatedAt: now });
+    store.createSession({ id, provider: 'claude', cwd: '/tmp', providerSessionId: null, status: 'idle', title: null, model: null, effort: null, permissionMode: 'approval', createdAt: now, updatedAt: now });
   }
 
   const seqsA = Array.from({ length: 5 }, () => store.appendEvent('a', { type: 'turn.started', payload: {} }).seq);
@@ -24,7 +24,7 @@ test('event seq is strictly monotonic per session', () => {
 test('pending request resolves atomically exactly once', () => {
   const store = openStore(':memory:');
   const now = new Date().toISOString();
-  store.createSession({ id: 's', provider: 'claude', cwd: '/tmp', providerSessionId: null, status: 'idle', title: null, model: null, effort: null, createdAt: now, updatedAt: now });
+  store.createSession({ id: 's', provider: 'claude', cwd: '/tmp', providerSessionId: null, status: 'idle', title: null, model: null, effort: null, permissionMode: 'approval', createdAt: now, updatedAt: now });
   store.createPending({ id: 'p1', sessionId: 's', status: 'pending', createdAt: now, resolvedAt: null, kind: 'approval', toolName: 'Bash', toolUseId: 't', input: {}, sessionAllowPatterns: [], suggestions: [] });
 
   assert.equal(store.resolvePending('p1', { kind: 'approval', decision: 'allow_once' }), true);

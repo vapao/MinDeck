@@ -1,16 +1,14 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronLeft } from 'lucide-react'
-import { effortLevels, type ProviderId, type Settings } from '@agentdeck/shared'
+import { effortOptions, modelOptions, permissionModeOptions, type ProviderId, type Settings } from '@agentdeck/shared'
 import { api } from '../api'
 import { providerName } from '../format'
 import { navigate } from '../router'
 import { Select } from '../components/Select'
 import styles from './Manage.module.css'
 
-// 应用级默认值：新建会话时用；已有会话不受影响。模型填别名或完整 id，是否生效看会话头部的模型标签。
-// Claude Code 接受 opus / sonnet / haiku 别名；Codex 的模型目录随版本变，不猜，让用户填 config.toml 里那种 id
-const modelHints: Record<ProviderId, string[]> = { claude: ['opus', 'sonnet', 'haiku'], codex: [] }
+// 应用级默认值：新建会话时用；已有会话不受影响。是否生效看会话头部的模型标签。
 
 export function SettingsPage() {
   const queryClient = useQueryClient()
@@ -27,7 +25,16 @@ export function SettingsPage() {
     },
   })
   const dirty = !!draft && JSON.stringify(draft) !== JSON.stringify(saved.data)
-  const patch = (p: ProviderId, field: 'model' | 'effort', value: string) => setDraft((d) => d && { ...d, [p]: { ...d[p], [field]: value } })
+  const patch = (p: ProviderId, field: 'model' | 'effort' | 'permissionMode', value: string) => setDraft((d) => d && { ...d, [p]: { ...d[p], [field]: value } })
+  // 只在从非 bypass 切到 bypass 时打断确认；已经是 bypass 时改别的字段不用每次都问
+  const confirmBypass = () =>
+    (['claude', 'codex'] as const).every(
+      (p) =>
+        !draft ||
+        draft[p].permissionMode !== 'bypass' ||
+        saved.data?.[p].permissionMode === 'bypass' ||
+        confirm(`把 ${providerName[p]} 的默认权限模式设为「完全跳过审批」？之后新建的会话不经审批直接执行任意命令，风险自负。`),
+    )
 
   return (
     <div className={styles.page}>
@@ -44,23 +51,21 @@ export function SettingsPage() {
               <div className={styles.section}>{providerName[p]} 默认值</div>
               <label className={styles.field}>
                 <span>模型（留空用 {providerName[p]} 自己的默认）</span>
-                <input className={styles.input} value={draft[p].model} placeholder={p === 'codex' ? '如 ~/.codex/config.toml 里的 model' : '默认'} onChange={(e) => patch(p, 'model', e.target.value)} />
-                <div className={styles.chips}>
-                  {modelHints[p].map((m) => (
-                    <button key={m} type="button" className={styles.chip} onClick={() => patch(p, 'model', m)}>
-                      {m}
-                    </button>
-                  ))}
-                </div>
+                <Select value={draft[p].model} onChange={(v) => patch(p, 'model', v)} options={[{ value: '', label: '默认' }, ...modelOptions[p]]} />
               </label>
               <label className={styles.field}>
                 <span>思考等级</span>
-                <Select value={draft[p].effort} onChange={(v) => patch(p, 'effort', v)} options={[{ value: '', label: '默认' }, ...effortLevels[p].map((l) => ({ value: l, label: l }))]} />
+                <Select value={draft[p].effort} onChange={(v) => patch(p, 'effort', v)} options={[{ value: '', label: '默认' }, ...effortOptions[p]]} />
+              </label>
+              <label className={styles.field}>
+                <span>权限模式</span>
+                <Select value={draft[p].permissionMode} onChange={(v) => patch(p, 'permissionMode', v)} options={[...permissionModeOptions]} />
+                {draft[p].permissionMode === 'bypass' && <div className={styles.error}>不经审批直接执行任意命令，任何能连上这台 Hub 的设备都能触发，风险自负</div>}
               </label>
             </div>
           ))}
         <div className={styles.actions}>
-          <button type="button" className={styles.primary} disabled={!dirty || save.isPending} onClick={() => draft && save.mutate(draft)}>
+          <button type="button" className={styles.primary} disabled={!dirty || save.isPending} onClick={() => draft && confirmBypass() && save.mutate(draft)}>
             保存
           </button>
         </div>

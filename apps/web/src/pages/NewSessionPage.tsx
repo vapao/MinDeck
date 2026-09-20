@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { effortLevels, type ProviderId } from '@agentdeck/shared'
+import { effortOptions, modelOptions, permissionModeOptions, type PermissionMode, type ProviderId } from '@agentdeck/shared'
 import { api } from '../api'
 import { providerName } from '../format'
 import { navigate } from '../router'
@@ -12,8 +12,8 @@ export function NewSessionPage() {
   const settings = useQuery({ queryKey: ['settings'], queryFn: api.getSettings })
   const [cwd, setCwd] = useState('')
   const [provider, setProvider] = useState<ProviderId>('claude')
-  // 模型 / 思考等级默认跟设置走；这里改只影响本次创建
-  const [override, setOverride] = useState<Partial<Record<ProviderId, { model?: string; effort?: string }>>>({})
+  // 模型 / 思考等级 / 权限模式默认跟设置走；这里改只影响本次创建
+  const [override, setOverride] = useState<Partial<Record<ProviderId, { model?: string; effort?: string; permissionMode?: string }>>>({})
   const queryClient = useQueryClient()
   const create = useMutation({
     mutationFn: api.createSession,
@@ -26,7 +26,8 @@ export function NewSessionPage() {
   const defaults = settings.data?.[provider]
   const model = override[provider]?.model ?? defaults?.model ?? ''
   const effort = override[provider]?.effort ?? defaults?.effort ?? ''
-  const patch = (field: 'model' | 'effort', value: string) => setOverride((o) => ({ ...o, [provider]: { ...o[provider], [field]: value } }))
+  const permissionMode = override[provider]?.permissionMode ?? defaults?.permissionMode ?? 'approval'
+  const patch = (field: 'model' | 'effort' | 'permissionMode', value: string) => setOverride((o) => ({ ...o, [provider]: { ...o[provider], [field]: value } }))
 
   return (
     <div className={styles.page}>
@@ -48,14 +49,27 @@ export function NewSessionPage() {
         <div className={styles.pair}>
           <label className={styles.field}>
             <span>模型</span>
-            <input className={styles.input} value={model} placeholder="默认" onChange={(e) => patch('model', e.target.value)} />
+            <Select value={model} onChange={(v) => patch('model', v)} options={[{ value: '', label: '默认' }, ...modelOptions[provider]]} />
           </label>
           <label className={styles.field}>
             <span>思考等级</span>
-            <Select value={effort} onChange={(v) => patch('effort', v)} options={[{ value: '', label: '默认' }, ...effortLevels[provider].map((l) => ({ value: l, label: l }))]} />
+            <Select value={effort} onChange={(v) => patch('effort', v)} options={[{ value: '', label: '默认' }, ...effortOptions[provider]]} />
           </label>
         </div>
-        <button type="button" className={styles.primary} disabled={!selected || create.isPending} onClick={() => create.mutate({ provider, cwd: selected, model, effort })}>
+        <label className={styles.field}>
+          <span>权限模式</span>
+          <Select value={permissionMode} onChange={(v) => patch('permissionMode', v)} options={[...permissionModeOptions]} />
+          {permissionMode === 'bypass' && <div className={styles.error}>不经审批直接执行任意命令，风险自负</div>}
+        </label>
+        <button
+          type="button"
+          className={styles.primary}
+          disabled={!selected || create.isPending}
+          onClick={() => {
+            if (permissionMode === 'bypass' && !confirm('这个会话将完全跳过审批，不经确认直接执行任意命令，风险自负。确定要新建吗？')) return
+            create.mutate({ provider, cwd: selected, model, effort, permissionMode: permissionMode as PermissionMode })
+          }}
+        >
           新建 {providerName[provider]} 会话
         </button>
         {workspaces.data?.length === 0 && <div className={styles.error}>还没有项目，先去「管理项目」添加一个</div>}

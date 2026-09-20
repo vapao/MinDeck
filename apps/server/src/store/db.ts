@@ -1,5 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
-import type { AgentEvent, Attachment, EventType, PendingRequest, PendingRequestBody, ProviderEvent, Resolution, Session, SessionStatus, Settings, Workspace } from '@agentdeck/shared';
+import type { AgentEvent, Attachment, EventType, PendingRequest, PendingRequestBody, PermissionMode, ProviderEvent, Resolution, Session, SessionStatus, Settings, Workspace } from '@agentdeck/shared';
 
 export type Store = ReturnType<typeof openStore>;
 
@@ -52,13 +52,13 @@ export function openStore(path: string) {
       value TEXT NOT NULL
     );
   `);
-  // 切片 8 给 sessions 加的列；旧库没有就补上（SQLite 没有 ADD COLUMN IF NOT EXISTS）
+  // 旧库没有就补上（SQLite 没有 ADD COLUMN IF NOT EXISTS）：model / effort 是切片 8 加的，permission_mode 是权限模式那次加的
   const sessionCols = new Set((db.prepare(`PRAGMA table_info(sessions)`).all() as { name: string }[]).map((c) => c.name));
-  for (const col of ['model', 'effort']) if (!sessionCols.has(col)) db.exec(`ALTER TABLE sessions ADD COLUMN ${col} TEXT`);
+  for (const col of ['model', 'effort', 'permission_mode']) if (!sessionCols.has(col)) db.exec(`ALTER TABLE sessions ADD COLUMN ${col} TEXT`);
 
   const insertSession = db.prepare(
-    `INSERT INTO sessions (id, provider, cwd, provider_session_id, status, model, effort, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO sessions (id, provider, cwd, provider_session_id, status, model, effort, permission_mode, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
   // title 不单独存列：直接取该 session 首条 message.user 的文本，省一次迁移
   const sessionColumns = `sessions.*, (
@@ -122,6 +122,8 @@ export function openStore(path: string) {
     title: (r.title as string | null)?.trim().split('\n')[0].slice(0, 80) || null,
     model: (r.model as string | null) ?? null,
     effort: (r.effort as string | null) ?? null,
+    // 旧行没有这一列：一直以来的实际行为就是审批，落库时按这个兜底
+    permissionMode: (r.permission_mode as PermissionMode | null) ?? 'approval',
     createdAt: r.created_at as string,
     updatedAt: r.updated_at as string,
   });
@@ -155,7 +157,7 @@ export function openStore(path: string) {
     createSession(session: Session) {
       insertSession.run(
         session.id, session.provider, session.cwd, session.providerSessionId,
-        session.status, session.model, session.effort, session.createdAt, session.updatedAt,
+        session.status, session.model, session.effort, session.permissionMode, session.createdAt, session.updatedAt,
       );
     },
     getSession(id: string): Session | undefined {

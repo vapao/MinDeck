@@ -5,7 +5,9 @@ import type { ProviderSession, StartOptions } from '../types';
 import { createNormalizer } from './normalize';
 
 // 一个 Streaming Input 长驻 session（方案 §6.1）。消息通过 inbox 推入，SDK 消息经 normalizer 转成统一事件回调出去。
-export function startClaudeSession({ cwd, resume, model, effort, onEvent, onPending, onExit }: StartOptions): ProviderSession {
+export function startClaudeSession({ cwd, resume, model, effort, permissionMode, onEvent, onPending, onExit }: StartOptions): ProviderSession {
+  // bypass：会话级选了"完全跳过审批"（AgentDeck 设置里配的，不是本机 ~/.claude/settings.json 那份）
+  const sdkPermissionMode = permissionMode === 'bypass' ? 'bypassPermissions' : 'default';
   const inbox = createInbox();
   const { normalize, markInterrupting } = createNormalizer(resume !== undefined);
 
@@ -37,10 +39,10 @@ export function startClaudeSession({ cwd, resume, model, effort, onEvent, onPend
       cwd,
       resume,
       model,
-      // effort 只能在这里给，SDK 没有会话中的 setter；取值已由 Hub 按 shared effortLevels 校验
+      // effort 只能在这里给，SDK 没有会话中的 setter；取值已由 Hub 按 shared effortOptions 校验
       effort: effort as EffortLevel | undefined,
       env: childEnv(),
-      permissionMode: 'default',
+      permissionMode: sdkPermissionMode,
       includePartialMessages: true,
       // 只加载工作区的 project 设置：本机 user 设置是 bypassPermissions，会让审批静默通过（AGENTS.md 规则 2）
       settingSources: ['project'],
@@ -51,8 +53,8 @@ export function startClaudeSession({ cwd, resume, model, effort, onEvent, onPend
   (async () => {
     try {
       for await (const m of q) {
-        if (m.type === 'system' && m.subtype === 'init' && m.permissionMode !== 'default') {
-          onEvent({ type: 'error', payload: { message: `工作区 settings 把 permissionMode 改成了 ${m.permissionMode}，Hub 只接受 default，已拒绝启动` } });
+        if (m.type === 'system' && m.subtype === 'init' && m.permissionMode !== sdkPermissionMode) {
+          onEvent({ type: 'error', payload: { message: `工作区 settings 把 permissionMode 改成了 ${m.permissionMode}，跟 Hub 要求的 ${sdkPermissionMode} 不一致，已拒绝启动` } });
           inbox.close();
           return;
         }

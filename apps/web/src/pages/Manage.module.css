@@ -166,26 +166,6 @@
   outline: none;
   border-color: var(--text-4);
 }
-.chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-.chip {
-  height: 26px;
-  padding: 0 8px;
-  border: 1px solid var(--border-2);
-  border-radius: var(--radius-button);
-  background: var(--surface);
-  color: var(--text-2);
-  font-family: var(--font-mono);
-  font-size: 12px;
-  cursor: pointer;
-}
-.chip:hover {
-  background: var(--surface-2);
-  color: var(--text);
-}
 .actions {
   display: flex;
   justify-content: flex-end;

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { effortLevels, type AgentEvent, type Attachment, type PendingRequest, type PendingRequestBody, type ProviderEvent, type Resolution, type Session, type SessionStatus, type Settings, type UsageInfo } from '@agentdeck/shared';
+import { effortOptions, modelOptions, permissionModeOptions, type AgentEvent, type Attachment, type PendingRequest, type PendingRequestBody, type PermissionMode, type ProviderEvent, type Resolution, type Session, type SessionStatus, type Settings, type UsageInfo } from '@agentdeck/shared';
 import type { Store } from './store/db';
 import type { AttachmentStore } from './store/attachments';
 import type { ProviderSession, StartOptions } from './providers/types';
@@ -49,9 +49,12 @@ export function createHub(store: Store, attachments: AttachmentStore) {
     emit(sessionId, { type: 'session.status', payload: { status } });
   }
 
-  const emptyDefaults: Settings = { claude: { model: '', effort: '' }, codex: { model: '', effort: '' } };
+  const emptyDefaults: Settings = { claude: { model: '', effort: '', permissionMode: 'approval' }, codex: { model: '', effort: '', permissionMode: 'approval' } };
   function settings(): Settings {
-    return store.getSettings() ?? emptyDefaults;
+    const stored = store.getSettings();
+    // 补 permissionMode 这种后加的字段：旧库存的 JSON 里没有，兜底成安全默认值，不然老装置升级后直接 undefined
+    if (!stored) return emptyDefaults;
+    return { claude: { ...emptyDefaults.claude, ...stored.claude }, codex: { ...emptyDefaults.codex, ...stored.codex } };
   }
 
   function getSession(id: string): Session {
@@ -107,6 +110,7 @@ export function createHub(store: Store, attachments: AttachmentStore) {
       resume: session.providerSessionId ?? undefined,
       model: session.model ?? undefined,
       effort: session.effort ?? undefined,
+      permissionMode: session.permissionMode,
       onPending: (body, signal) => createPending(session.id, body, signal),
       onEvent(event) {
         // 会话已被删除：Provider 收尾时可能还有零星消息，直接丢弃，不能再往已删的 session 写
@@ -142,17 +146,20 @@ export function createHub(store: Store, attachments: AttachmentStore) {
   }
 
   return {
-    /** model / effort 省略时取设置里的默认值；空字符串 = 交给 Provider 默认，落库为 null */
-    createSession(provider: Session['provider'], cwd: string, override: { model?: string; effort?: string } = {}): Session {
+    /** model / effort 省略时取设置里的默认值；空字符串 = 交给 Provider 默认，落库为 null。permissionMode 省略时也取默认值，没有"交给 Provider 默认"这一说 */
+    createSession(provider: Session['provider'], cwd: string, override: { model?: string; effort?: string; permissionMode?: PermissionMode } = {}): Session {
       if (!(provider in providers)) throw new HubError(400, `未知 Provider ${provider}`);
       // cwd 只能是 UI 里添加过的工作区（方案 §11.3 allowlist）
       if (!store.getWorkspaceByPath(cwd)) throw new HubError(400, `cwd 不是已添加的工作区`);
       const defaults = settings()[provider];
       const model = (override.model ?? defaults.model).trim() || null;
       const effort = (override.effort ?? defaults.effort).trim() || null;
-      if (effort && !effortLevels[provider].includes(effort)) throw new HubError(400, `${provider} 不支持思考等级 ${effort}`);
+      const permissionMode = override.permissionMode ?? defaults.permissionMode;
+      if (model && !modelOptions[provider].some((o) => o.value === model)) throw new HubError(400, `${provider} 不支持模型 ${model}`);
+      if (effort && !effortOptions[provider].some((o) => o.value === effort)) throw new HubError(400, `${provider} 不支持思考等级 ${effort}`);
+      if (!permissionModeOptions.some((o) => o.value === permissionMode)) throw new HubError(400, `不支持的权限模式 ${permissionMode}`);
       const now = new Date().toISOString();
-      const session: Session = { id: randomUUID(), provider, cwd, providerSessionId: null, status: 'idle', title: null, model, effort, createdAt: now, updatedAt: now };
+      const session: Session = { id: randomUUID(), provider, cwd, providerSessionId: null, status: 'idle', title: null, model, effort, permissionMode, createdAt: now, updatedAt: now };
       store.createSession(session);
       return session;
     },
@@ -160,8 +167,12 @@ export function createHub(store: Store, attachments: AttachmentStore) {
     settings,
     updateSettings(next: Settings) {
       for (const provider of ['claude', 'codex'] as const) {
+        const model = next[provider].model.trim();
         const effort = next[provider].effort.trim();
-        if (effort && !effortLevels[provider].includes(effort)) throw new HubError(400, `${provider} 不支持思考等级 ${effort}`);
+        const permissionMode = next[provider].permissionMode;
+        if (model && !modelOptions[provider].some((o) => o.value === model)) throw new HubError(400, `${provider} 不支持模型 ${model}`);
+        if (effort && !effortOptions[provider].some((o) => o.value === effort)) throw new HubError(400, `${provider} 不支持思考等级 ${effort}`);
+        if (!permissionModeOptions.some((o) => o.value === permissionMode)) throw new HubError(400, `不支持的权限模式 ${permissionMode}`);
       }
       store.setSettings(next);
     },

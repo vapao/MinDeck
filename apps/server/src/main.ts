@@ -99,7 +99,11 @@ app.get<{ Querystring: { path?: string } }>('/api/fs/dirs', (req): ListDirsRespo
 
 app.get('/api/settings', () => hub.settings());
 
-const providerDefaults = { type: 'object', required: ['model', 'effort'], properties: { model: { type: 'string' }, effort: { type: 'string' } } };
+const providerDefaults = {
+  type: 'object',
+  required: ['model', 'effort', 'permissionMode'],
+  properties: { model: { type: 'string' }, effort: { type: 'string' }, permissionMode: { type: 'string' } },
+};
 app.put<{ Body: UpdateSettingsBody }>(
   '/api/settings',
   { schema: { body: { type: 'object', required: ['claude', 'codex'], properties: { claude: providerDefaults, codex: providerDefaults } } } },
@@ -113,8 +117,17 @@ app.get('/api/sessions', () => hub.listSessions());
 
 app.post<{ Body: CreateSessionBody }>(
   '/api/sessions',
-  { schema: { body: { type: 'object', required: ['provider', 'cwd'], properties: { provider: { type: 'string' }, cwd: { type: 'string' }, model: { type: 'string' }, effort: { type: 'string' } } } } },
-  (req, reply) => reply.code(201).send(hub.createSession(req.body.provider, req.body.cwd, { model: req.body.model, effort: req.body.effort })),
+  {
+    schema: {
+      body: {
+        type: 'object',
+        required: ['provider', 'cwd'],
+        properties: { provider: { type: 'string' }, cwd: { type: 'string' }, model: { type: 'string' }, effort: { type: 'string' }, permissionMode: { type: 'string' } },
+      },
+    },
+  },
+  (req, reply) =>
+    reply.code(201).send(hub.createSession(req.body.provider, req.body.cwd, { model: req.body.model, effort: req.body.effort, permissionMode: req.body.permissionMode })),
 );
 
 app.post<{ Params: { id: string }; Body: SendMessageBody }>(

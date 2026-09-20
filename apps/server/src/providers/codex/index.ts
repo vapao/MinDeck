@@ -52,7 +52,7 @@ export function shutdownCodex() {
   shared?.rpc.kill();
 }
 
-export function startCodexSession({ cwd, resume, model, effort, onEvent, onPending, onExit }: StartOptions): ProviderSession {
+export function startCodexSession({ cwd, resume, model, effort, permissionMode, onEvent, onPending, onExit }: StartOptions): ProviderSession {
   const { rpc, ready, threads } = appServer();
   const { normalize } = createNormalizer();
   let threadId: string | null = null;
@@ -105,11 +105,19 @@ export function startCodexSession({ cwd, resume, model, effort, onEvent, onPendi
     onExit,
   };
 
-  // 本机 ~/.codex/config.toml 是 approval_policy=never + danger-full-access（AGENTS.md 规则 10）：thread 级显式覆盖，并校验回包
-  const policy = { cwd, approvalPolicy: 'on-request' as const, sandbox: 'workspace-write' as const, approvalsReviewer: 'user' as const };
+  // 本机 ~/.codex/config.toml 是 approval_policy=never + danger-full-access（AGENTS.md 规则 10）：thread 级显式覆盖，并校验回包。
+  // bypass 是会话级选了"完全跳过审批"时才用，等价本机那份危险配置，风险自负（AgentDeck 设置里配的）
+  const bypass = permissionMode === 'bypass';
+  const policy = {
+    cwd,
+    approvalPolicy: (bypass ? 'never' : 'on-request') as 'never' | 'on-request',
+    sandbox: (bypass ? 'danger-full-access' : 'workspace-write') as 'danger-full-access' | 'workspace-write',
+    approvalsReviewer: 'user' as const,
+  };
+  const expectedSandboxType = bypass ? 'dangerFullAccess' : 'workspaceWrite';
   const opened = ready.then(async () => {
     const res = (resume ? await rpc.request('thread/resume', { threadId: resume, ...policy }) : await rpc.request('thread/start', policy)) as ThreadStartResponse;
-    if (res.approvalPolicy !== 'on-request' || res.sandbox.type !== 'workspaceWrite') {
+    if (res.approvalPolicy !== policy.approvalPolicy || res.sandbox.type !== expectedSandboxType) {
       throw new Error(`Codex 没有接受 Hub 的审批策略（approvalPolicy=${JSON.stringify(res.approvalPolicy)}，sandbox=${res.sandbox.type}），已拒绝启动`);
     }
     threadId = res.thread.id;

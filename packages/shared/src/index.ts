@@ -16,6 +16,8 @@ export type Session = {
   /** 创建时指定的模型 / 思考等级（来自设置或新建页覆盖）；null 交给 Provider 默认。实际生效的模型看 session.started */
   model: string | null;
   effort: string | null;
+  /** 创建时定下，会话生命周期内不变（同 model / effort）：审批走 Hub 审批卡，还是完全跳过审批 */
+  permissionMode: PermissionMode;
   createdAt: string;
   updatedAt: string;
 };
@@ -25,14 +27,54 @@ export type Session = {
 /** 可作为会话 cwd 的目录，由用户在 UI 里从家目录内浏览添加；alias 只用于展示 */
 export type Workspace = { id: string; path: string; alias: string; createdAt: string };
 
-/** 应用级默认值：新建会话时未覆盖就用它；空字符串 = 交给 Provider 默认 */
-export type ProviderDefaults = { model: string; effort: string };
+/** 下拉选项：value 是实际传给 Provider 的值，label 是展示文案 */
+export type SelectOption = { value: string; label: string };
+
+/**
+ * 权限模式：'approval' 走 Hub 的审批卡（默认，安全）；'bypass' 让 Provider 不经审批直接执行
+ * （Claude：permissionMode 'bypassPermissions'；Codex：approvalPolicy 'never' + sandbox 'danger-full-access'）。
+ * 风险自负：一旦某会话是 bypass，任何能连上这台 Hub 的设备发消息都能让它不经审批跑任意命令。
+ */
+export type PermissionMode = 'approval' | 'bypass';
+export const permissionModeOptions: readonly SelectOption[] = [
+  { value: 'approval', label: '审批' },
+  { value: 'bypass', label: '完全跳过审批' },
+];
+
+/** 应用级默认值：新建会话时未覆盖就用它；model / effort 空字符串 = 交给 Provider 默认 */
+export type ProviderDefaults = { model: string; effort: string; permissionMode: PermissionMode };
 export type Settings = Record<ProviderId, ProviderDefaults>;
 
-/** 各 Provider 接受的思考等级（Claude：SDK EffortLevel；Codex：model_reasoning_effort） */
-export const effortLevels: Record<ProviderId, readonly string[]> = {
-  claude: ['low', 'medium', 'high', 'xhigh', 'max'],
-  codex: ['minimal', 'low', 'medium', 'high', 'xhigh'],
+/** 各 Provider 支持的模型，手工维护的硬编码列表，不做动态拉取；出新模型时手动改这里 */
+export const modelOptions: Record<ProviderId, readonly SelectOption[]> = {
+  claude: [
+    { value: 'fable', label: 'Fable' },
+    { value: 'opus', label: 'Opus' },
+    { value: 'sonnet', label: 'Sonnet' },
+    { value: 'haiku', label: 'Haiku' },
+  ],
+  codex: [
+    { value: 'gpt-6-astra', label: 'GPT-6 Astra' },
+    { value: 'gpt-5.6-sol', label: 'GPT-5.6 Sol' },
+  ],
+};
+
+/** 各 Provider 接受的思考等级（Claude：SDK EffortLevel；Codex：model_reasoning_effort），同样手工维护 */
+export const effortOptions: Record<ProviderId, readonly SelectOption[]> = {
+  claude: [
+    { value: 'low', label: 'Low' },
+    { value: 'medium', label: 'Medium' },
+    { value: 'high', label: 'High' },
+    { value: 'xhigh', label: 'Xhigh' },
+    { value: 'max', label: 'Max' },
+  ],
+  codex: [
+    { value: 'light', label: 'Light' },
+    { value: 'medium', label: 'Medium' },
+    { value: 'high', label: 'High' },
+    { value: 'extra-high', label: 'Extra High' },
+    { value: 'ultra', label: 'Ultra' },
+  ],
 };
 
 /** 账号级额度（Claude：§16.1 第 4 条；Codex：account/rateLimits/updated），按 rateLimitType 各存一份最新值 */
@@ -156,7 +198,7 @@ export type ProviderEvent<T extends EventType = EventType> = {
 // ---- REST ----
 
 /** model / effort 省略时取设置里的默认值；空字符串表示显式交给 Provider 默认 */
-export type CreateSessionBody = { provider: ProviderId; cwd: string; model?: string; effort?: string };
+export type CreateSessionBody = { provider: ProviderId; cwd: string; model?: string; effort?: string; permissionMode?: PermissionMode };
 export type CreateSessionResponse = Session;
 
 /** 按 updatedAt 倒序 */
