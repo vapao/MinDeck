@@ -43,6 +43,9 @@
 .hint[data-error] {
   color: var(--danger);
 }
+.hint[data-queue] {
+  color: var(--running);
+}
 .meta:empty + .hint::before {
   content: none;
 }

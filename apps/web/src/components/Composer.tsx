@@ -113,6 +113,8 @@ export function Composer({ draftKey, disabled, running, interrupting, onInterrup
   const failed = drafts.find((d) => d.status === 'error')
   const ids = drafts.flatMap((d) => (d.status === 'done' ? [d.id] : []))
   const canSend = !disabled && !uploading && !failed && (text.trim() !== '' || ids.length > 0)
+  // 轮次进行中才提示"会排队"，且只在真的写了东西时——空输入框没必要一直挂着
+  const queued = running && (text.trim() !== '' || ids.length > 0)
 
   const submit = () => {
     if (!canSend) return
@@ -239,9 +241,9 @@ export function Composer({ draftKey, disabled, running, interrupting, onInterrup
               <ImagePlus size={16} />
             </button>
             <span className={styles.meta}>{meta}</span>
-            {(failed || uploading || hint) && (
-              <span className={styles.hint} data-error={(failed || hintError) || undefined}>
-                {failed ? failed.message : uploading ? 'Uploading images…' : hint}
+            {(failed || uploading || hint || queued) && (
+              <span className={styles.hint} data-error={(failed || hintError) || undefined} data-queue={(!failed && !uploading && !hint && queued) || undefined}>
+                {failed ? failed.message : uploading ? 'Uploading images…' : hint || 'A turn is running; your message will be queued as a follow-up'}
               </span>
             )}
             {running ? (

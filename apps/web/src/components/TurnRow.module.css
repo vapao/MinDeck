@@ -15,7 +15,7 @@
   background-clip: text;
   -webkit-background-clip: text;
   color: transparent;
-  animation: sweep 1.8s linear infinite;
+  animation: sweep 3s linear infinite;
 }
 @keyframes sweep {
   from {

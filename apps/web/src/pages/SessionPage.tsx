@@ -99,15 +99,22 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
   const column = useRef<HTMLDivElement>(null)
   // 用户往上翻看历史时不再自动跟到底部；回到底部附近后恢复跟随
   const follow = useRef(true)
+  // 最近一次已知的 scrollTop（我们自己设的或上次 scroll 事件看到的）。scroll 事件比程序滚动晚一帧，
+  // 中间若又灌进一大段内容，事件里看到的"离底部很远"并不是用户翻上去了——只有 scrollTop 真的变小才算
+  const anchor = useRef(0)
   const onScroll = (e: UIEvent<HTMLElement>) => {
     const el = e.currentTarget
-    follow.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 80) follow.current = true
+    else if (el.scrollTop < anchor.current) follow.current = false
+    anchor.current = el.scrollTop
   }
   // 跟随底部按"高度变了"而不是"事件来了"触发：流式文本、处理中行、卡片出现、底部状态栏换行挤压可视区都算
   useEffect(() => {
     const el = stream.current!
     const observer = new ResizeObserver(() => {
-      if (follow.current) el.scrollTop = el.scrollHeight
+      if (!follow.current) return
+      el.scrollTop = el.scrollHeight
+      anchor.current = el.scrollTop
     })
     observer.observe(el)
     observer.observe(column.current!)
@@ -115,6 +122,7 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
   }, [])
   useEffect(() => {
     follow.current = true
+    anchor.current = 0
   }, [sessionId])
 
   // 已结束轮次的过程块默认折叠；展开的记在这里（按块 key），换会话清空
@@ -142,9 +150,7 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
       ? 'Connecting…'
       : status === 'waiting_user'
         ? `${provider} will continue once you handle the request above`
-        : status === 'running'
-          ? 'A turn is running; your message will be queued as a follow-up'
-          : ''
+        : ''
   // 状态区：Provider · 模型 · 思考等级 · 上下文用量；init 前模型取创建时指定的；没指定 effort（用 Provider 默认）就不显示
   const meta = [providerName[provider], model ?? session?.model, session?.effort, context !== null && formatTokens(context)].filter(Boolean).join(' · ')
 
@@ -260,7 +266,11 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
                 placeholder={`Message ${providerName[provider]} · Enter to send · Shift+Enter for a new line`}
                 upload={(file) => api.uploadAttachment(sessionId, file)}
                 search={(q) => api.listEntries(sessionId, q)}
-                onSend={(text, attachmentIds) => send.mutate({ text, attachmentIds })}
+                onSend={(text, attachmentIds) => {
+                  // 发消息后总是回到底部看回复，哪怕之前翻上去了
+                  follow.current = true
+                  send.mutate({ text, attachmentIds })
+                }}
               />
             </div>
           </footer>
