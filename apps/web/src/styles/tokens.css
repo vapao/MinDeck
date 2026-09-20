@@ -1,42 +1,49 @@
-/* 设计规范 docs/ui-design-spec.md §2。组件样式只引用这里的变量，不写裸色值。 */
+/* 设计规范 docs/ui-design-spec.md §2。组件样式只引用这里的变量，不写裸色值。
+   视觉基线来自 Turnwork：系统字体、13px 基准、半透明白描边、两档圆角（控件 6 / 卡片 8）、琥珀单强调色 */
 :root {
-  --bg: #111214;
+  color-scheme: dark;
+
+  --bg: #0f1012;
   --panel: #141518;
-  --surface: #16171b;
-  --surface-2: #1b1d22;
-  --surface-3: #1f2126;
-  --surface-4: #2a2d33;
-  --border: #25272d;
-  --border-2: #2e3138;
-  --text: #ecedef;
-  --text-2: #a5a9b2;
-  --text-3: #8a8f99;
-  --text-4: #5b606b;
-  --accent: #e4a94f;
-  --accent-text: #f2d08a;
-  --accent-bg: #1a1710;
-  --accent-bg-2: #2a2113;
-  --accent-border-2: #4a3a1b;
-  --accent-divider: #3a2f16;
-  --on-accent: #1a1204;
-  --ok: #5fb97a;
-  --ok-bg: #142018;
-  --ok-border: #244a2f;
-  --danger: #e06c6c;
-  --danger-bg: #241717;
-  --danger-border: #3a2626;
-  --inverse: #ecedef;
-  --on-inverse: #111214;
+  --surface: #1b1d21;
+  --surface-2: #202328;
+  --surface-3: #23262b;
+  --hover: rgba(255, 255, 255, 0.05);
+  --selected: rgba(255, 255, 255, 0.075);
+  --border: rgba(255, 255, 255, 0.07);
+  --border-2: rgba(255, 255, 255, 0.09);
+  --border-3: rgba(255, 255, 255, 0.13);
 
-  --font-sans: 'IBM Plex Sans', system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
+  --text: #e6e8ec;
+  --text-strong: #f2f4f6;
+  --text-2: #9aa0a9;
+  --text-3: #777d86;
+  --text-4: #5e646d;
 
-  --radius-card: 10px;
-  --radius-tool: 8px;
-  --radius-input: 12px;
-  --radius-button: 8px;
+  --accent: #e0a25f;
+  --accent-hover: #efb87a;
+  --on-accent: #1b1510;
+  --accent-bg: rgba(224, 162, 95, 0.075);
+  --accent-bg-2: rgba(224, 162, 95, 0.12);
+  --accent-border: rgba(224, 162, 95, 0.28);
+  --accent-ring: rgba(224, 162, 95, 0.42);
 
-  --topbar-h: 56px;
+  --running: #7fa8d9;
+  --running-border: rgba(127, 168, 217, 0.28);
+  --ok: #8dbb9d;
+  --ok-bg: rgba(141, 187, 157, 0.1);
+  --danger: #d98d84;
+  --danger-bg: rgba(217, 141, 132, 0.12);
+  --danger-border: rgba(217, 141, 132, 0.25);
+
+  --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'PingFang SC', 'Helvetica Neue', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  --radius-control: 6px;
+  --radius-card: 8px;
+  --shadow-menu: 0 12px 36px rgba(0, 0, 0, 0.42);
+
+  --topbar-h: 52px;
   --stream-w: 820px;
   --assistant-w: 720px;
   --user-w: 600px;

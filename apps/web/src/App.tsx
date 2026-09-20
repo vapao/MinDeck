@@ -4,6 +4,7 @@ import { useMediaQuery } from './session/useMediaQuery'
 import { useSessions } from './session/useSessions'
 import { notificationsSupported, useNotificationPermission, useNotifications } from './session/useNotifications'
 import { SessionList } from './components/SessionList'
+import { RateMeter } from './components/RateMeter'
 import { useResizable } from './components/Resizer'
 import { NewSessionPage } from './pages/NewSessionPage'
 import { SessionListPage } from './pages/SessionListPage'
@@ -42,7 +43,10 @@ function Sidebar({ activeId }: { activeId?: string }) {
     <aside className={styles.sidebar} style={{ width }}>
       <div {...handle} />
       <div className={styles.brand}>
-        AgentDeck
+        <span className={styles.brandName}>
+          <span className={styles.mark} />
+          AgentDeck
+        </span>
         {notificationsSupported && notify.permission === 'default' && (
           <button type="button" className={styles.bell} onClick={notify.request} title="会话等待审批或完成时弹系统通知">
             <Bell size={14} />
@@ -57,6 +61,7 @@ function Sidebar({ activeId }: { activeId?: string }) {
         <Plus size={16} />
         新建会话
       </button>
+      <RateMeter />
       <nav className={styles.nav}>
         <button type="button" className={styles.navButton} onClick={() => navigate('/workspaces')}>
           <FolderOpen size={14} />

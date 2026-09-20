@@ -1,11 +1,11 @@
 import { useEffect, useReducer, useRef } from 'react'
-import type { AgentEvent, ApprovalDecision, Attachment, PendingRequest, QuestionAnswers, ServerMessage, Session, SessionStatus, TurnEndReason, UsageInfo } from '@agentdeck/shared'
+import type { AgentEvent, ApprovalDecision, Attachment, PendingRequest, QuestionAnswers, ServerMessage, Session, SessionStatus, TurnEndReason } from '@agentdeck/shared'
 
 // 会话页的实时状态 = 对事件流做 reduce（方案 §13.1）。一个 seq 只处理一次，重放与 live 共用同一条路径。
 
 export type StreamItem =
   | { kind: 'user'; key: string; text: string; attachments: Attachment[]; at: string }
-  | { kind: 'assistant'; key: string; messageId: string; text: string; streaming: boolean; at: string }
+  | { kind: 'assistant'; key: string; messageId: string; text: string; streaming: boolean }
   | { kind: 'tool'; key: string; toolUseId: string; name: string; input: unknown; output: string | null; isError: boolean; at: string }
   | { kind: 'error'; key: string; message: string; at: string }
   /** 一轮结束的落款：完成 / 中断 及用时 */
@@ -28,8 +28,6 @@ export type StreamState = {
   replay: { from: number; to: number } | null
   /** snapshot 里仍在等待的请求 id；重放结束后据此把陈旧的 pending 卡片标成已过期 */
   livePendingIds: string[]
-  /** 账号级额度，按 rateLimitType 存最新值 */
-  usage: Record<string, UsageInfo>
   /** 最近一次模型调用的上下文 token 数；还没跑过为 null */
   context: number | null
   /** 当前这一轮的开始时间，给底部"处理中"计时用；没有在跑的轮次为 null */
@@ -46,7 +44,7 @@ type Action =
   | { type: 'replay.dismiss' }
   | { type: 'reset' }
 
-const initial: StreamState = { session: null, status: 'idle', model: null, items: [], lastSeq: 0, connection: 'connecting', replay: null, livePendingIds: [], usage: {}, context: null, turnStartedAt: null, gone: false, changesVersion: 0 }
+const initial: StreamState = { session: null, status: 'idle', model: null, items: [], lastSeq: 0, connection: 'connecting', replay: null, livePendingIds: [], context: null, turnStartedAt: null, gone: false, changesVersion: 0 }
 
 function reduce(state: StreamState, action: Action): StreamState {
   if (action.type === 'reset') return initial
@@ -61,7 +59,6 @@ function reduce(state: StreamState, action: Action): StreamState {
         session: m.session,
         status: m.session.status,
         livePendingIds: m.pendingRequests.map((r) => r.id),
-        usage: m.usage,
         replay: state.connection === 'reconnecting' ? { from: state.lastSeq, to: state.lastSeq } : null,
       }
     case 'event':
@@ -98,7 +95,7 @@ function applyEvent(state: StreamState, e: AgentEvent): StreamState {
       const done = e.type === 'message.completed'
       const i = items.findIndex((it) => it.kind === 'assistant' && it.messageId === messageId)
       if (i === -1) {
-        return { ...state, items: [...items, { kind: 'assistant', key: messageId, messageId, text, streaming: !done, at: e.createdAt }] }
+        return { ...state, items: [...items, { kind: 'assistant', key: messageId, messageId, text, streaming: !done }] }
       }
       const cur = items[i] as Extract<StreamItem, { kind: 'assistant' }>
       // completed 携带完整文本，覆盖 delta 拼接结果
@@ -147,8 +144,6 @@ function applyEvent(state: StreamState, e: AgentEvent): StreamState {
         changesVersion: state.changesVersion + 1,
         items: [...items, { kind: 'turn', key: `t${e.seq}`, reason: e.payload.reason, durationMs: e.payload.durationMs, at: e.createdAt }],
       }
-    case 'usage.updated':
-      return { ...state, usage: { ...state.usage, [e.payload.rateLimitType]: e.payload } }
     case 'context.updated':
       return { ...state, context: e.payload.tokens }
     case 'session.status':

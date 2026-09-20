@@ -16,11 +16,32 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 16px;
-  font-size: 15px;
+  padding: 0 12px 0 16px;
+  font-size: 14px;
   font-weight: 600;
-  letter-spacing: -0.01em;
+  color: var(--text-strong);
   border-bottom: 1px solid var(--border);
+}
+.brandName {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+/* 品牌标：琥珀方块 + 墨色小点 */
+.mark {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  background: var(--accent);
+}
+.mark::after {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-radius: 2px;
+  background: var(--on-accent);
 }
 .bell {
   display: flex;
@@ -28,16 +49,16 @@
   gap: 4px;
   height: 26px;
   padding: 0 8px;
-  border: 1px solid var(--border-2);
-  border-radius: var(--radius-button);
-  background: var(--surface);
-  color: var(--text-2);
+  border: 0;
+  border-radius: var(--radius-control);
+  background: none;
+  color: var(--text-3);
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
 }
 .bell:hover {
-  background: var(--surface-2);
+  background: var(--hover);
   color: var(--text);
 }
 .sidebarList {
@@ -52,24 +73,28 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
-  height: 44px;
-  margin: 8px;
-  border: 1px solid var(--border-2);
-  border-radius: var(--radius-button);
+  height: 32px;
+  margin: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
   background: var(--surface);
   color: var(--text-2);
   font-weight: 500;
   cursor: pointer;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease;
 }
 .newButton:hover {
+  border-color: var(--border-3);
   background: var(--surface-2);
-  color: var(--text);
+  color: var(--text-strong);
 }
 .nav {
   flex: none;
   display: flex;
-  gap: 8px;
-  padding: 0 8px 8px;
+  gap: 4px;
+  padding: 0 10px 10px;
 }
 .navButton {
   flex: 1;
@@ -77,16 +102,17 @@
   align-items: center;
   justify-content: center;
   gap: 4px;
-  height: 32px;
+  height: 30px;
   border: 0;
-  border-radius: var(--radius-button);
+  border-radius: var(--radius-control);
   background: none;
-  color: var(--text-3);
-  font-size: 12.5px;
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 500;
   cursor: pointer;
 }
 .navButton:hover {
-  background: var(--surface-2);
+  background: var(--hover);
   color: var(--text);
 }
 .main {

@@ -24,7 +24,7 @@ export function createHub(store: Store, attachments: AttachmentStore) {
   const waiting = new Map<string, (r: Resolution | null) => void>();
   // 一轮进行中收到的追加指令（方案 §8.3）：本轮结束后按序发出。只在内存里，Hub 重启即丢
   const queues = new Map<string, { text: string; files: Attachment[] }[]>();
-  // 账号级额度，按 rateLimitType 保留最新值，随 snapshot 下发
+  // 账号级额度，按 rateLimitType 保留最新值，GET /api/usage 直接返回
   const usage: Record<string, UsageInfo> = {};
   let closing = false;
 

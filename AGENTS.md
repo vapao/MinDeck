@@ -38,7 +38,7 @@ Mac Mini 上自托管的 Claude / Codex 多端控制台：Agent 在 Mac Mini 上
 - Node ≥ 24（`.nvmrc`），pnpm 11 workspace：`apps/server`（Fastify 5 + `@fastify/websocket` + `@fastify/multipart` + `@anthropic-ai/claude-agent-sdk`，tsx 运行）、`apps/web`（Vite 8 + React 19 + TanStack Query + vite-plugin-pwa）、`packages/shared`（domain 类型 + REST/WS 契约）。
 - 存储：`node:sqlite` 内置模块 + 原生 SQL。**不引 ORM。**
 - 前端状态：TanStack Query 管 REST；实时 session 状态用 `useReducer` / `useSyncExternalStore` 对事件流 reduce。**不引 Zustand。**
-- 样式：CSS Modules + `tokens.css` 变量，字体 `@fontsource/*` 自托管，图标 `lucide-react`。**不引 Tailwind / 组件库。**
+- 样式：CSS Modules + `tokens.css` 变量（视觉基线对齐 Turnwork，见 `docs/ui-design-spec.md` §2），UI 用系统字体、等宽 `@fontsource/jetbrains-mono` 自托管，图标 `lucide-react`；确认 / 提示 / 输入统一走 `components/Dialog.tsx` 的 `dialog.confirm / alert / prompt`，不用浏览器原生弹窗。**不引 Tailwind / 组件库。**
 - TypeScript 三个工作区统一 `~6.0.2`。
 
 ```
@@ -46,7 +46,7 @@ pnpm dev:server      # tsx watch apps/server/src/main.ts
 pnpm dev:web         # vite
 pnpm build           # 前端构建到 apps/web/dist，Hub 启动时若该目录存在就直接托管（SPA 回退 + PWA）
 pnpm start           # tsx apps/server/src/main.ts（生产，不 watch）
-scripts/launchd.sh install | uninstall | restart | status | logs   # 常驻：先 pnpm build，再写 ~/Library/LaunchAgents/com.agentdeck.hub.plist 并加载；日志 data/logs/hub.log
+scripts/launchd.sh install | uninstall | update | restart | status | logs   # 常驻：install 先 pnpm build 再写 ~/Library/LaunchAgents/com.agentdeck.hub.plist 并加载；update = pnpm build + 重启 Hub（改完代码用它）；restart 只重启；日志 data/logs/hub.log
 pnpm typecheck       # 三个工作区
 pnpm --filter @agentdeck/server test   # tsx --test：事件 seq 单调、PendingRequest 原子 resolve、附件路径/会话边界
 pnpm codex:schema    # codex app-server generate-ts → apps/server/src/providers/codex/schema（已 gitignore，按本机 codex 版本生成）

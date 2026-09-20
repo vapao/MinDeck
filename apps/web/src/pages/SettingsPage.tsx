@@ -6,6 +6,7 @@ import { api } from '../api'
 import { providerName } from '../format'
 import { navigate } from '../router'
 import { Select } from '../components/Select'
+import { dialog } from '../components/Dialog'
 import styles from './Manage.module.css'
 
 // 应用级默认值：新建会话时用；已有会话不受影响。是否生效看会话头部的模型标签。
@@ -27,14 +28,20 @@ export function SettingsPage() {
   const dirty = !!draft && JSON.stringify(draft) !== JSON.stringify(saved.data)
   const patch = (p: ProviderId, field: 'model' | 'effort' | 'permissionMode', value: string) => setDraft((d) => d && { ...d, [p]: { ...d[p], [field]: value } })
   // 只在从非 bypass 切到 bypass 时打断确认；已经是 bypass 时改别的字段不用每次都问
-  const confirmBypass = () =>
-    (['claude', 'codex'] as const).every(
-      (p) =>
-        !draft ||
-        draft[p].permissionMode !== 'bypass' ||
-        saved.data?.[p].permissionMode === 'bypass' ||
-        confirm(`把 ${providerName[p]} 的默认权限模式设为「完全跳过审批」？之后新建的会话不经审批直接执行任意命令，风险自负。`),
-    )
+  const onSave = async () => {
+    if (!draft) return
+    for (const p of ['claude', 'codex'] as const) {
+      if (draft[p].permissionMode !== 'bypass' || saved.data?.[p].permissionMode === 'bypass') continue
+      const ok = await dialog.confirm({
+        title: `把 ${providerName[p]} 的默认权限模式设为「完全跳过审批」？`,
+        message: '之后新建的会话不经审批直接执行任意命令，任何能连上这台 Hub 的设备都能触发，风险自负。',
+        ok: '设为跳过审批',
+        danger: true,
+      })
+      if (!ok) return
+    }
+    save.mutate(draft)
+  }
 
   return (
     <div className={styles.page}>
@@ -65,7 +72,7 @@ export function SettingsPage() {
             </div>
           ))}
         <div className={styles.actions}>
-          <button type="button" className={styles.primary} disabled={!dirty || save.isPending} onClick={() => draft && confirmBypass() && save.mutate(draft)}>
+          <button type="button" className={styles.primary} disabled={!dirty || save.isPending} onClick={onSave}>
             保存
           </button>
         </div>

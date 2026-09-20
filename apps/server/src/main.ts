@@ -6,7 +6,7 @@ import Fastify from 'fastify';
 import websocket from '@fastify/websocket';
 import multipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
-import type { AgentEvent, ClientMessage, CreateSessionBody, CreateWorkspaceBody, ListDirsResponse, ResolvePendingBody, SendMessageBody, ServerMessage, UpdateSettingsBody, UpdateWorkspaceBody, Workspace } from '@agentdeck/shared';
+import type { AgentEvent, ClientMessage, CreateSessionBody, CreateWorkspaceBody, ListDirsResponse, ResolvePendingBody, SendMessageBody, ServerMessage, UpdateSettingsBody, UpdateWorkspaceBody, UsageResponse, Workspace } from '@agentdeck/shared';
 import { openStore } from './store/db';
 import { createAttachmentStore, isImageMime, maxAttachmentBytes, maxAttachmentsPerMessage } from './store/attachments';
 import { createHub, HubError } from './hub';
@@ -112,6 +112,8 @@ app.put<{ Body: UpdateSettingsBody }>(
     return hub.settings();
   },
 );
+
+app.get('/api/usage', (): UsageResponse => hub.usage);
 
 app.get('/api/sessions', () => hub.listSessions());
 
@@ -219,7 +221,7 @@ app.get('/ws', { websocket: true, preValidation: (req, reply, done) => (checkOri
           return send({ type: 'error', code: 'not_found', message: (err as Error).message });
         }
         // 快照 → 从 afterSeq 重放 → 挂上 live 监听。全程同步，中间不会漏掉新事件。
-        send({ type: 'snapshot', session, pendingRequests: hub.pendingRequests(msg.sessionId), lastSeq: hub.lastSeq(msg.sessionId), usage: hub.usage });
+        send({ type: 'snapshot', session, pendingRequests: hub.pendingRequests(msg.sessionId), lastSeq: hub.lastSeq(msg.sessionId) });
         for (const event of hub.eventsAfter(msg.sessionId, msg.afterSeq)) send({ type: 'event', event });
         send({ type: 'replay.completed', lastSeq: hub.lastSeq(msg.sessionId) });
         subscriptions.set(

@@ -1,7 +1,10 @@
+import { useQuery } from '@tanstack/react-query'
 import type { ProviderId, UsageInfo } from '@agentdeck/shared'
+import { api } from '../api'
+import { providerName } from '../format'
 import styles from './RateMeter.module.css'
 
-// Claude 的窗口只有 rateLimitType 没有时长；Codex 给了 windowDurationMins，按它标注。顶栏空间有限，标签压成 5h / week 这种缩写
+// Claude 的窗口只有 rateLimitType 没有时长；Codex 给了 windowDurationMins，按它标注
 const fixedLabel: Record<string, string> = { five_hour: '5h', seven_day: 'week' }
 function label(u: UsageInfo) {
   if (fixedLabel[u.rateLimitType]) return fixedLabel[u.rateLimitType]
@@ -10,25 +13,33 @@ function label(u: UsageInfo) {
   return m === 7 * 1440 ? 'week' : m >= 1440 ? `${Math.round(m / 1440)}d` : `${Math.round(m / 60)}h`
 }
 
-// 只展示当前会话 Provider 的主额度：Claude 取订阅的两条（opus/sonnet 细分、overage 不显示），Codex 取 primary / secondary
-export function RateMeter({ provider, usage }: { provider: ProviderId; usage: Record<string, UsageInfo> }) {
-  const shown = ['five_hour', 'seven_day', 'primary', 'secondary'].flatMap((k) => (usage[k]?.provider === provider ? [usage[k]] : []))
-  if (shown.length === 0) return null
+// 账号级额度，按 Provider 分组放侧栏。只取主额度：Claude 订阅的两条（opus/sonnet 细分、overage 不显示），Codex 的 primary / secondary。
+// 数据是 Hub 内存缓存（只随 Provider 推送更新），与会话列表同样 5s 轮询
+const shownTypes = ['five_hour', 'seven_day', 'primary', 'secondary']
+export function RateMeter() {
+  const usage = useQuery({ queryKey: ['usage'], queryFn: api.getUsage, refetchInterval: 5000 })
+  const groups = (['claude', 'codex'] as ProviderId[]).map((p) => ({ provider: p, items: shownTypes.flatMap((k) => (usage.data?.[k]?.provider === p ? [usage.data[k]] : [])) })).filter((g) => g.items.length > 0)
+  if (groups.length === 0) return null
   return (
     <div className={styles.wrap}>
-      {shown.map((u) => {
-        const pct = Math.round(u.utilization * 100)
-        return (
-          <div key={u.rateLimitType} className={styles.meter} title={`${label(u)} 额度已用 ${pct}%${u.resetsAt ? `，${formatUntil(u.resetsAt)} 后重置` : ''}`}>
-            <span className={styles.label}>{label(u)}</span>
-            <div className={styles.bar}>
-              <div className={styles.fill} style={{ width: `${Math.min(100, pct)}%` }} />
-            </div>
-            <code className={styles.value}>{pct}%</code>
-            {u.resetsAt && <code className={styles.reset}>{formatUntil(u.resetsAt)}</code>}
-          </div>
-        )
-      })}
+      {groups.map((g) => (
+        <div key={g.provider} className={styles.group}>
+          <span className={styles.provider}>{providerName[g.provider]}</span>
+          {g.items.map((u) => {
+            const pct = Math.round(u.utilization * 100)
+            return (
+              <div key={u.rateLimitType} className={styles.meter} title={`${label(u)} 额度已用 ${pct}%${u.resetsAt ? `，${formatUntil(u.resetsAt)} 后重置` : ''}`}>
+                <span className={styles.label}>{label(u)}</span>
+                <div className={styles.bar}>
+                  <div className={styles.fill} style={{ width: `${Math.min(100, pct)}%` }} />
+                </div>
+                <code className={styles.value}>{pct}%</code>
+                {u.resetsAt && <code className={styles.reset}>{formatUntil(u.resetsAt)}</code>}
+              </div>
+            )
+          })}
+        </div>
+      ))}
     </div>
   )
 }

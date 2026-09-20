@@ -1,7 +1,7 @@
 /* ApprovalCard 与 QuestionCard 共用的琥珀卡片样式（设计规范 §3） */
 .card {
   max-width: min(var(--assistant-w), 100%);
-  border: 1px solid var(--accent);
+  border: 1px solid var(--accent-border);
   border-radius: var(--radius-card);
   background: var(--accent-bg);
   overflow: hidden;
@@ -17,9 +17,9 @@
   align-items: center;
   gap: 8px;
   padding: 10px 14px;
-  border-bottom: 1px solid var(--accent-divider);
-  color: var(--accent-text);
-  font-weight: 500;
+  border-bottom: 1px solid var(--accent-bg-2);
+  color: var(--text-strong);
+  font-weight: 550;
 }
 .card[data-state='resolved'] .head,
 .card[data-state='expired'] .head {
@@ -36,19 +36,19 @@
 }
 .headMeta {
   margin-left: auto;
-  font-size: 11.5px;
+  font-size: 11px;
   font-weight: 400;
   color: var(--text-3);
   white-space: nowrap;
 }
 .chip {
-  padding: 0 5px;
-  border: 1px solid var(--accent-border-2);
+  padding: 1px 5px;
   border-radius: 4px;
+  background: var(--accent-bg-2);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 400;
-  color: var(--text-2);
+  color: var(--accent);
 }
 .body {
   display: flex;
@@ -57,16 +57,17 @@
   padding: 12px 14px;
 }
 .label {
-  font-size: 11.5px;
-  letter-spacing: 0.02em;
-  color: var(--text-3);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--text-4);
 }
 .code {
   margin: 0;
   padding: 10px 12px;
   background: var(--surface-3);
-  border-radius: 6px;
-  font-size: 12.5px;
+  border-radius: var(--radius-control);
+  font-size: 12px;
   line-height: 1.45;
   white-space: pre-wrap;
   word-break: break-all;
@@ -81,7 +82,7 @@
 }
 .mono {
   font-family: var(--font-mono);
-  font-size: 12.5px;
+  font-size: 12px;
   color: var(--text-2);
   word-break: break-all;
 }
@@ -94,38 +95,53 @@
 .primary,
 .secondary,
 .ghost {
-  height: 36px;
-  padding: 0 14px;
-  border-radius: var(--radius-button);
+  height: 30px;
+  padding: 0 12px;
+  border-radius: var(--radius-control);
   font-weight: 500;
   cursor: pointer;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease;
 }
 .primary {
   border: 0;
   background: var(--accent);
   color: var(--on-accent);
+  font-weight: 600;
+}
+.primary:hover:not(:disabled) {
+  background: var(--accent-hover);
 }
 .secondary {
-  border: 1px solid var(--accent-border-2);
+  border: 1px solid var(--accent-border);
   background: none;
-  color: var(--accent-text);
+  color: var(--accent);
   font-family: var(--font-mono);
   font-weight: 400;
+}
+.secondary:hover:not(:disabled) {
+  background: var(--accent-bg-2);
 }
 .ghost {
   border: 1px solid var(--border-2);
   background: none;
   color: var(--text-2);
 }
+.ghost:hover:not(:disabled) {
+  border-color: var(--border-3);
+  background: var(--hover);
+  color: var(--text-strong);
+}
 .primary:disabled,
 .secondary:disabled,
 .ghost:disabled {
-  opacity: 0.5;
+  opacity: 0.42;
   cursor: default;
 }
 .error {
   width: 100%;
-  font-size: 12.5px;
+  font-size: 12px;
   color: var(--danger);
 }
 .option {
@@ -134,11 +150,17 @@
   align-items: flex-start;
   padding: 8px 10px;
   border: 1px solid var(--border-2);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   cursor: pointer;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease;
+}
+.option:hover {
+  background: var(--hover);
 }
 .option:has(input:checked) {
-  border-color: var(--accent);
+  border-color: var(--accent-border);
   background: var(--accent-bg-2);
 }
 .option input {
@@ -151,19 +173,20 @@
   gap: 2px;
 }
 .optionDesc {
-  font-size: 12.5px;
+  font-size: 12px;
   color: var(--text-3);
 }
 .other {
-  height: 36px;
-  padding: 0 10px;
+  height: 32px;
+  padding: 0 9px;
   background: var(--surface);
-  border: 1px solid var(--border-2);
-  border-radius: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
   outline: none;
 }
 .other:focus {
-  border-color: var(--text-4);
+  border-color: var(--accent-ring);
+  box-shadow: 0 0 0 2px var(--accent-bg);
 }
 @media (max-width: 1023px) {
   .actions {

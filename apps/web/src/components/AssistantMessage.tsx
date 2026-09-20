@@ -1,8 +1,6 @@
 import type { ComponentProps } from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import type { ProviderId } from '@agentdeck/shared'
-import { formatTime } from '../format'
 import styles from './AssistantMessage.module.css'
 
 const plugins = [remarkGfm]
@@ -14,17 +12,12 @@ const components = {
   },
 }
 
-type Props = { provider: ProviderId; text: string; streaming: boolean; at: string; /** 一轮里只有第一段带头部，后面的段落直接接上 */ showMeta: boolean }
+type Props = { text: string; streaming: boolean }
 
-export function AssistantMessage({ provider, text, streaming, at, showMeta }: Props) {
+// 不带发送者 / 时间头部：一轮的落款（TurnRow）已经记了时间，回复段落直接接在用户消息后
+export function AssistantMessage({ text, streaming }: Props) {
   return (
     <div className={styles.row}>
-      {showMeta && (
-        <div className={styles.meta}>
-          <span className={styles.avatar}>{provider === 'codex' ? 'X' : 'C'}</span>
-          {provider} · {formatTime(at)}
-        </div>
-      )}
       <div className={styles.body} data-streaming={streaming || undefined}>
         <Markdown remarkPlugins={plugins} components={components}>{text}</Markdown>
       </div>

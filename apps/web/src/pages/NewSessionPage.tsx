@@ -5,6 +5,7 @@ import { api } from '../api'
 import { providerName } from '../format'
 import { navigate } from '../router'
 import { Select } from '../components/Select'
+import { dialog } from '../components/Dialog'
 import styles from './NewSessionPage.module.css'
 
 export function NewSessionPage() {
@@ -65,8 +66,17 @@ export function NewSessionPage() {
           type="button"
           className={styles.primary}
           disabled={!selected || create.isPending}
-          onClick={() => {
-            if (permissionMode === 'bypass' && !confirm('这个会话将完全跳过审批，不经确认直接执行任意命令，风险自负。确定要新建吗？')) return
+          onClick={async () => {
+            if (
+              permissionMode === 'bypass' &&
+              !(await dialog.confirm({
+                title: '新建一个跳过审批的会话？',
+                message: '这个会话将完全跳过审批，不经确认直接执行任意命令，风险自负。',
+                ok: '仍然新建',
+                danger: true,
+              }))
+            )
+              return
             create.mutate({ provider, cwd: selected, model, effort, permissionMode: permissionMode as PermissionMode })
           }}
         >

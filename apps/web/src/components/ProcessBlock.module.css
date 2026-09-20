@@ -9,14 +9,14 @@
   padding: 4px 6px;
   margin-left: -6px;
   border: 0;
-  border-radius: var(--radius-button);
+  border-radius: var(--radius-control);
   background: none;
   font-size: 12px;
   color: var(--text-3);
   cursor: pointer;
 }
 .toggle:hover {
-  background: var(--surface-2);
+  background: var(--hover);
   color: var(--text-2);
 }
 .chevron {

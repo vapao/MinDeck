@@ -16,15 +16,15 @@ import { ToolCard, ToolGroup } from '../components/ToolCard'
 import { ProcessBlock } from '../components/ProcessBlock'
 import { ErrorCard } from '../components/ErrorCard'
 import { TurnRow, WorkingRow } from '../components/TurnRow'
-import { RateMeter } from '../components/RateMeter'
 import { ConnectionBanner } from '../components/ConnectionBanner'
 import { ApprovalCard } from '../components/ApprovalCard'
 import { QuestionCard } from '../components/QuestionCard'
 import { Composer } from '../components/Composer'
+import { dialog } from '../components/Dialog'
 import styles from './SessionPage.module.css'
 
 export function SessionPage({ sessionId }: { sessionId: string }) {
-  const { session, status, model, items, connection, replay, usage, context, turnStartedAt, gone, changesVersion } = useSessionStream(sessionId)
+  const { session, status, model, items, connection, replay, context, turnStartedAt, gone, changesVersion } = useSessionStream(sessionId)
   const queryClient = useQueryClient()
   // 标题由首条消息生成，snapshot 里的 session 不会跟着更新；列表查询在发送成功后会失效重取，从它读最新值
   const sessions = useSessions()
@@ -35,14 +35,32 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['sessions'] }),
   })
   const interrupt = useMutation({ mutationFn: () => api.interrupt(sessionId) })
-  // "新开一轮" = 同工作区同 Agent 起一个新会话，等价于 CLI 的 /clear；旧会话记录保留
+  // "新开一轮" = 同工作区同 Agent 起一个新会话，等价于 CLI 的 /clear。多数时候旧会话已经没用，所以顺带问一句要不要删。
+  // 先建新的、切过去，再删旧的：这样旧会话的 session.deleted 不会打到还开着的页面上；删失败（如刚好又跑起来 409）只提示
   const fresh = useMutation({
-    mutationFn: () => api.createSession({ provider: session!.provider, cwd: session!.cwd }),
-    onSuccess: (s) => {
-      queryClient.invalidateQueries({ queryKey: ['sessions'] })
+    mutationFn: async (discard: boolean) => {
+      const s = await api.createSession({ provider: session!.provider, cwd: session!.cwd })
       navigate(`/s/${s.id}`)
+      if (discard) await api.deleteSession(sessionId).catch((err: Error) => dialog.alert({ title: '新会话已建好，但旧会话没删掉', message: err.message }))
     },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['sessions'] }),
   })
+  const onFresh = async () => {
+    // 运行中的会话删不了（服务端 409），不问直接保留
+    const canDiscard = status === 'idle' || status === 'error'
+    const discard =
+      canDiscard &&
+      (await dialog.confirm({
+        title: '新开一轮时删除当前会话？',
+        message: '会连同它的全部记录一起删除，不可恢复。选「保留」则当前会话留在列表里，同样新开一轮。',
+        ok: '删除并新开',
+        cancel: '保留并新开',
+        danger: true,
+      }))
+    // null = 直接关掉弹窗，什么也不做
+    if (discard === null) return
+    fresh.mutate(discard)
+  }
   // 同一时刻只会有一个待处理请求在提交；409（已在别处处理）随后会被 resolved 事件覆盖掉卡片
   const resolve = useMutation({ mutationFn: ({ id, body }: { id: string; body: Resolution }) => api.resolvePending(id, body) })
   const pendingProps = (id: string) => ({
@@ -56,10 +74,10 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
       queryClient.invalidateQueries({ queryKey: ['sessions'] })
       navigate('/')
     },
-    onError: (err) => alert(err.message),
+    onError: (err) => dialog.alert({ title: '删除失败', message: err.message }),
   })
-  const onDelete = () => {
-    if (confirm('删除这个会话及其全部记录？此操作不可恢复。')) remove.mutate()
+  const onDelete = async () => {
+    if (await dialog.confirm({ title: '删除这个会话？', message: '会话及其全部记录将被删除，不可恢复。', ok: '删除', danger: true })) remove.mutate()
   }
   // 在别处被删了：离开页面
   useEffect(() => {
@@ -127,15 +145,15 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
         : status === 'running'
           ? '当前有一轮在运行，发送将作为追加指令排队'
           : ''
-  // 状态区：Provider · 模型 · 思考等级 · 上下文用量；init 前模型取创建时指定的；没指定 effort 就是 Provider 默认
-  const meta = [providerName[provider], model ?? session?.model, `思考 ${session?.effort ?? '默认'}`, context !== null && `${formatTokens(context)} 上下文`].filter(Boolean).join(' · ')
+  // 状态区：Provider · 模型 · 思考等级 · 上下文用量；init 前模型取创建时指定的；没指定 effort（用 Provider 默认）就不显示
+  const meta = [providerName[provider], model ?? session?.model, session?.effort, context !== null && formatTokens(context)].filter(Boolean).join(' · ')
 
-  const renderItem = (it: StreamItem, showMeta: boolean) => {
+  const renderItem = (it: StreamItem) => {
     switch (it.kind) {
       case 'user':
         return <UserMessage key={it.key} text={it.text} attachments={it.attachments} at={it.at} />
       case 'assistant':
-        return <AssistantMessage key={it.key} provider={provider} text={it.text} streaming={it.streaming} at={it.at} showMeta={showMeta} />
+        return <AssistantMessage key={it.key} text={it.text} streaming={it.streaming} />
       case 'tool':
         return <ToolCard key={it.key} name={it.name} input={it.input} output={it.output} isError={it.isError} />
       case 'error':
@@ -182,10 +200,10 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
     }
   }
   const renderEntries = (list: Entry[]) =>
-    list.map((e, i) => {
+    list.map((e) => {
       switch (e.kind) {
         case 'tools':
-          return <ToolGroup key={e.key}>{e.items.map((t) => renderItem(t, false))}</ToolGroup>
+          return <ToolGroup key={e.key}>{e.items.map(renderItem)}</ToolGroup>
         case 'process':
           return (
             <ProcessBlock key={e.key} summary={e.summary} open={opened.has(e.key)} onToggle={() => toggleProcess(e.key)}>
@@ -193,7 +211,7 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
             </ProcessBlock>
           )
         default:
-          return renderItem(e, firstReplySince(list, i))
+          return renderItem(e)
       }
     })
 
@@ -204,10 +222,7 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
           <ChevronLeft size={20} />
         </button>
         <span className={styles.title} title={session?.cwd}>{title}</span>
-        <div className={styles.meter}>
-          <RateMeter provider={provider} usage={usage} />
-        </div>
-        <button type="button" className={styles.fresh} onClick={() => fresh.mutate()} disabled={!session || fresh.isPending} title="同工作区新开一个会话，清空上下文">
+        <button type="button" className={styles.fresh} onClick={onFresh} disabled={!session || fresh.isPending} title="同工作区新开一个会话，清空上下文；可选删除当前会话">
           <MessageSquarePlus size={16} />
           <span className={styles.freshLabel}>新开一轮</span>
         </button>
@@ -256,13 +271,4 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
       </div>
     </div>
   )
-}
-
-// 一轮里 Agent 的第一段回复才带头部（头像 · 时间），之后的段落与工具卡连着排，不再重复发送者；折叠的过程块里的文本不算
-function firstReplySince(entries: Entry[], i: number) {
-  for (let j = i - 1; j >= 0; j--) {
-    if (entries[j].kind === 'user') return true
-    if (entries[j].kind === 'assistant') return false
-  }
-  return true
 }

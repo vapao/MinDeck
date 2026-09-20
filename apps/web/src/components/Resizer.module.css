@@ -15,5 +15,5 @@
 }
 .handle:hover,
 .handle:active {
-  background: var(--border-2);
+  background: var(--border-3);
 }

@@ -12,9 +12,9 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
-  padding: 24px;
+  padding: 22px 24px 24px;
   background: var(--surface);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-2);
   border-radius: var(--radius-card);
 }
 .head {
@@ -29,30 +29,31 @@
   display: grid;
   place-items: center;
   border: 0;
-  border-radius: var(--radius-button);
+  border-radius: var(--radius-control);
   background: none;
   color: var(--text-2);
   cursor: pointer;
 }
 .back:hover {
-  background: var(--surface-2);
+  background: var(--hover);
 }
 .title {
   margin: 0;
-  font-size: 18px;
+  color: var(--text-strong);
+  font-size: 16px;
   font-weight: 600;
-  letter-spacing: -0.01em;
 }
 .section {
-  font-size: 12.5px;
-  font-weight: 500;
-  color: var(--text-3);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--text-4);
 }
 .rows {
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-button);
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-card);
   overflow: hidden;
 }
 .row {
@@ -74,14 +75,14 @@
   gap: 2px;
 }
 .rowTitle {
-  font-size: 13.5px;
+  font-size: 14px;
   font-weight: 500;
 }
 .rowPath {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 11.5px;
+  font-size: 11px;
   color: var(--text-3);
 }
 .rowButton {
@@ -89,17 +90,19 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  height: 32px;
-  padding: 0 10px;
-  border: 1px solid var(--border-2);
-  border-radius: var(--radius-button);
-  background: var(--surface);
-  color: var(--text-2);
-  font-size: 12.5px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  justify-content: center;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: none;
+  color: var(--text-4);
+  font-size: 12px;
   cursor: pointer;
 }
 .rowButton:hover:not(:disabled) {
-  background: var(--surface-2);
+  background: var(--hover);
   color: var(--text);
 }
 .rowButton:disabled {
@@ -107,7 +110,6 @@
   cursor: default;
 }
 .rowButton[data-danger]:hover:not(:disabled) {
-  border-color: var(--danger-border);
   background: var(--danger-bg);
   color: var(--danger);
 }
@@ -131,11 +133,11 @@
   border-top: 0;
 }
 .dirButton:hover {
-  background: var(--surface-2);
+  background: var(--hover);
 }
 .crumb {
   padding: 8px 12px;
-  background: var(--surface-2);
+  background: var(--panel);
   font-family: var(--font-mono);
   font-size: 12px;
   color: var(--text-2);
@@ -149,68 +151,88 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  font-size: 12.5px;
+  font-size: 12px;
   color: var(--text-3);
 }
 .input {
-  height: 40px;
-  padding: 0 10px;
-  background: var(--surface-2);
-  border: 1px solid var(--border-2);
-  border-radius: var(--radius-button);
+  height: 32px;
+  padding: 0 9px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
   color: var(--text);
   font-family: var(--font-mono);
   font-size: 13px;
+  transition: border-color 120ms ease;
+}
+.input:hover {
+  border-color: var(--border-3);
 }
 .input:focus {
   outline: none;
-  border-color: var(--text-4);
+  border-color: var(--accent-ring);
+  box-shadow: 0 0 0 2px var(--accent-bg);
 }
 .actions {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
 }
-.primary {
-  height: 40px;
-  padding: 0 16px;
-  border: 0;
-  border-radius: var(--radius-input);
-  background: var(--inverse);
-  color: var(--on-inverse);
+.primary,
+.secondary {
+  height: 30px;
+  padding: 0 12px;
+  border-radius: var(--radius-control);
   font-weight: 500;
   cursor: pointer;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease;
+}
+.primary {
+  border: 0;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 600;
+}
+.primary:hover:not(:disabled) {
+  background: var(--accent-hover);
 }
 .primary:disabled {
-  background: var(--surface-3);
-  color: var(--text-4);
+  opacity: 0.42;
   cursor: default;
 }
 .secondary {
-  height: 40px;
-  padding: 0 14px;
-  border: 1px solid var(--border-2);
-  border-radius: var(--radius-input);
+  border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text-2);
-  font-weight: 500;
-  cursor: pointer;
 }
 .secondary:hover {
+  border-color: var(--border-3);
   background: var(--surface-2);
-  color: var(--text);
+  color: var(--text-strong);
+}
+@media (max-width: 1023px) {
+  .primary,
+  .secondary {
+    height: 40px;
+    padding: 0 16px;
+  }
+  .input {
+    height: 40px;
+  }
 }
 .empty {
   padding: 16px;
   text-align: center;
-  font-size: 12.5px;
+  font-size: 12px;
   color: var(--text-4);
 }
 .error {
-  font-size: 12.5px;
+  font-size: 12px;
   color: var(--danger);
 }
 .ok {
-  font-size: 12.5px;
+  font-size: 12px;
   color: var(--text-3);
 }

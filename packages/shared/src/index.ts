@@ -242,6 +242,9 @@ export type EntriesResponse = { entries: { path: string; name: string; dir: bool
 export type SettingsResponse = Settings;
 export type UpdateSettingsBody = Settings;
 
+/** GET /api/usage：账号级额度，按 rateLimitType 取最新值；Hub 内存缓存，重启后到首轮跑完前为空 */
+export type UsageResponse = Record<string, UsageInfo>;
+
 /** POST /api/sessions/:id/attachments，multipart 单文件字段 file */
 export type UploadAttachmentResponse = Attachment;
 
@@ -256,7 +259,7 @@ export type ClientMessage =
   | { type: 'ping' };
 
 export type ServerMessage =
-  | { type: 'snapshot'; session: Session; pendingRequests: PendingRequest[]; lastSeq: number; usage: Record<string, UsageInfo> }
+  | { type: 'snapshot'; session: Session; pendingRequests: PendingRequest[]; lastSeq: number }
   | { type: 'event'; event: AgentEvent }
   | { type: 'replay.completed'; lastSeq: number }
   /** 订阅中的会话被删除；客户端应离开该页且不再重连 */
