@@ -161,8 +161,26 @@
   color: var(--text-4);
   cursor: default;
 }
+.stop {
+  flex: none;
+  margin-left: auto;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-button);
+  background: var(--danger-bg);
+  color: var(--danger);
+  cursor: pointer;
+}
+.stop:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
 @media (max-width: 1023px) {
   .send,
+  .stop,
   .attach {
     width: 40px;
     height: 40px;

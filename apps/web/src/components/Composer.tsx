@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowUp, File, Folder, ImagePlus, X } from 'lucide-react'
+import { ArrowUp, File, Folder, ImagePlus, Square, X } from 'lucide-react'
 import type { Attachment, EntriesResponse } from '@agentdeck/shared'
 import styles from './Composer.module.css'
 
@@ -8,6 +8,10 @@ type Props = {
   /** 草稿按此 key 存 localStorage，切走再切回来输入内容还在 */
   draftKey: string
   disabled: boolean
+  /** 一轮进行中：发送按钮换成中断；Enter 仍可发送，作为追加指令排队 */
+  running: boolean
+  interrupting: boolean
+  onInterrupt: () => void
   /** 状态区左侧的会话信息（模型、思考等级、上下文用量） */
   meta: string
   /** 需要用户注意的状态（排队、等待、报错）；为空时状态区只显示 meta */
@@ -34,7 +38,7 @@ type Draft = { key: string; file: File; previewUrl: string } & ({ status: 'uploa
 
 const maxPerMessage = 5
 
-export function Composer({ draftKey, disabled, meta, hint, hintError, placeholder, upload, search, onSend }: Props) {
+export function Composer({ draftKey, disabled, running, interrupting, onInterrupt, meta, hint, hintError, placeholder, upload, search, onSend }: Props) {
   const [text, setText] = useState(() => localStorage.getItem(`draft:${draftKey}`) ?? '')
   useEffect(() => {
     if (text) localStorage.setItem(`draft:${draftKey}`, text)
@@ -240,9 +244,15 @@ export function Composer({ draftKey, disabled, meta, hint, hintError, placeholde
                 {failed ? failed.message : uploading ? '正在上传图片…' : hint}
               </span>
             )}
-            <button type="button" className={styles.send} onClick={submit} disabled={!canSend} aria-label="发送">
-              <ArrowUp size={16} />
-            </button>
+            {running ? (
+              <button type="button" className={styles.stop} onClick={onInterrupt} disabled={interrupting} aria-label="中断" title="中断当前这一轮">
+                <Square size={14} />
+              </button>
+            ) : (
+              <button type="button" className={styles.send} onClick={submit} disabled={!canSend} aria-label="发送">
+                <ArrowUp size={16} />
+              </button>
+            )}
           </div>
         </div>
       </div>

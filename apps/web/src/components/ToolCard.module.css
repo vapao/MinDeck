@@ -8,6 +8,25 @@
 .card[data-state='failed'] {
   border-color: var(--danger-border);
 }
+.group {
+  max-width: min(var(--assistant-w), 100%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-tool);
+  background: var(--surface);
+  overflow: hidden;
+}
+.group .card {
+  max-width: none;
+  border: 0;
+  border-radius: 0;
+}
+.group .card + .card {
+  border-top: 1px solid var(--border);
+}
+.group .head {
+  min-height: 28px;
+  padding: 3px 10px;
+}
 .head {
   width: 100%;
   display: flex;

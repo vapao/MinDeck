@@ -9,6 +9,8 @@ export function createNormalizer(resumed: boolean) {
   let interrupting = false;
   let lastUsage = '';
   let lastContext = 0;
+  // AskUserQuestion 的 tool_use / tool_result 不开工具卡：提问与回答由 canUseTool 产生的 user_input 事件承载，再出一张卡是冗余
+  const hiddenToolIds = new Set<string>();
 
   function normalize(m: SDKMessage): ProviderEvent[] {
     switch (m.type) {
@@ -58,9 +60,9 @@ export function createNormalizer(resumed: boolean) {
         const text = m.message.content.filter((b) => b.type === 'text').map((b) => b.text).join('');
         if (text) events.push({ type: 'message.completed', payload: { messageId: m.message.id, text } });
         for (const b of m.message.content) {
-          if (b.type === 'tool_use') {
-            events.push({ type: 'tool.started', payload: { toolUseId: b.id, name: b.name, input: b.input } });
-          }
+          if (b.type !== 'tool_use') continue;
+          if (b.name === 'AskUserQuestion') hiddenToolIds.add(b.id);
+          else events.push({ type: 'tool.started', payload: { toolUseId: b.id, name: b.name, input: b.input } });
         }
         streamingMessageId = null;
         return events;
@@ -70,7 +72,7 @@ export function createNormalizer(resumed: boolean) {
         // 只关心 tool_result；其余 user 消息是 Hub 自己发出去的回显，UI 已经有了
         if (typeof m.message.content === 'string') return [];
         return m.message.content.flatMap((b): ProviderEvent[] => {
-          if (b.type !== 'tool_result') return [];
+          if (b.type !== 'tool_result' || hiddenToolIds.has(b.tool_use_id)) return [];
           const output =
             typeof b.content === 'string'
               ? b.content

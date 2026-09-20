@@ -1,17 +1,19 @@
-import { useEffect, useRef, useState, type UIEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type UIEvent } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { ChevronLeft, GitBranch, MessageSquarePlus, Square, Trash2 } from 'lucide-react'
+import { ChevronLeft, GitBranch, MessageSquarePlus, Trash2 } from 'lucide-react'
 import type { Resolution } from '@agentdeck/shared'
 import { api } from '../api'
 import { formatTokens, providerName } from '../format'
 import { navigate } from '../router'
 import { useSessionStream, type StreamItem } from '../session/useSessionStream'
+import { groupTools, layout, type Entry } from '../session/layout'
 import { useMediaQuery } from '../session/useMediaQuery'
 import { useSessions } from '../session/useSessions'
 import { ChangesPanel } from '../components/ChangesPanel'
 import { UserMessage } from '../components/UserMessage'
 import { AssistantMessage } from '../components/AssistantMessage'
-import { ToolCard } from '../components/ToolCard'
+import { ToolCard, ToolGroup } from '../components/ToolCard'
+import { ProcessBlock } from '../components/ProcessBlock'
 import { ErrorCard } from '../components/ErrorCard'
 import { TurnRow, WorkingRow } from '../components/TurnRow'
 import { RateMeter } from '../components/RateMeter'
@@ -75,17 +77,42 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
       return !v
     })
   }
-  const bottom = useRef<HTMLDivElement>(null)
+  const stream = useRef<HTMLElement>(null)
+  const column = useRef<HTMLDivElement>(null)
   // 用户往上翻看历史时不再自动跟到底部；回到底部附近后恢复跟随
   const follow = useRef(true)
   const onScroll = (e: UIEvent<HTMLElement>) => {
     const el = e.currentTarget
     follow.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
   }
-
+  // 跟随底部按"高度变了"而不是"事件来了"触发：流式文本、处理中行、卡片出现、底部状态栏换行挤压可视区都算
   useEffect(() => {
-    if (follow.current) bottom.current?.scrollIntoView({ block: 'end' })
-  }, [items])
+    const el = stream.current!
+    const observer = new ResizeObserver(() => {
+      if (follow.current) el.scrollTop = el.scrollHeight
+    })
+    observer.observe(el)
+    observer.observe(column.current!)
+    return () => observer.disconnect()
+  }, [])
+  useEffect(() => {
+    follow.current = true
+  }, [sessionId])
+
+  // 已结束轮次的过程块默认折叠；展开的记在这里（按块 key），换会话清空
+  const [opened, setOpened] = useState<Set<string>>(() => new Set())
+  useEffect(() => setOpened(new Set()), [sessionId])
+  const entries = useMemo(() => layout(items), [items])
+  const toggleProcess = (key: string) => {
+    // 展开 / 收起改变的是历史区域的高度，不该把视口拽到底部
+    follow.current = false
+    setOpened((s) => {
+      const next = new Set(s)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
 
   const running = status === 'running' || status === 'waiting_user'
   // snapshot 到达前先按 claude 渲染，随后被真实 provider 覆盖
@@ -102,6 +129,73 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
           : ''
   // 状态区：Provider · 模型 · 思考等级 · 上下文用量；init 前模型取创建时指定的；没指定 effort 就是 Provider 默认
   const meta = [providerName[provider], model ?? session?.model, `思考 ${session?.effort ?? '默认'}`, context !== null && `${formatTokens(context)} 上下文`].filter(Boolean).join(' · ')
+
+  const renderItem = (it: StreamItem, showMeta: boolean) => {
+    switch (it.kind) {
+      case 'user':
+        return <UserMessage key={it.key} text={it.text} attachments={it.attachments} at={it.at} />
+      case 'assistant':
+        return <AssistantMessage key={it.key} provider={provider} text={it.text} streaming={it.streaming} at={it.at} showMeta={showMeta} />
+      case 'tool':
+        return <ToolCard key={it.key} name={it.name} input={it.input} output={it.output} isError={it.isError} />
+      case 'error':
+        return <ErrorCard key={it.key} message={it.message} />
+      case 'turn':
+        return <TurnRow key={it.key} reason={it.reason} durationMs={it.durationMs} at={it.at} />
+      case 'approval':
+        return (
+          <ApprovalCard
+            key={it.key}
+            request={it.request}
+            cwd={session?.cwd ?? ''}
+            state={it.state}
+            decision={it.decision}
+            resolvedAt={it.resolvedAt}
+            {...pendingProps(it.request.id)}
+            onResolve={(decision) =>
+              resolve.mutate({
+                id: it.request.id,
+                body: { kind: 'approval', decision },
+              })
+            }
+          />
+        )
+      case 'question':
+        return (
+          <QuestionCard
+            key={it.key}
+            request={it.request}
+            provider={provider}
+            state={it.state}
+            answers={it.answers}
+            response={it.response}
+            resolvedAt={it.resolvedAt}
+            {...pendingProps(it.request.id)}
+            onSubmit={(answers, response) =>
+              resolve.mutate({
+                id: it.request.id,
+                body: { kind: 'question', answers, response },
+              })
+            }
+          />
+        )
+    }
+  }
+  const renderEntries = (list: Entry[]) =>
+    list.map((e, i) => {
+      switch (e.kind) {
+        case 'tools':
+          return <ToolGroup key={e.key}>{e.items.map((t) => renderItem(t, false))}</ToolGroup>
+        case 'process':
+          return (
+            <ProcessBlock key={e.key} summary={e.summary} open={opened.has(e.key)} onToggle={() => toggleProcess(e.key)}>
+              {renderEntries(groupTools(e.items))}
+            </ProcessBlock>
+          )
+        default:
+          return renderItem(e, firstReplySince(list, i))
+      }
+    })
 
   return (
     <div className={styles.page}>
@@ -125,73 +219,16 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
         <button type="button" className={styles.iconButton} data-danger onClick={onDelete} disabled={!session || remove.isPending} aria-label="删除会话" title="删除会话及其全部记录">
           <Trash2 size={16} />
         </button>
-        {running && (
-          <button type="button" className={styles.interrupt} onClick={() => interrupt.mutate()} disabled={interrupt.isPending}>
-            <Square size={12} />
-            中断
-          </button>
-        )}
       </header>
 
       <ConnectionBanner connection={connection} replay={replay} />
 
       <div className={styles.body}>
         <div className={styles.conversation}>
-          <main className={styles.stream} onScroll={onScroll}>
-            <div className={styles.column}>
-              {items.map((it, i) => {
-                switch (it.kind) {
-                  case 'user':
-                    return <UserMessage key={it.key} text={it.text} attachments={it.attachments} at={it.at} />
-                  case 'assistant':
-                    return <AssistantMessage key={it.key} provider={provider} text={it.text} streaming={it.streaming} at={it.at} showMeta={firstReplySince(items, i)} />
-                  case 'tool':
-                    return <ToolCard key={it.key} name={it.name} input={it.input} output={it.output} isError={it.isError} />
-                  case 'error':
-                    return <ErrorCard key={it.key} message={it.message} />
-                  case 'turn':
-                    return <TurnRow key={it.key} reason={it.reason} durationMs={it.durationMs} at={it.at} />
-                  case 'approval':
-                    return (
-                      <ApprovalCard
-                        key={it.key}
-                        request={it.request}
-                        cwd={session?.cwd ?? ''}
-                        state={it.state}
-                        decision={it.decision}
-                        resolvedAt={it.resolvedAt}
-                        {...pendingProps(it.request.id)}
-                        onResolve={(decision) =>
-                          resolve.mutate({
-                            id: it.request.id,
-                            body: { kind: 'approval', decision },
-                          })
-                        }
-                      />
-                    )
-                  case 'question':
-                    return (
-                      <QuestionCard
-                        key={it.key}
-                        request={it.request}
-                        provider={provider}
-                        state={it.state}
-                        answers={it.answers}
-                        response={it.response}
-                        resolvedAt={it.resolvedAt}
-                        {...pendingProps(it.request.id)}
-                        onSubmit={(answers, response) =>
-                          resolve.mutate({
-                            id: it.request.id,
-                            body: { kind: 'question', answers, response },
-                          })
-                        }
-                      />
-                    )
-                }
-              })}
+          <main ref={stream} className={styles.stream} onScroll={onScroll}>
+            <div ref={column} className={styles.column}>
+              {renderEntries(entries)}
               {turnStartedAt && running && <WorkingRow since={turnStartedAt} />}
-              <div ref={bottom} />
             </div>
           </main>
 
@@ -201,6 +238,9 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
                 key={sessionId}
                 draftKey={sessionId}
                 disabled={status === 'waiting_user' || connection !== 'open'}
+                running={running}
+                interrupting={interrupt.isPending}
+                onInterrupt={() => interrupt.mutate()}
                 meta={meta}
                 hint={hint}
                 hintError={mutationError !== null}
@@ -218,11 +258,11 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
   )
 }
 
-// 一轮里 Agent 的第一段回复才带头部（头像 · 时间），之后的段落与工具卡连着排，不再重复发送者
-function firstReplySince(items: StreamItem[], i: number) {
+// 一轮里 Agent 的第一段回复才带头部（头像 · 时间），之后的段落与工具卡连着排，不再重复发送者；折叠的过程块里的文本不算
+function firstReplySince(entries: Entry[], i: number) {
   for (let j = i - 1; j >= 0; j--) {
-    if (items[j].kind === 'user') return true
-    if (items[j].kind === 'assistant') return false
+    if (entries[j].kind === 'user') return true
+    if (entries[j].kind === 'assistant') return false
   }
   return true
 }

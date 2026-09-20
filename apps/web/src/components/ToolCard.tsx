@@ -1,9 +1,14 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Check, ChevronRight, LoaderCircle, X } from 'lucide-react'
 import { summarizeToolInput } from '../format'
 import styles from './ToolCard.module.css'
 
 type Props = { name: string; input: unknown; output: string | null; isError: boolean }
+
+/** 连续的工具卡并成一组：共用一个边框，行距压紧，避免 Read / Bash 一多就刷屏 */
+export function ToolGroup({ children }: { children: ReactNode }) {
+  return <div className={styles.group}>{children}</div>
+}
 
 export function ToolCard({ name, input, output, isError }: Props) {
   const [open, setOpen] = useState(false)
