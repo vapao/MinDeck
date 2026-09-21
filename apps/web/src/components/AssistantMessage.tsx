@@ -1,16 +1,13 @@
 import { useRef, useState, type ComponentProps } from 'react'
 import { Check, Copy } from 'lucide-react'
-import Markdown from 'react-markdown'
+import Markdown, { defaultUrlTransform } from 'react-markdown'
+import { api } from '../api'
+import { fileReference, showFile } from './FilePreview'
 import remarkGfm from 'remark-gfm'
 import styles from './AssistantMessage.module.css'
 
 const plugins = [remarkGfm]
-// 链接一律开新标签，不把会话页跳走；react-markdown 会附带 hast node，不能透传到 DOM
 const components = {
-  a({ node, ...props }: ComponentProps<'a'> & { node?: unknown }) {
-    void node
-    return <a {...props} target="_blank" rel="noreferrer" />
-  },
   pre({ node, ...props }: ComponentProps<'pre'> & { node?: unknown }) {
     void node
     return <CodeBlock {...props} />
@@ -45,14 +42,25 @@ function CodeBlock(props: ComponentProps<'pre'>) {
   )
 }
 
-type Props = { text: string; streaming: boolean }
+type Props = { text: string; streaming: boolean; sessionId: string }
 
 // 不带发送者 / 时间头部：一轮的落款（TurnRow）已经记了时间，回复段落直接接在用户消息后
-export function AssistantMessage({ text, streaming }: Props) {
+export function AssistantMessage({ text, streaming, sessionId }: Props) {
   return (
     <div className={styles.row}>
       <div className={styles.body} data-streaming={streaming || undefined}>
-        <Markdown remarkPlugins={plugins} components={components}>{text}</Markdown>
+        <Markdown remarkPlugins={plugins} urlTransform={(url) => fileReference(url) ? url : defaultUrlTransform(url)} components={{ ...components,
+          a: ({ href, children }) => {
+            const file = fileReference(href ?? '')
+            if (!file) return <a href={href} target="_blank" rel="noreferrer">{children}</a>
+            return <a href={api.outputUrl(sessionId, file.path)} onClick={(e) => { e.preventDefault(); showFile(sessionId, file.path, file.line) }}>{children}{/\.(png|jpe?g|gif|webp|avif|svg)$/i.test(file.path) && <img src={api.outputUrl(sessionId, file.path)} alt="" loading="lazy" style={{ display: 'block', maxHeight: 240 }} />}</a>
+          },
+          img: ({ src, alt }) => {
+            const file = fileReference(src ?? '')
+            if (!file) return <img src={src} alt={alt} loading="lazy" />
+            return <a href={api.outputUrl(sessionId, file.path)} onClick={(e) => { e.preventDefault(); showFile(sessionId, file.path) }}><img src={api.outputUrl(sessionId, file.path)} alt={alt} loading="lazy" style={{ maxHeight: 240 }} /></a>
+          },
+        }}>{text}</Markdown>
       </div>
     </div>
   )

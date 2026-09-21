@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { ChevronLeft, FileCode, FileDiff, Folder, RefreshCw } from 'lucide-react'
 import type { ChangedFile } from '@agentdeck/shared'
+import { showFile } from './FilePreview'
 import { api } from '../api'
 import { useResizable } from './Resizer'
 import styles from './ChangesPanel.module.css'
@@ -90,6 +91,7 @@ export function ChangesPanel({ sessionId, version }: Props) {
             <ChevronLeft size={16} />
           </button>
           <code className={styles.path} title={selected}>{selected}</code>
+          <button type="button" className={styles.iconButton} onClick={() => showFile(sessionId, selected)} title="Preview / Finder / Download"><FileCode size={15} /></button>
           <button type="button" className={styles.iconButton} data-active={view === 'diff' || undefined} onClick={() => setView('diff')} title="Diff">
             <FileDiff size={15} />
           </button>

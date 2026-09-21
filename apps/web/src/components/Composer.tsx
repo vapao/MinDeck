@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowUp, File, Folder, ImagePlus, MessageSquarePlus, Square, X } from 'lucide-react'
+import { ArrowUp, File, Folder, ImagePlus, MessageSquarePlus, Square, SquareTerminal, X } from 'lucide-react'
 import type { Attachment, EntriesResponse, ProviderId } from '@agentdeck/shared'
 import { Select } from './Select'
 import { providerName } from '../format'
@@ -17,6 +17,7 @@ type Props = {
   onInterrupt: () => void
   /** "新开一轮"（等价 /clear）；未就绪时不传，按钮置灰 */
   onFresh?: () => void
+  onTerminal?: () => void
   provider: ProviderId
   imagesAllowed?: boolean
   /** 空会话可以换 Agent：传了就把 Provider 名字渲染成三选一下拉 */
@@ -47,7 +48,7 @@ type Draft = { key: string; file: File; previewUrl: string } & ({ status: 'uploa
 
 const maxPerMessage = 5
 
-export function Composer({ draftKey, disabled, running, interrupting, onInterrupt, onFresh, provider, imagesAllowed = true, onSwitchProvider, meta, hint, hintError, placeholder, upload, search, onSend }: Props) {
+export function Composer({ draftKey, disabled, running, interrupting, onInterrupt, onFresh, onTerminal, provider, imagesAllowed = true, onSwitchProvider, meta, hint, hintError, placeholder, upload, search, onSend }: Props) {
   const [text, setText] = useState(() => readDraft(draftKey))
   useEffect(() => {
     saveDraft(draftKey, text)
@@ -262,6 +263,7 @@ export function Composer({ draftKey, disabled, running, interrupting, onInterrup
                 {failed ? failed.message : uploading ? 'Uploading images…' : hint || 'A turn is running; your message will be queued as a follow-up'}
               </span>
             )}
+            {onTerminal && <button type="button" className={styles.fresh} onClick={onTerminal} aria-label="Open in iTerm2" title="Connect to this project over SSH in iTerm2"><SquareTerminal size={16} /></button>}
             <button type="button" className={styles.fresh} onClick={onFresh} disabled={!onFresh} aria-label="Start fresh" title="Start a new session in the same workspace with a fresh context">
               <MessageSquarePlus size={16} />
             </button>

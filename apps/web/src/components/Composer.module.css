@@ -161,6 +161,9 @@ button.provider:hover {
 .fresh {
   margin-left: auto;
 }
+.fresh + .fresh {
+  margin-left: 0;
+}
 .input {
   width: 100%;
   /* 默认一行，随内容长到五行后滚动 */

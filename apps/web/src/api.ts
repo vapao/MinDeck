@@ -11,7 +11,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>
 }
 
+export type OutputFile = { path: string; name: string; size: number; mime: string; kind: string; content: string | null; truncated: boolean }
 export const api = {
+  outputFile: (id: string, path: string) => request<OutputFile>(`/api/sessions/${id}/output?path=${encodeURIComponent(path)}`),
+  outputUrl: (id: string, path: string, download = false) => `/api/sessions/${id}/output/content?path=${encodeURIComponent(path)}${download ? '&download=1' : ''}`,
   listWorkspaces: () => request<ListWorkspacesResponse>('/api/workspaces'),
   createWorkspace: (body: CreateWorkspaceBody) => request<Workspace>('/api/workspaces', { method: 'POST', body: JSON.stringify(body) }),
   updateWorkspace: (id: string, body: UpdateWorkspaceBody) => request<Workspace>(`/api/workspaces/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),

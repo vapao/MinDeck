@@ -132,3 +132,11 @@
 - API Key 默认密码形式；已保存时显示黑点占位，眼睛按钮可读取并显示原文，再点隐藏。普通设置查询不传密钥；隐藏已保存原文时从组件状态移除。支持替换、清除，保存后恢复隐藏态。
 - 验证连接使用已保存配置；修改未保存或尚未配置密钥时隐藏按钮。底部不显示验证费用及新会话默认值的常驻提示。
 - 空会话的 Agent 切换改为三选一下拉，输入框底部菜单向上展开；已有图片草稿时先移除图片再切换。DeepSeek Pro 的图片按钮禁用并说明原因。
+
+## 会话文件预览（2026-09-21）
+
+- 界面新增文案使用英文。消息内本地文件链接打开原地预览弹层；图片链接显示限高缩略图。桌面宽弹层，手机适配视口；Escape / 关闭按钮 / 遮罩关闭。
+- 图片支持 Fit image / Actual size；文本带行号；Markdown 支持 Source / Preview；PDF 与音视频使用浏览器原生能力。无法预览的文件展示名称、路径、大小与操作。
+- 操作为 Show in Finder / Download to this device，点击任一操作后立即关闭预览弹层，不等待外部应用或下载完成。Finder 按当前浏览器的目录映射交给 Mac 本地辅助应用，路径不存在时由辅助应用提示。Changes 面板提供同一个预览入口。
+- Settings 增加 Finder on this Mac，独立保存，不改变 Provider 设置。详细使用说明见 `docs/file-preview.md`。
+- 桌面 Composer 底部在 Start fresh 左侧紧邻放置 SquareTerminal 图标（符号自带外框），tooltip / aria-label 为 Open in iTerm2；手机不显示。点击使用当前会话 cwd 打开 SSH 终端，未配置主机时使用统一提示弹窗。Settings 的 iTerm2 on this Mac 独立保存 SSH host，不应用 Finder 路径映射。

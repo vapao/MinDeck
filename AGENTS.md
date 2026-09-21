@@ -93,3 +93,7 @@ cd apps/server && node scripts/p0-codex-harness.mjs    # Codex app-server 回归
 - WS 握手校验 Origin 与 Host 一致（§11.3），Node 脚本不带 Origin 可直连；Tailscale Serve 会透传原始 Host。工作区 allowlist 是 `workspaces` 表，由 UI「项目」页从家目录内浏览添加（`/api/fs/dirs` 只列家目录内的目录），首次启动自动种入本仓库；应用级默认模型 / effort 在 `settings` 表，UI「设置」页改。SQLite 在 `data/`、上传图片在 `data/uploads/<sessionId>/`（`AGENTDECK_UPLOADS` 可改；已 gitignore）。
 - 提交前 `pnpm typecheck`。commit 用 conventional 格式，不加 Co-Authored-By。
 - 回复与文档使用简体中文；界面文案默认英文。代码标识符、路径、命令保持原文。
+
+## 会话输出文件（2026-09-21）
+
+开发者明确授权：消息链接的文件预览 / 下载不限工作区目录，受 macOS 进程权限约束；不改变 cwd allowlist 和上传附件边界。原地预览图片、文本、Markdown、PDF；其他文件提供 Finder / 下载。Finder 使用本机目录映射和 `agentdeck-finder:` 辅助应用，不处理共享挂载协议。详见 `docs/file-preview.md`。

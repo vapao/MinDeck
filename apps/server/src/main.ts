@@ -1,3 +1,4 @@
+import { outputFile } from './output-files';
 import { randomUUID } from 'node:crypto';
 import { createReadStream, existsSync, mkdirSync, readdirSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -171,6 +172,20 @@ app.get<{ Params: { id: string } }>('/api/sessions/:id/changes', (req) => listCh
 const pathQuery = { schema: { querystring: { type: 'object', required: ['path'], properties: { path: { type: 'string', minLength: 1 } } } } };
 app.get<{ Params: { id: string }; Querystring: { path: string } }>('/api/sessions/:id/diff', pathQuery, (req) => fileDiff(hub.getSession(req.params.id).cwd, req.query.path));
 app.get<{ Params: { id: string }; Querystring: { path: string } }>('/api/sessions/:id/file', pathQuery, (req) => readWorkspaceFile(hub.getSession(req.params.id).cwd, req.query.path));
+
+app.get<{ Params: { id: string }; Querystring: { path: string } }>('/api/sessions/:id/output', pathQuery, async (req, reply) => {
+  reply.header('cache-control', 'no-store');
+  return outputFile(hub.getSession(req.params.id).cwd, req.query.path);
+});
+app.get<{ Params: { id: string }; Querystring: { path: string; download?: string } }>('/api/sessions/:id/output/content', pathQuery, async (req, reply) => {
+  const file = await outputFile(hub.getSession(req.params.id).cwd, req.query.path, false);
+  if (file.kind === 'directory') throw new HubError(400, 'Directories cannot be downloaded');
+  const inline = ['image', 'pdf', 'audio', 'video'].includes(file.kind) && req.query.download !== '1';
+  reply.header('cache-control', 'no-store').header('x-content-type-options', 'nosniff')
+    .header('content-security-policy', "sandbox; default-src 'none'")
+    .header('content-disposition', `${inline ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(file.name).replace(/'/g, '%27')}`);
+  return reply.type(inline ? file.mime : 'application/octet-stream').send(createReadStream(file.path));
+});
 
 app.get<{ Params: { id: string }; Querystring: { q?: string } }>('/api/sessions/:id/entries', (req) => listEntries(hub.getSession(req.params.id).cwd, req.query.q ?? ''));
 

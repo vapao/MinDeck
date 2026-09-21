@@ -21,6 +21,7 @@ import { TurnRow, WorkingRow } from '../components/TurnRow'
 import { ConnectionBanner } from '../components/ConnectionBanner'
 import { ApprovalCard } from '../components/ApprovalCard'
 import { QuestionCard } from '../components/QuestionCard'
+import { openProjectTerminal } from '../components/FilePreview'
 import { Composer } from '../components/Composer'
 import { dialog } from '../components/Dialog'
 import styles from './SessionPage.module.css'
@@ -208,7 +209,7 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
       case 'user':
         return <UserMessage key={it.key} text={it.text} attachments={it.attachments} at={it.at} />
       case 'assistant':
-        return <AssistantMessage key={it.key} text={it.text} streaming={it.streaming} />
+        return <AssistantMessage sessionId={sessionId} key={it.key} text={it.text} streaming={it.streaming} />
       case 'error':
         return <ErrorCard key={it.key} message={it.message} />
       case 'turn':
@@ -308,6 +309,7 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
                 running={running}
                 interrupting={interrupt.isPending}
                 onInterrupt={() => interrupt.mutate()}
+                onTerminal={desktop && info?.cwd ? () => openProjectTerminal(info.cwd) : undefined}
                 onFresh={session && !fresh.isPending ? onFresh : undefined}
                 provider={provider}
                 imagesAllowed={provider !== 'deepseek' || info?.model !== 'deepseek-v4-pro'}

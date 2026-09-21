@@ -5,6 +5,7 @@ import { effortOptions, modelOptions, permissionModeOptions, type ProviderId, ty
 import { api } from '../api'
 import { providerName } from '../format'
 import { navigate } from '../router'
+import { FinderSettings } from '../components/FilePreview'
 import { Select } from '../components/Select'
 import { dialog } from '../components/Dialog'
 import styles from './Manage.module.css'
@@ -143,6 +144,7 @@ export function SettingsPage() {
           </button>
         </div>
         {save.error ? <div className={styles.error}>{save.error.message}</div> : save.isSuccess && !dirty ? <div className={styles.ok}>Saved. Defaults apply to new sessions; API changes apply when DeepSeek next starts.</div> : null}
+        <FinderSettings />
         {saved.error && <div className={styles.error}>{saved.error.message}</div>}
       </div>
     </div>
