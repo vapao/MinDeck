@@ -156,7 +156,7 @@ export function deepseekEnv(connection: { baseUrl: string; apiKey: string }, mod
 }
 
 // 子进程环境：去掉 CLAUDE* 避免被识别为嵌套 Claude Code 会话；去掉 API Key，复用本机 claude.ai 登录（AGENTS.md 规则 4）
-function childEnv(): Record<string, string> {
+export function childEnv(): Record<string, string> {
   const env: Record<string, string> = {};
   for (const [k, v] of Object.entries(process.env)) {
     if (v !== undefined && !/^CLAUDE/.test(k) && k !== 'ANTHROPIC_API_KEY') env[k] = v;

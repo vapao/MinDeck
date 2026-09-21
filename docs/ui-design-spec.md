@@ -140,3 +140,7 @@
 - 操作为 Show in Finder / Download to this device，点击任一操作后立即关闭预览弹层，不等待外部应用或下载完成。Finder 按当前浏览器的目录映射交给 Mac 本地辅助应用，路径不存在时由辅助应用提示。Changes 面板提供同一个预览入口。
 - Settings 增加 Finder on this Mac，独立保存，不改变 Provider 设置。详细使用说明见 `docs/file-preview.md`。
 - 桌面 Composer 底部在 Start fresh 左侧紧邻放置 SquareTerminal 图标（符号自带外框），tooltip / aria-label 为 Open in iTerm2；手机不显示。点击使用当前会话 cwd 打开 SSH 终端，未配置主机时使用统一提示弹窗。Settings 的 iTerm2 on this Mac 独立保存 SSH host，不应用 Finder 路径映射。
+
+## AI 会话标题（2026-09-22）
+
+设置页在 Provider 设置之后增加 `AI session titles`，沿用现有 section / 两列字段布局，提供 `Automatic titles`（Off / On）、`Provider`、`Model`。切换标题 Provider 时模型重置为该 Provider 的首个选项；初始为关闭、Claude / Haiku。复用页尾 Save changes。说明首条文字会额外发送到所选 Provider、消耗额度，标题最多 15 字符、只生成一次、失败保留原文预览。会话页和侧栏沿用原有标题位置，不增加加载状态。

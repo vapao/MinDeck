@@ -11,7 +11,7 @@ export type Session = {
   /** Provider 原生会话 ID（Claude session_id / Codex threadId），首轮 init 后才有 */
   providerSessionId: string | null;
   status: SessionStatus;
-  /** 首条用户消息的开头，用于列表展示；还没发过消息时为 null */
+  /** AI 生成的标题；未生成时取首条用户消息开头，空会话为 null */
   title: string | null;
   /** 创建时指定的模型 / 思考等级（来自设置或新建页覆盖）；null 交给 Provider 默认。实际生效的模型看 session.started */
   model: string | null;
@@ -45,7 +45,9 @@ export const permissionModeOptions: readonly SelectOption[] = [
 
 /** 应用级默认值：新建会话时未覆盖就用它；model / effort 空字符串 = 交给 Provider 默认 */
 export type ProviderDefaults = { model: string; effort: string; permissionMode: PermissionMode };
+export type TitleSettings = { enabled: boolean; provider: ProviderId; model: string };
 export type Settings = Record<'claude' | 'codex', ProviderDefaults> & {
+  titles: TitleSettings;
   deepseek: ProviderDefaults & { baseUrl: string; apiKeyConfigured: boolean };
 };
 

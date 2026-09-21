@@ -138,6 +138,25 @@ export function SettingsPage() {
               </div>}
             </section>
           ))}
+        {draft?.titles && <section className={layout.section} aria-labelledby="titles-heading">
+          <div className={layout.sectionHead}><h2 id="titles-heading">AI session titles</h2></div>
+          <label className={`${styles.field} ${layout.field}`}>
+            <span>Automatic titles</span>
+            <Select value={String(draft.titles.enabled)} options={[{ value: 'false', label: 'Off' }, { value: 'true', label: 'On' }]} onChange={(v) => setDraft({ ...draft, titles: { ...draft.titles, enabled: v === 'true' } })} />
+          </label>
+          <label className={`${styles.field} ${layout.field}`}>
+            <span>Provider</span>
+            <Select value={draft.titles.provider} options={(['claude', 'codex', 'deepseek'] as const).map((value) => ({ value, label: providerName[value] }))} onChange={(v) => {
+              const provider = v as ProviderId
+              setDraft({ ...draft, titles: { ...draft.titles, provider, model: modelOptions[provider][0]!.value } })
+            }} />
+          </label>
+          <label className={`${styles.field} ${layout.field}`}>
+            <span>Model</span>
+            <Select value={draft.titles.model} options={[...modelOptions[draft.titles.provider]]} onChange={(model) => setDraft({ ...draft, titles: { ...draft.titles, model } })} />
+          </label>
+          <p className={layout.connectionInfo}>Generates a title of up to 15 characters once, after the first text message. Sends that text to the selected provider in an extra request using your existing sign-in or API key. Uses additional quota or API credits. Existing conversations are not renamed; failures keep the message preview.</p>
+        </section>}
         <div className={layout.footer}>
           <button type="button" className={styles.primary} disabled={!dirty || save.isPending} onClick={onSave}>
             Save changes

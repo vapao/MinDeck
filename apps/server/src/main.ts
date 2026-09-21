@@ -123,7 +123,7 @@ const providerDefaults = {
 };
 app.put<{ Body: UpdateSettingsBody }>(
   '/api/settings',
-  { schema: { body: { type: 'object', required: ['claude', 'codex', 'deepseek'], properties: { claude: providerDefaults, codex: providerDefaults, deepseek: { ...providerDefaults, required: [...providerDefaults.required, 'baseUrl'], properties: { ...providerDefaults.properties, baseUrl: { type: 'string' }, apiKey: { type: 'string' } } } } } } },
+  { schema: { body: { type: 'object', required: ['claude', 'codex', 'deepseek'], properties: { titles: { type: 'object', required: ['enabled', 'provider', 'model'], properties: { enabled: { type: 'boolean' }, provider: { type: 'string' }, model: { type: 'string' } } }, claude: providerDefaults, codex: providerDefaults, deepseek: { ...providerDefaults, required: [...providerDefaults.required, 'baseUrl'], properties: { ...providerDefaults.properties, baseUrl: { type: 'string' }, apiKey: { type: 'string' } } } } } } },
   (req) => {
     hub.updateSettings(req.body);
     return hub.settings();

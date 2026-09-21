@@ -3,7 +3,7 @@ import type { ProviderSession, StartOptions } from '../types';
 import { RpcError, spawnAppServer, type AppServerRpc } from './rpc';
 import { createNormalizer, stripShellWrapper } from './normalize';
 import type { ServerNotification, ServerRequest } from './schema';
-import type { ThreadStartResponse, TurnStartResponse, UserInput } from './schema/v2';
+import type { ConfigReadResponse, ThreadStartResponse, TurnStartResponse, UserInput } from './schema/v2';
 
 // 一个 Hub 进程只维持一个 app-server（方案 §5.1），多个 thread 共用；通知与服务端请求按 threadId 分发到各会话。
 
@@ -176,4 +176,49 @@ function commandDecision(res: Resolution, forSession: boolean): 'accept' | 'acce
   const d: ApprovalDecision = res.kind === 'approval' ? res.decision : 'deny';
   if (d === 'deny') return 'decline';
   return d === 'allow_session' && forSession ? 'acceptForSession' : 'accept';
+}
+
+// 标题请求共用 app-server，但用临时 thread 与空目录隔离项目上下文。
+export async function generateCodexTitle(cwd: string, model: string, prompt: string, instructions: string, signal: AbortSignal): Promise<string> {
+  const { rpc, ready, threads } = appServer();
+  await ready;
+  signal.throwIfAborted();
+  const { config } = await rpc.request('config/read', { cwd }) as ConfigReadResponse;
+  const overrides: Record<string, boolean | string | number> = {
+    web_search: 'disabled', project_doc_max_bytes: 0, 'features.skip_host_skill_discovery': true,
+  };
+  for (const feature of ['shell_tool', 'unified_exec', 'apply_patch_freeform', 'apps', 'plugins', 'remote_plugin', 'tool_suggest', 'multi_agent', 'hooks', 'memories', 'goals', 'browser_use', 'computer_use', 'image_generation', 'view_image', 'skill_search', 'skill_mcp_dependency_install', 'shell_snapshot', 'workspace_dependencies', 'default_mode_request_user_input', 'code_mode', 'code_mode_host']) overrides[`features.${feature}`] = false;
+  for (const name of Object.keys((config.mcp_servers ?? {}) as object)) overrides[`mcp_servers.${name}.enabled`] = false;
+  signal.throwIfAborted();
+  const res = await rpc.request('thread/start', {
+    cwd, model, ephemeral: true, approvalPolicy: 'never', sandbox: 'read-only', approvalsReviewer: 'user',
+    baseInstructions: instructions, developerInstructions: instructions, config: overrides,
+  }) as ThreadStartResponse;
+  const threadId = res.thread.id;
+  try {
+    signal.throwIfAborted();
+    if (res.approvalPolicy !== 'never' || res.sandbox.type !== 'readOnly' || res.approvalsReviewer !== 'user') throw new Error('Title thread policy mismatch');
+    return await new Promise<string>((resolve, reject) => {
+      let answer = '';
+      const abort = () => finish(signal.reason);
+      signal.addEventListener('abort', abort, { once: true });
+      const finish = (error?: unknown) => {
+        signal.removeEventListener('abort', abort);
+        if (error) reject(error);
+        else resolve(answer);
+      };
+      threads.set(threadId, {
+        onNotification(n) {
+          if (n.method === 'item/completed' && n.params.item.type === 'agentMessage') answer = n.params.item.text;
+          if (n.method === 'turn/completed') finish(n.params.turn.status === 'completed' ? undefined : new Error('Title turn failed'));
+        },
+        async onRequest() { throw new RpcError(-32601, 'Tools are disabled for title generation'); },
+        onExit(error) { finish(error ?? new Error('Codex exited during title generation')); },
+      });
+      rpc.request('turn/start', { threadId, model, input: [{ type: 'text', text: prompt, text_elements: [] }] }).catch(finish);
+    });
+  } finally {
+    threads.delete(threadId);
+    await rpc.request('thread/unsubscribe', { threadId });
+  }
 }

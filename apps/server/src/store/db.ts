@@ -54,17 +54,17 @@ export function openStore(path: string) {
   `);
   // 旧库没有就补上（SQLite 没有 ADD COLUMN IF NOT EXISTS）：model / effort 是切片 8 加的，permission_mode 是权限模式那次加的，archived_at 是切片 12 加的
   const sessionCols = new Set((db.prepare(`PRAGMA table_info(sessions)`).all() as { name: string }[]).map((c) => c.name));
-  for (const col of ['model', 'effort', 'permission_mode', 'archived_at']) if (!sessionCols.has(col)) db.exec(`ALTER TABLE sessions ADD COLUMN ${col} TEXT`);
+  for (const col of ['model', 'effort', 'permission_mode', 'archived_at', 'title']) if (!sessionCols.has(col)) db.exec(`ALTER TABLE sessions ADD COLUMN ${col} TEXT`);
 
   const insertSession = db.prepare(
     `INSERT INTO sessions (id, provider, cwd, provider_session_id, status, model, effort, permission_mode, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
-  // title 不单独存列：直接取该 session 首条 message.user 的文本，省一次迁移
+  // AI 标题独立保存；旧会话和生成失败时仍展示原来的首条消息。
   const sessionColumns = `sessions.*, (
     SELECT json_extract(payload, '$.text') FROM events
     WHERE events.session_id = sessions.id AND type = 'message.user' ORDER BY seq LIMIT 1
-  ) AS title`;
+  ) AS fallback_title`;
   const selectSession = db.prepare(`SELECT ${sessionColumns} FROM sessions WHERE id = ?`);
   const selectSessions = db.prepare(`SELECT ${sessionColumns} FROM sessions ORDER BY updated_at DESC`);
   const updateStatus = db.prepare(`UPDATE sessions SET status = ?, updated_at = ? WHERE id = ?`);
@@ -123,7 +123,7 @@ export function openStore(path: string) {
     cwd: r.cwd as string,
     providerSessionId: (r.provider_session_id as string | null) ?? null,
     status: r.status as SessionStatus,
-    title: (r.title as string | null)?.trim().split('\n')[0].slice(0, 80) || null,
+    title: (r.title as string | null) || (r.fallback_title as string | null)?.trim().split('\n')[0].slice(0, 80) || null,
     model: (r.model as string | null) ?? null,
     effort: (r.effort as string | null) ?? null,
     // 旧行没有这一列：一直以来的实际行为就是审批，落库时按这个兜底
@@ -181,6 +181,13 @@ export function openStore(path: string) {
         db.exec('ROLLBACK');
         throw err;
       }
+    },
+    hasUserText(id: string): boolean {
+      return db.prepare(`SELECT json_extract(payload, '$.text') AS text FROM events WHERE session_id = ? AND type = 'message.user'`).all(id).some((row) => (row.text as string).trim().length > 0);
+    },
+    setSessionTitle(id: string, title: string) {
+      // 元数据更新不改变最近活动时间；删除后的迟到结果不会重建会话。
+      db.prepare('UPDATE sessions SET title = ? WHERE id = ? AND title IS NULL').run(title, id);
     },
     setSessionStatus(id: string, status: SessionStatus) {
       updateStatus.run(status, new Date().toISOString(), id);

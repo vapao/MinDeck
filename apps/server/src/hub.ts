@@ -1,3 +1,4 @@
+import { generateTitle } from './providers/title';
 import { randomUUID } from 'node:crypto';
 import { effortOptions, modelOptions, permissionModeOptions, type AgentEvent, type Attachment, type MessageDelta, type PendingRequest, type PendingRequestBody, type PermissionMode, type ProviderEvent, type ProviderOutput, type Resolution, type Session, type SessionStatus, type Settings, type UpdateSettingsBody, type UsageInfo } from '@agentdeck/shared';
 import type { Store } from './store/db';
@@ -28,6 +29,7 @@ export function createHub(store: Store, attachments: AttachmentStore) {
   const queues = new Map<string, { text: string; files: Attachment[] }[]>();
   // 账号级额度，按 rateLimitType 保留最新值，GET /api/usage 直接返回
   const usage: Record<string, UsageInfo> = {};
+  const titleJobs = new Map<string, AbortController>();
   let closing = false;
 
   store.expireAllPending();
@@ -57,11 +59,12 @@ export function createHub(store: Store, attachments: AttachmentStore) {
     emit(sessionId, { type: 'session.status', payload: { status } });
   }
 
-  const emptyDefaults: Settings = { claude: { model: '', effort: '', permissionMode: 'approval' }, codex: { model: '', effort: '', permissionMode: 'approval' }, deepseek: { model: 'deepseek-flash', effort: '', permissionMode: 'approval', baseUrl: 'https://api.deepseek.com/anthropic', apiKeyConfigured: false } };
+  const emptyDefaults: Settings = { titles: { enabled: false, provider: 'claude', model: 'haiku' }, claude: { model: '', effort: '', permissionMode: 'approval' }, codex: { model: '', effort: '', permissionMode: 'approval' }, deepseek: { model: 'deepseek-flash', effort: '', permissionMode: 'approval', baseUrl: 'https://api.deepseek.com/anthropic', apiKeyConfigured: false } };
   function settings(): Settings {
     const stored = store.getSettings();
     // 补 permissionMode 这种后加的字段：旧库存的 JSON 里没有，兜底成安全默认值，不然老装置升级后直接 undefined
     return {
+      titles: { ...emptyDefaults.titles, ...stored?.titles },
       claude: { ...emptyDefaults.claude, ...stored?.claude },
       codex: { ...emptyDefaults.codex, ...stored?.codex },
       deepseek: { ...emptyDefaults.deepseek, ...stored?.deepseek, apiKeyConfigured: !!store.getDeepseekApiKey() },
@@ -195,13 +198,16 @@ export function createHub(store: Store, attachments: AttachmentStore) {
         if (effort && !effortOptions[provider].some((o) => o.value === effort)) throw new HubError(400, `${provider} does not support effort ${effort}`);
         if (!permissionModeOptions.some((o) => o.value === permissionMode)) throw new HubError(400, `Unsupported permission mode ${permissionMode}`);
       }
+      const titles = next.titles ?? settings().titles;
+      if (typeof titles.enabled !== 'boolean' || !Object.hasOwn(modelOptions, titles.provider) || !modelOptions[titles.provider].some((o) => o.value === titles.model)) throw new HubError(400, 'Invalid title provider or model');
+      if (titles.enabled && titles.provider === 'deepseek' && !(next.deepseek.apiKey === undefined ? store.getDeepseekApiKey() : next.deepseek.apiKey.trim())) throw new HubError(400, '请先配置 DeepSeek API Key');
       const baseUrl = next.deepseek.baseUrl.trim().replace(/\/+$/, '');
       let url: URL;
       try { url = new URL(baseUrl); } catch { throw new HubError(400, 'DeepSeek API 地址不是有效 URL'); }
       if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) throw new HubError(400, 'DeepSeek API 地址必须是无凭据、查询参数或片段的 HTTP(S) URL');
       const { apiKey, ...deepseek } = next.deepseek;
       if (apiKey !== undefined) store.setDeepseekApiKey(apiKey.trim());
-      store.setSettings({ claude: next.claude, codex: next.codex, deepseek: { ...deepseek, baseUrl, model: deepseek.model.trim() || 'deepseek-flash', apiKeyConfigured: !!store.getDeepseekApiKey() } });
+      store.setSettings({ titles, claude: next.claude, codex: next.codex, deepseek: { ...deepseek, baseUrl, model: deepseek.model.trim() || 'deepseek-flash', apiKeyConfigured: !!store.getDeepseekApiKey() } });
     },
 
     getSession,
@@ -236,6 +242,7 @@ export function createHub(store: Store, attachments: AttachmentStore) {
       live.get(sessionId)?.close();
       live.delete(sessionId);
       queues.delete(sessionId);
+      titleJobs.get(sessionId)?.abort();
       store.deleteSession(sessionId);
       // 表已一致，目录删失败也不回滚；残留会在下次删除同 id 时被 force 覆盖
       attachments.removeAll(sessionId);
@@ -256,6 +263,7 @@ export function createHub(store: Store, attachments: AttachmentStore) {
       const provider = ensureProvider(session);
       // 从归档里点进来继续聊：一旦又活起来就得回到侧栏，否则会在看不见的地方跑
       if (session.archivedAt) store.setSessionArchivedAt(sessionId, null);
+      const firstText = !!text.trim() && !store.hasUserText(sessionId);
       const { seq } = emit(sessionId, { type: 'message.user', payload: { text, attachments: files } });
       // 一个 Session 同时只允许一个 active turn（方案 §8.3）：进行中就排队，本轮结束后由 onEvent 接着发
       const queued = session.status === 'running' || session.status === 'waiting_user';
@@ -265,6 +273,16 @@ export function createHub(store: Store, attachments: AttachmentStore) {
         q.push({ text, files });
       } else {
         dispatch(sessionId, provider, { text, files });
+      }
+      const config = settings();
+      if (firstText && config.titles.enabled) {
+        const controller = new AbortController();
+        titleJobs.set(sessionId, controller);
+        const connection = config.titles.provider === 'deepseek' ? { baseUrl: config.deepseek.baseUrl, apiKey: store.getDeepseekApiKey() } : undefined;
+        void generateTitle(config.titles, text, controller, connection).then(
+          (title) => { if (!closing && !controller.signal.aborted) store.setSessionTitle(sessionId, title); },
+          () => { if (!closing && !controller.signal.aborted) console.warn(`Title generation failed for session ${sessionId}; keeping message preview`); },
+        ).finally(() => titleJobs.delete(sessionId));
       }
       return { seq, queued };
     },
@@ -316,6 +334,7 @@ export function createHub(store: Store, attachments: AttachmentStore) {
 
     close() {
       closing = true;
+      for (const job of titleJobs.values()) job.abort();
       for (const p of live.values()) p.close();
       live.clear();
       shutdownCodex();

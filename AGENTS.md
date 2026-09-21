@@ -97,3 +97,11 @@ cd apps/server && node scripts/p0-codex-harness.mjs    # Codex app-server 回归
 ## 会话输出文件（2026-09-21）
 
 开发者明确授权：消息链接的文件预览 / 下载不限工作区目录，受 macOS 进程权限约束；不改变 cwd allowlist 和上传附件边界。原地预览图片、文本、Markdown、PDF；其他文件提供 Finder / 下载。Finder 使用本机目录映射和 `agentdeck-finder:` 辅助应用，不处理共享挂载协议。详见 `docs/file-preview.md`。
+
+## AI 会话标题（2026-09-22）
+
+- 设置页 `AI session titles`：开关（默认关闭）、独立 Provider / 模型，复用既有认证；与聊天模型无关。
+- 首次带非空文字的普通消息入库后后台请求一次（输入最多 8000 字符），标题最多 15 个 Unicode 字符；纯图片等待首次文字。已有文字的会话不补生成，失败 / 超时 / Hub 重启不重试。
+- `sessions.title` 单独持久化；无 AI 标题仍显示首条消息首行前 80 字符。标题更新不改变 `updated_at`，不会改变会话排序。各端沿用会话列表 5 秒轮询同步。
+- 标题使用临时目录、独立请求，不进入聊天上下文或事件流。Claude / DeepSeek 不加载 user/project settings、禁止工具与 hooks、不保存 SDK 会话；Codex 复用唯一 app-server，临时只读 thread，关闭执行 / 外部工具相关功能与已配置 MCP，结束后 unsubscribe。
+- 已通过 Claude / Codex 真实短请求、DeepSeek 真实 SDK + 本地兼容端点验证、桌面设置保存恢复及标题替换验收。DeepSeek 真实服务未在本次验收调用。
