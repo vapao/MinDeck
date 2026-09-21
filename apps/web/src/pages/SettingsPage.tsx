@@ -8,6 +8,7 @@ import { navigate } from '../router'
 import { Select } from '../components/Select'
 import { dialog } from '../components/Dialog'
 import styles from './Manage.module.css'
+import layout from './SettingsPage.module.css'
 
 // 应用级默认值：新建会话时用；已有会话不受影响。是否生效看会话头部的模型标签。
 
@@ -76,7 +77,7 @@ export function SettingsPage() {
 
   return (
     <div className={styles.page}>
-      <div className={styles.card}>
+      <div className={`${styles.card} ${layout.card}`}>
         <div className={styles.head}>
           <button type="button" className={styles.back} onClick={() => navigate('/')} aria-label="Back">
             <ChevronLeft size={18} />
@@ -85,60 +86,63 @@ export function SettingsPage() {
         </div>
         {draft &&
           (['claude', 'codex', 'deepseek'] as const).map((p) => (
-            <div key={p} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <div className={styles.section}>{providerName[p]} defaults</div>
+            <section key={p} className={layout.section} aria-labelledby={`${p}-heading`}>
+              <div className={layout.sectionHead}>
+                <h2 id={`${p}-heading`}>{providerName[p]}</h2>
+                {p === 'deepseek' && !dirty && draft.deepseek.apiKeyConfigured && <button type="button" className={styles.secondary} disabled={save.isPending || testConnection.isPending} onClick={() => testConnection.mutate()}>
+                  {testConnection.isPending ? 'Testing…' : 'Test connection'}
+                </button>}
+              </div>
               {p === 'deepseek' && <>
-                <label className={styles.field}>
-                  <span>API 地址</span>
+                <label className={`${styles.field} ${layout.field}`}>
+                  <span>API endpoint</span>
                   <input className={styles.input} type="url" value={draft.deepseek.baseUrl} onChange={(e) => setDraft({ ...draft, deepseek: { ...draft.deepseek, baseUrl: e.target.value } })} spellCheck={false} />
                 </label>
-                <div className={styles.field}>
+                <div className={`${styles.field} ${layout.field}`}>
                   <label htmlFor="deepseek-api-key">API Key</label>
                   <div className={styles.secret}>
                     <input id="deepseek-api-key" className={styles.input} type={showKey ? 'text' : 'password'}
                       value={apiKey ?? (showKey ? revealedKey ?? '' : '')}
-                      placeholder={apiKey === '' ? '保存后清除密钥' : draft.deepseek.apiKeyConfigured ? '••••••••••••••••' : '输入 DeepSeek API Key'}
+                      placeholder={apiKey === '' ? 'Key will be removed on save' : draft.deepseek.apiKeyConfigured ? '••••••••••••••••' : 'Enter DeepSeek API key'}
                       autoComplete="off" spellCheck={false} disabled={revealing}
                       onChange={(e) => setApiKey(e.target.value || undefined)} />
                     <button type="button" className={styles.rowButton} disabled={revealing} onClick={toggleKey}
-                      aria-label={showKey ? '隐藏 API Key' : '显示 API Key'} aria-pressed={showKey} title={showKey ? '隐藏 API Key' : '显示 API Key'}>
+                      aria-label={showKey ? 'Hide API key' : 'Show API key'} aria-pressed={showKey} title={showKey ? 'Hide API key' : 'Show API key'}>
                       {showKey ? <EyeOff size={16} /> : <Eye size={16} />}
                     </button>
                   </div>
-                  <span>{draft.deepseek.apiKeyConfigured ? '已配置；留空不修改，点击眼睛可查看。' : '密钥保存在这台 Hub 上。'}</span>
-                  {draft.deepseek.apiKeyConfigured && <button type="button" className={styles.secondary} onClick={() => { setApiKey(''); setRevealedKey(undefined); setShowKey(false) }}>清除密钥（保存后生效）</button>}
+                  <div className={layout.keyMeta}>
+                    <span>{draft.deepseek.apiKeyConfigured ? 'Saved. Leave blank to keep.' : 'Stored on this Hub.'}</span>
+                    {draft.deepseek.apiKeyConfigured && <button type="button" className={layout.clearKey} onClick={() => { setApiKey(''); setRevealedKey(undefined); setShowKey(false) }}>Clear on save</button>}
+                  </div>
                   {keyError && <div className={styles.error}>{keyError}</div>}
                 </div>
-                <div className={styles.actions}>
-                  <button type="button" className={styles.secondary} disabled={dirty || save.isPending || testConnection.isPending || !draft.deepseek.apiKeyConfigured} onClick={() => testConnection.mutate()}>
-                    {testConnection.isPending ? '验证中…' : '验证连接'}
-                  </button>
-                </div>
-                <div className={styles.ok}>先保存再验证；会发送一次简短请求，产生少量 API 费用。</div>
-                {testConnection.error && <div className={styles.error}>{testConnection.error.message}</div>}
-                {testConnection.data && !dirty && <div className={styles.ok}>连接成功：{testConnection.data.baseUrl} · {testConnection.data.model}</div>}
               </>}
-              <label className={styles.field}>
-                <span>{p === 'deepseek' ? 'Model' : `Model (leave empty for ${providerName[p]}'s own default)`}</span>
+              <label className={`${styles.field} ${layout.field}`}>
+                <span>Model</span>
                 <Select value={draft[p].model} onChange={(v) => patch(p, 'model', v)} options={p === 'deepseek' ? [...modelOptions[p]] : [{ value: '', label: 'Default' }, ...modelOptions[p]]} />
               </label>
-              {p !== 'deepseek' && <label className={styles.field}>
-                <span>Effort</span>
+              {p !== 'deepseek' && <label className={`${styles.field} ${layout.field}`}>
+                <span>Reasoning effort</span>
                 <Select value={draft[p].effort} onChange={(v) => patch(p, 'effort', v)} options={[{ value: '', label: 'Default' }, ...effortOptions[p]]} />
               </label>}
-              <label className={styles.field}>
-                <span>Permission mode</span>
+              <label className={`${styles.field} ${layout.field}`}>
+                <span>Permissions</span>
                 <Select value={draft[p].permissionMode} onChange={(v) => patch(p, 'permissionMode', v)} options={[...permissionModeOptions]} />
                 {draft[p].permissionMode === 'bypass' && <div className={styles.error}>Runs any command without approval; any device that can reach this Hub can trigger it. Use at your own risk.</div>}
               </label>
-            </div>
+              {p === 'deepseek' && (testConnection.error || (testConnection.data && !dirty)) && <div className={layout.connectionInfo}>
+                {testConnection.error && <div className={styles.error}>{testConnection.error.message}</div>}
+                {testConnection.data && !dirty && <div className={styles.ok}>Connected: {testConnection.data.baseUrl} · {testConnection.data.model}</div>}
+              </div>}
+            </section>
           ))}
-        <div className={styles.actions}>
+        <div className={layout.footer}>
           <button type="button" className={styles.primary} disabled={!dirty || save.isPending} onClick={onSave}>
-            Save
+            Save changes
           </button>
         </div>
-        {save.error ? <div className={styles.error}>{save.error.message}</div> : save.isSuccess && !dirty ? <div className={styles.ok}>已保存。模型与权限默认值用于新会话；API 配置在 DeepSeek 会话进程下次启动时生效。</div> : null}
+        {save.error ? <div className={styles.error}>{save.error.message}</div> : save.isSuccess && !dirty ? <div className={styles.ok}>Saved. Defaults apply to new sessions; API changes apply when DeepSeek next starts.</div> : null}
         {saved.error && <div className={styles.error}>{saved.error.message}</div>}
       </div>
     </div>

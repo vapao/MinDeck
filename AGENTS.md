@@ -92,4 +92,4 @@ cd apps/server && node scripts/p0-codex-harness.mjs    # Codex app-server 回归
 - launchd 不读 `~/.zshrc`：`scripts/launchd.sh install` 会把当前 shell 的 `http_proxy` / `https_proxy` / `all_proxy` / `no_proxy` 写进 plist（本机访问 Anthropic 走代理，缺了 Claude 报 `403 Request not allowed`），并把 `~/.local/bin`（claude / codex）加进 PATH。改了代理配置要重新 install。
 - WS 握手校验 Origin 与 Host 一致（§11.3），Node 脚本不带 Origin 可直连；Tailscale Serve 会透传原始 Host。工作区 allowlist 是 `workspaces` 表，由 UI「项目」页从家目录内浏览添加（`/api/fs/dirs` 只列家目录内的目录），首次启动自动种入本仓库；应用级默认模型 / effort 在 `settings` 表，UI「设置」页改。SQLite 在 `data/`、上传图片在 `data/uploads/<sessionId>/`（`AGENTDECK_UPLOADS` 可改；已 gitignore）。
 - 提交前 `pnpm typecheck`。commit 用 conventional 格式，不加 Co-Authored-By。
-- 回复与文档使用简体中文；代码标识符、路径、命令保持原文。
+- 回复与文档使用简体中文；界面文案默认英文。代码标识符、路径、命令保持原文。

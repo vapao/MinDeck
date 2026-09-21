@@ -1,0 +1,137 @@
+.card {
+  max-width: 800px;
+  padding: 0;
+  gap: 20px;
+  background: none;
+  border: 0;
+}
+
+.section {
+  padding: 0;
+}
+
+.sectionHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 32px;
+  padding-bottom: 8px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--border-2);
+}
+
+.sectionHead h2 {
+  margin: 0;
+  color: var(--text-strong);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.field {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) minmax(0, 440px);
+  column-gap: 24px;
+  row-gap: 4px;
+  align-items: center;
+  padding: 6px 0;
+}
+
+.field > span:first-child,
+.field > label {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.field > div:not(:nth-child(2)),
+.field > small,
+.keyMeta,
+.keyMeta + div {
+  grid-column: 2;
+}
+
+.keyMeta,
+.connectionInfo {
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+.keyMeta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+
+.clearKey {
+  padding: 4px 0;
+  border: 0;
+  background: none;
+  color: var(--text-2);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.clearKey:hover {
+  color: var(--danger);
+}
+
+.sectionHead button:disabled {
+  opacity: 0.42;
+  cursor: default;
+}
+
+.connectionInfo {
+  padding-top: 8px;
+  overflow-wrap: anywhere;
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 16px;
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.footer button {
+  flex-shrink: 0;
+}
+
+@media (max-width: 600px) {
+  .card {
+    gap: 16px;
+  }
+
+  .field {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+    padding: 8px 0;
+  }
+
+  .field > div:not(:nth-child(2)),
+  .field > small,
+  .keyMeta,
+  .keyMeta + div {
+    grid-column: 1;
+  }
+
+  .section input {
+    min-width: 0;
+    font-size: 16px;
+  }
+
+  .section button,
+  .footer button {
+    min-height: 44px;
+  }
+
+  .section input + button {
+    min-width: 44px;
+  }
+}
