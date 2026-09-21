@@ -1,14 +1,16 @@
 import { execFile } from 'node:child_process';
 import type { Dirent } from 'node:fs';
-import { readdir, readFile, realpath } from 'node:fs/promises';
+import { readdir, readFile, realpath, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { join, relative, resolve, sep } from 'node:path';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 import { promisify } from 'node:util';
 import type { ChangedFile, DiffResponse, EntriesResponse, FileResponse, ListChangesResponse } from '@agentdeck/shared';
 import { HubError } from './hub';
 
 // 改动侧栏（切片 10）：只读地看工作区里改了什么。全是 git 只读命令 + 读文件，Hub 不写任何东西。
 // 大仓库 git status 慢就慢，超时返回错误，不影响会话主流程。
+// cwd 本身不是仓库时（一个项目拆成前后端 / App 多个仓库，共用一个根目录），往下找两级子目录里的仓库合并展示，
+// 路径统一相对 cwd；不无限递归。
 
 const run = promisify(execFile);
 const gitTimeoutMs = 10_000;
@@ -51,9 +53,52 @@ async function insideCwd(cwd: string, rel: string): Promise<string> {
 }
 
 export async function listChanges(cwd: string): Promise<ListChangesResponse> {
-  if (!(await isGitRepo(cwd))) return { git: false, files: [] };
+  const repos = (await isGitRepo(cwd)) ? [''] : await findNestedRepos(cwd);
+  if (repos.length === 0) return { git: false, files: [] };
+  const files = (await Promise.all(repos.map((rel) => repoChanges(join(cwd, rel), rel ? `${rel}/` : '')))).flat();
+  return { git: true, files: files.sort((a, b) => a.path.localeCompare(b.path)) };
+}
+
+/** cwd 的子目录和孙目录里含 `.git` 的（目录或 worktree 的 .git 文件都算），返回相对 cwd 的路径 */
+async function findNestedRepos(cwd: string): Promise<string[]> {
+  const found: string[] = [];
+  async function scan(rel: string, depth: number): Promise<void> {
+    let items: Dirent[];
+    try {
+      items = await readdir(join(cwd, rel), { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const d of items) {
+      if (!d.isDirectory() || d.name.startsWith('.') || skipDirs.has(d.name)) continue;
+      const sub = rel ? `${rel}/${d.name}` : d.name;
+      if (await exists(join(cwd, sub, '.git'))) found.push(sub);
+      else if (depth < 2) await scan(sub, depth + 1);
+    }
+  }
+  await scan('', 1);
+  return found;
+}
+
+async function exists(path: string): Promise<boolean> {
+  try {
+    await stat(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** diff 的基准：HEAD；仓库还没有任何提交时用 git 的空树对象，否则 `git diff HEAD` 报 unknown revision */
+async function baseRef(root: string): Promise<string> {
+  const head = await git(root, ['rev-parse', '--verify', '-q', 'HEAD'], [0, 1]);
+  return head.trim() || '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
+}
+
+async function repoChanges(root: string, prefix: string): Promise<ChangedFile[]> {
+  const base = await baseRef(root);
   // -z：路径不转义、NUL 分隔；重命名会跟一个额外的原路径条目
-  const [out, numstat] = await Promise.all([git(cwd, ['status', '--porcelain=v1', '-z', '--untracked-files=all']), git(cwd, ['diff', 'HEAD', '--numstat', '-z'])]);
+  const [out, numstat] = await Promise.all([git(root, ['status', '--porcelain=v1', '-z', '--untracked-files=all']), git(root, ['diff', base, '--numstat', '-z'])]);
   const stats = parseNumstat(numstat);
   const parts = out.split('\0');
   const files: ChangedFile[] = [];
@@ -66,9 +111,9 @@ export async function listChanges(cwd: string): Promise<ListChangesResponse> {
     if (x === 'R' || x === 'C') i++; // 跳过原路径
     // 合并 index / worktree 两列成一个字母：未跟踪 ?、删除 D、新增 A、其余按修改 M
     const status: ChangedFile['status'] = x === '?' ? '?' : x === 'D' || y === 'D' ? 'D' : x === 'A' ? 'A' : x === 'R' ? 'R' : 'M';
-    files.push({ path, status, ...(stats.get(path) ?? { additions: null, deletions: null }) });
+    files.push({ path: prefix + path, status, ...(stats.get(path) ?? { additions: null, deletions: null }) });
   }
-  return { git: true, files: files.sort((a, b) => a.path.localeCompare(b.path)) };
+  return files;
 }
 
 // `git diff --numstat -z`：每条 `加\t减\t路径\0`；重命名时路径列为空，后面跟 `旧\0新\0`；二进制两列是 `-`
@@ -86,13 +131,17 @@ function parseNumstat(out: string): Map<string, { additions: number | null; dele
 }
 
 export async function fileDiff(cwd: string, rel: string): Promise<DiffResponse> {
-  // 用相对 cwd 的规范路径调 git，diff 头里才是 a/<相对路径>
-  const path = relative(cwd, await insideCwd(cwd, rel));
+  const abs = await insideCwd(cwd, rel);
+  // 从文件所在目录往上找最近的仓库根（不出 cwd）；cwd 自身是仓库时就是 cwd。
+  // 用相对仓库根的规范路径调 git，diff 头里才是 a/<相对路径>
+  let root = dirname(abs);
+  while (root !== cwd && !(await exists(join(root, '.git')))) root = dirname(root);
+  const path = relative(root, abs);
   // 未跟踪文件 git diff HEAD 看不到：和 /dev/null 比；--no-index 有差异时退出码 1
-  const tracked = (await git(cwd, ['ls-files', '--error-unmatch', '--', path], [0, 1])) !== '';
+  const tracked = (await git(root, ['ls-files', '--error-unmatch', '--', path], [0, 1])) !== '';
   const diff = tracked
-    ? await git(cwd, ['diff', 'HEAD', '--', path])
-    : await git(cwd, ['diff', '--no-index', '--', '/dev/null', path], [0, 1]);
+    ? await git(root, ['diff', await baseRef(root), '--', path])
+    : await git(root, ['diff', '--no-index', '--', '/dev/null', path], [0, 1]);
   return { path: rel, diff, binary: /^Binary files /m.test(diff) };
 }
 
