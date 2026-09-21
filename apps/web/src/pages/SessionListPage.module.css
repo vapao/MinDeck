@@ -53,29 +53,9 @@
   min-height: 0;
   overflow-y: auto;
   padding: 12px 8px;
+  padding-bottom: max(12px, env(safe-area-inset-bottom));
 }
 .error {
   padding: 16px;
   color: var(--danger);
-}
-.footer {
-  flex: none;
-  padding: 8px 16px;
-  padding-bottom: max(16px, env(safe-area-inset-bottom));
-  border-top: 1px solid var(--border);
-  background: var(--bg);
-}
-.newButton {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  width: 100%;
-  height: 50px;
-  border: 0;
-  border-radius: var(--radius-card);
-  background: var(--accent);
-  color: var(--on-accent);
-  font-weight: 600;
-  cursor: pointer;
 }

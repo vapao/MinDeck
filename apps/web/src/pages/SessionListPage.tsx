@@ -14,6 +14,9 @@ export function SessionListPage() {
       <header className={styles.brand}>
         AgentDeck
         <span className={styles.nav}>
+          <button type="button" className={styles.navButton} onClick={() => navigate('/new')} aria-label="New session">
+            <Plus size={20} />
+          </button>
           <button type="button" className={styles.navButton} onClick={() => navigate('/workspaces')} aria-label="Projects">
             <FolderOpen size={18} />
           </button>
@@ -31,12 +34,6 @@ export function SessionListPage() {
       <main className={styles.list}>
         {sessions.error ? <div className={styles.error}>{sessions.error.message}</div> : <SessionTabs sessions={sessions.data ?? []} />}
       </main>
-      <footer className={styles.footer}>
-        <button type="button" className={styles.newButton} onClick={() => navigate('/new')}>
-          <Plus size={18} />
-          New session
-        </button>
-      </footer>
     </div>
   )
 }

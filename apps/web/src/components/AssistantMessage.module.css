@@ -129,22 +129,38 @@
   text-decoration: underline;
   text-underline-offset: 2px;
 }
-.body table {
-  display: block;
-  max-width: 100%;
+/* 表格：包裹层出圆角外框，与代码块同一套 border / radius；格子只画内部分隔线，避免与外框叠成双线 */
+.table {
+  margin: 0 0 10px;
   overflow-x: auto;
-  border-collapse: collapse;
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-card);
+}
+.body table {
+  width: 100%;
+  margin: 0;
+  border-collapse: separate;
+  border-spacing: 0;
   font-size: 13px;
 }
 .body th,
 .body td {
-  padding: 4px 10px;
-  border: 1px solid var(--border-2);
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--border-2);
   text-align: left;
+  vertical-align: top;
+}
+.body th + th,
+.body td + td {
+  border-left: 1px solid var(--border-2);
+}
+.body tr:last-child td {
+  border-bottom: 0;
 }
 .body th {
   background: var(--surface);
   font-weight: 500;
+  white-space: nowrap;
 }
 .body hr {
   margin: 12px 0;
@@ -153,4 +169,5 @@
 }
 .body img {
   max-width: 100%;
+  border-radius: var(--radius-card);
 }

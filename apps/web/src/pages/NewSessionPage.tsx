@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { X } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { effortOptions, modelOptions, permissionModeOptions, type PermissionMode, type ProviderId } from '@agentdeck/shared'
 import { api } from '../api'
@@ -33,7 +34,12 @@ export function NewSessionPage() {
   return (
     <div className={styles.page}>
       <div className={styles.card}>
-        <h1 className={styles.brand}>AgentDeck</h1>
+        <div className={styles.head}>
+          <h1 className={styles.brand}>New session</h1>
+          <button type="button" className={styles.close} onClick={() => (history.length > 1 ? history.back() : navigate('/'))} aria-label="Close">
+            <X size={18} />
+          </button>
+        </div>
         <label className={styles.field}>
           <span className={styles.labelRow}>
             Workspace

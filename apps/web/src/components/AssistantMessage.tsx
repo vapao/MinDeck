@@ -15,6 +15,15 @@ const components = {
     void node
     return <CodeBlock {...props} />
   },
+  // 表格外包一层：圆角 + 外框 + 横向滚动都挂在包裹层上，table 本身只管格子线
+  table({ node, ...props }: ComponentProps<'table'> & { node?: unknown }) {
+    void node
+    return (
+      <div className={styles.table}>
+        <table {...props} />
+      </div>
+    )
+  },
 }
 
 /** 代码块右上角挂一个复制按钮；文本直接取渲染后的 textContent，不用再从 AST 里拼 */

@@ -120,3 +120,35 @@
   min-width: 0;
   height: 100%;
 }
+.empty {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--text-3);
+  font-size: 13px;
+}
+.empty p {
+  margin: 0;
+}
+.emptyButton {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  margin-top: 6px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--text-2);
+  font-weight: 500;
+  cursor: pointer;
+}
+.emptyButton:hover {
+  border-color: var(--border-3);
+  background: var(--surface-2);
+  color: var(--text-strong);
+}

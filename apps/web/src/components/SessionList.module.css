@@ -176,6 +176,14 @@
   color: var(--text-4);
 }
 @media (max-width: 1023px) {
+  .tabs {
+    margin: 0 8px 12px;
+    padding: 3px;
+  }
+  .tab {
+    height: 36px;
+    font-size: 14px;
+  }
   .item {
     min-height: 64px;
   }

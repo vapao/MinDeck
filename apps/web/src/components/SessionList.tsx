@@ -7,6 +7,8 @@ import { formatTime } from '../format'
 import { navigate } from '../router'
 import { dialog } from './Dialog'
 import { isUnread, useSeen } from '../session/seen'
+import { leaveSession } from '../session/useSessions'
+import { useMediaQuery } from '../session/useMediaQuery'
 import styles from './SessionList.module.css'
 
 // idle 不显示：空闲是常态，逐行写 Idle 只是噪音；跑完还没看过的显示 Done
@@ -35,14 +37,16 @@ type Tab = 'active' | 'inactive'
 // 桌面侧栏与移动端列表页共用（UI 规范 §4）
 export function SessionTabs({ sessions, activeId }: { sessions: Session[]; activeId?: string }) {
   const [tab, setTab] = useState<Tab>('active')
+  // 手机端行操作是常显的：Active 行上的「移到 Inactive」只是噪音，手机只做看与回复，收纳在桌面做
+  const desktop = useMediaQuery('(min-width: 1024px)')
   const queryClient = useQueryClient()
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['sessions'] })
-  // 归档失败（如刚跑起来 409）只提示；正在看的会话被归档就回首页
+  // 归档失败（如刚跑起来 409）只提示；正在看的会话被归档 / 删除就跳到邻居会话
   const setArchived = useMutation({
     mutationFn: ({ id, archived }: { id: string; archived: boolean }) => api.updateSession(id, { archived }),
     onSuccess: (_, { id, archived }) => {
       invalidate()
-      if (archived && id === activeId) navigate('/')
+      if (archived && id === activeId) leaveSession(sessions, id)
     },
     onError: (err) => dialog.alert({ title: 'Archive failed', message: err.message }),
   })
@@ -50,7 +54,7 @@ export function SessionTabs({ sessions, activeId }: { sessions: Session[]; activ
     mutationFn: api.deleteSession,
     onSuccess: (_, id) => {
       invalidate()
-      if (id === activeId) navigate('/')
+      if (id === activeId) leaveSession(sessions, id)
     },
     onError: (err) => dialog.alert({ title: 'Delete failed', message: err.message }),
   })
@@ -59,7 +63,7 @@ export function SessionTabs({ sessions, activeId }: { sessions: Session[]; activ
   }
   const actions = (s: Session): Action[] =>
     tab === 'active'
-      ? s.status === 'idle' || s.status === 'error'
+      ? desktop && (s.status === 'idle' || s.status === 'error')
         ? [{ icon: <EyeOff size={14} />, label: 'Move to inactive', onClick: () => setArchived.mutate({ id: s.id, archived: true }) }]
         : []
       : [

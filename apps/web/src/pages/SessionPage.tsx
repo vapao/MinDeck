@@ -8,7 +8,7 @@ import { navigate } from '../router'
 import { useSessionStream, type StreamItem } from '../session/useSessionStream'
 import { groupTools, layout, type Entry } from '../session/layout'
 import { useMediaQuery } from '../session/useMediaQuery'
-import { useSessions } from '../session/useSessions'
+import { leaveSession, useSessions } from '../session/useSessions'
 import { ChangesPanel } from '../components/ChangesPanel'
 import { UserMessage } from '../components/UserMessage'
 import { AssistantMessage } from '../components/AssistantMessage'
@@ -68,12 +68,12 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
     busy: resolve.isPending && resolve.variables?.id === id,
     error: resolve.error && resolve.variables?.id === id ? resolve.error.message : null,
   })
-  // 删除：运行中的服务端会 409，消息原样给用户看；成功后回首页。移到 Inactive / 移回在侧栏行上操作
+  // 删除：运行中的服务端会 409，消息原样给用户看；成功后跳到邻居会话。移到 Inactive / 移回在侧栏行上操作
   const remove = useMutation({
     mutationFn: () => api.deleteSession(sessionId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sessions'] })
-      navigate('/')
+      leaveSession(sessions.data, sessionId)
     },
     onError: (err) => dialog.alert({ title: 'Delete failed', message: err.message }),
   })
@@ -84,7 +84,7 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
   useEffect(() => {
     if (gone) {
       queryClient.invalidateQueries({ queryKey: ['sessions'] })
-      navigate('/')
+      leaveSession(sessions.data, sessionId)
     }
   }, [gone, queryClient])
   // 改动侧栏只在桌面端；开关记在 localStorage，默认开
@@ -261,7 +261,7 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
                 meta={meta}
                 hint={hint}
                 hintError={mutationError !== null}
-                placeholder={`Message ${providerName[provider]} · Enter to send · Shift+Enter for a new line`}
+                placeholder={desktop ? `Message ${providerName[provider]} · Enter to send · Shift+Enter for a new line` : `Message ${providerName[provider]}`}
                 upload={(file) => api.uploadAttachment(sessionId, file)}
                 search={(q) => api.listEntries(sessionId, q)}
                 onSend={(text, attachmentIds) => {

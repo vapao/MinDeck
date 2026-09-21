@@ -142,8 +142,9 @@
 }
 .input {
   width: 100%;
-  min-height: 24px;
-  max-height: 240px;
+  /* 默认一行，随内容长到五行后滚动 */
+  min-height: 1.65em;
+  max-height: calc(5 * 1.65em);
   padding: 0;
   margin: 0;
   border: 0;

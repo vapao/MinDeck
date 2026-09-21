@@ -1,4 +1,4 @@
-import { Bell, FolderOpen, Plus, Settings } from 'lucide-react'
+import { Bell, FolderOpen, MessageSquare, Plus, Settings } from 'lucide-react'
 import { navigate, usePathname } from './router'
 import { useMediaQuery } from './session/useMediaQuery'
 import { useSessions } from './session/useSessions'
@@ -14,7 +14,7 @@ import { WorkspacesPage } from './pages/WorkspacesPage'
 import { SettingsPage } from './pages/SettingsPage'
 import styles from './App.module.css'
 
-// 路由：/ 列表（桌面为侧栏 + 新建面板）、/new 新建、/s/:id 会话页、/workspaces 项目、/settings 设置
+// 路由：/ 列表（桌面为侧栏 + 空态）、/new 新建、/s/:id 会话页、/workspaces 项目、/settings 设置
 export default function App() {
   const pathname = usePathname()
   const desktop = useMediaQuery('(min-width: 1024px)')
@@ -32,7 +32,21 @@ export default function App() {
   return (
     <div className={styles.shell}>
       <Sidebar activeId={sessionId} />
-      <main className={styles.main}>{page ?? <NewSessionPage />}</main>
+      <main className={styles.main}>{page ?? (pathname === '/new' ? <NewSessionPage /> : <EmptyState />)}</main>
+    </div>
+  )
+}
+
+// 桌面端没选中会话时的占位：侧栏本身就有 New session，这里不再直接摆新建表单，删完 / 归档完当前会话也不会被动掉进表单
+function EmptyState() {
+  return (
+    <div className={styles.empty}>
+      <MessageSquare size={28} strokeWidth={1.5} />
+      <p>Select a session, or start a new one.</p>
+      <button type="button" className={styles.emptyButton} onClick={() => navigate('/new')}>
+        <Plus size={14} />
+        New session
+      </button>
     </div>
   )
 }

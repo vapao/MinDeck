@@ -15,6 +15,35 @@
   border: 1px solid var(--border-2);
   border-radius: var(--radius-card);
 }
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+/* 关闭 = 回到打开它之前的页面；直接打开 /new 没有历史时回首页 */
+.close {
+  width: 28px;
+  height: 28px;
+  margin-right: -6px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: none;
+  color: var(--text-3);
+  cursor: pointer;
+}
+.close:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+@media (max-width: 1023px) {
+  .close {
+    width: 40px;
+    height: 40px;
+    margin-right: -12px;
+  }
+}
 .brand {
   margin: 0;
   color: var(--text-strong);
