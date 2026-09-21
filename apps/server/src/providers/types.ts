@@ -16,6 +16,7 @@ export type ProviderSession = {
 
 export type StartOptions = {
   cwd: string;
+  deepseek?: { baseUrl: string; apiKey: string };
   /** Hub 重启后用保存的 providerSessionId 恢复上下文（方案 §6.2 / §5.2） */
   resume?: string;
   /** 会话创建时定下的模型 / 思考等级；省略交给 Provider 默认。取值范围见 shared modelOptions / effortOptions */

@@ -310,6 +310,7 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
                 onInterrupt={() => interrupt.mutate()}
                 onFresh={session && !fresh.isPending ? onFresh : undefined}
                 provider={provider}
+                imagesAllowed={provider !== 'deepseek' || info?.model !== 'deepseek-v4-pro'}
                 onSwitchProvider={canSwitchProvider ? (p) => switchProvider.mutate(p) : undefined}
                 meta={meta}
                 hint={hint}

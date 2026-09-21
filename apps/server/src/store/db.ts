@@ -256,6 +256,12 @@ export function openStore(path: string) {
       const row = selectSetting.get('defaults');
       return row ? (JSON.parse(row.value as string) as Settings) : null;
     },
+    getDeepseekApiKey(): string {
+      return (selectSetting.get('deepseek_api_key')?.value as string | undefined) ?? '';
+    },
+    setDeepseekApiKey(apiKey: string) {
+      upsertSetting.run('deepseek_api_key', apiKey);
+    },
     setSettings(settings: Settings) {
       upsertSetting.run('defaults', JSON.stringify(settings));
     },

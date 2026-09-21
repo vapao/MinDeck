@@ -1,12 +1,12 @@
 import { randomUUID } from 'node:crypto';
-import { effortOptions, modelOptions, permissionModeOptions, type AgentEvent, type Attachment, type MessageDelta, type PendingRequest, type PendingRequestBody, type PermissionMode, type ProviderEvent, type ProviderOutput, type Resolution, type Session, type SessionStatus, type Settings, type UsageInfo } from '@agentdeck/shared';
+import { effortOptions, modelOptions, permissionModeOptions, type AgentEvent, type Attachment, type MessageDelta, type PendingRequest, type PendingRequestBody, type PermissionMode, type ProviderEvent, type ProviderOutput, type Resolution, type Session, type SessionStatus, type Settings, type UpdateSettingsBody, type UsageInfo } from '@agentdeck/shared';
 import type { Store } from './store/db';
 import type { AttachmentStore } from './store/attachments';
 import type { ProviderSession, StartOptions } from './providers/types';
 import { startClaudeSession } from './providers/claude';
 import { shutdownCodex, startCodexSession } from './providers/codex';
 
-const providers: Record<Session['provider'], (o: StartOptions) => ProviderSession> = { claude: startClaudeSession, codex: startCodexSession };
+const providers: Record<Session['provider'], (o: StartOptions) => ProviderSession> = { claude: startClaudeSession, codex: startCodexSession, deepseek: startClaudeSession };
 
 export class HubError extends Error {
   constructor(public statusCode: number, message: string) {
@@ -57,12 +57,15 @@ export function createHub(store: Store, attachments: AttachmentStore) {
     emit(sessionId, { type: 'session.status', payload: { status } });
   }
 
-  const emptyDefaults: Settings = { claude: { model: '', effort: '', permissionMode: 'approval' }, codex: { model: '', effort: '', permissionMode: 'approval' } };
+  const emptyDefaults: Settings = { claude: { model: '', effort: '', permissionMode: 'approval' }, codex: { model: '', effort: '', permissionMode: 'approval' }, deepseek: { model: 'deepseek-flash', effort: '', permissionMode: 'approval', baseUrl: 'https://api.deepseek.com/anthropic', apiKeyConfigured: false } };
   function settings(): Settings {
     const stored = store.getSettings();
     // 补 permissionMode 这种后加的字段：旧库存的 JSON 里没有，兜底成安全默认值，不然老装置升级后直接 undefined
-    if (!stored) return emptyDefaults;
-    return { claude: { ...emptyDefaults.claude, ...stored.claude }, codex: { ...emptyDefaults.codex, ...stored.codex } };
+    return {
+      claude: { ...emptyDefaults.claude, ...stored?.claude },
+      codex: { ...emptyDefaults.codex, ...stored?.codex },
+      deepseek: { ...emptyDefaults.deepseek, ...stored?.deepseek, apiKeyConfigured: !!store.getDeepseekApiKey() },
+    };
   }
 
   function getSession(id: string): Session {
@@ -120,7 +123,10 @@ export function createHub(store: Store, attachments: AttachmentStore) {
   function ensureProvider(session: Session): ProviderSession {
     const existing = live.get(session.id);
     if (existing) return existing;
+    const deepseek = session.provider === 'deepseek' ? { baseUrl: settings().deepseek.baseUrl, apiKey: store.getDeepseekApiKey() } : undefined;
+    if (deepseek && !deepseek.apiKey) throw new HubError(400, '请先在设置中配置 DeepSeek API Key');
     const provider = providers[session.provider]({
+      deepseek,
       cwd: session.cwd,
       resume: session.providerSessionId ?? undefined,
       model: session.model ?? undefined,
@@ -167,7 +173,7 @@ export function createHub(store: Store, attachments: AttachmentStore) {
       // cwd 只能是 UI 里添加过的工作区（方案 §11.3 allowlist）
       if (!store.getWorkspaceByPath(cwd)) throw new HubError(400, `cwd is not a registered workspace`);
       const defaults = settings()[provider];
-      const model = (override.model ?? defaults.model).trim() || null;
+      const model = (override.model ?? defaults.model).trim() || (provider === 'deepseek' ? 'deepseek-flash' : null);
       const effort = (override.effort ?? defaults.effort).trim() || null;
       const permissionMode = override.permissionMode ?? defaults.permissionMode;
       if (model && !modelOptions[provider].some((o) => o.value === model)) throw new HubError(400, `${provider} does not support model ${model}`);
@@ -180,8 +186,8 @@ export function createHub(store: Store, attachments: AttachmentStore) {
     },
 
     settings,
-    updateSettings(next: Settings) {
-      for (const provider of ['claude', 'codex'] as const) {
+    updateSettings(next: UpdateSettingsBody) {
+      for (const provider of ['claude', 'codex', 'deepseek'] as const) {
         const model = next[provider].model.trim();
         const effort = next[provider].effort.trim();
         const permissionMode = next[provider].permissionMode;
@@ -189,7 +195,13 @@ export function createHub(store: Store, attachments: AttachmentStore) {
         if (effort && !effortOptions[provider].some((o) => o.value === effort)) throw new HubError(400, `${provider} does not support effort ${effort}`);
         if (!permissionModeOptions.some((o) => o.value === permissionMode)) throw new HubError(400, `Unsupported permission mode ${permissionMode}`);
       }
-      store.setSettings(next);
+      const baseUrl = next.deepseek.baseUrl.trim().replace(/\/+$/, '');
+      let url: URL;
+      try { url = new URL(baseUrl); } catch { throw new HubError(400, 'DeepSeek API 地址不是有效 URL'); }
+      if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) throw new HubError(400, 'DeepSeek API 地址必须是无凭据、查询参数或片段的 HTTP(S) URL');
+      const { apiKey, ...deepseek } = next.deepseek;
+      if (apiKey !== undefined) store.setDeepseekApiKey(apiKey.trim());
+      store.setSettings({ claude: next.claude, codex: next.codex, deepseek: { ...deepseek, baseUrl, model: deepseek.model.trim() || 'deepseek-flash', apiKeyConfigured: !!store.getDeepseekApiKey() } });
     },
 
     getSession,
@@ -240,6 +252,7 @@ export function createHub(store: Store, attachments: AttachmentStore) {
       } catch (err) {
         throw new HubError(400, (err as Error).message);
       }
+      if (files.length && session.provider === 'deepseek' && session.model === 'deepseek-v4-pro') throw new HubError(400, 'DeepSeek Pro 不支持图片，请新建 Flash 会话');
       const provider = ensureProvider(session);
       // 从归档里点进来继续聊：一旦又活起来就得回到侧栏，否则会在看不见的地方跑
       if (session.archivedAt) store.setSessionArchivedAt(sessionId, null);

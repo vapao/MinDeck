@@ -1,9 +1,10 @@
 import { effortOptions, modelOptions, type ProviderId } from '@agentdeck/shared'
 
-export const providerName: Record<ProviderId, string> = { claude: 'Claude', codex: 'Codex' }
+export const providerName: Record<ProviderId, string> = { claude: 'Claude', codex: 'Codex', deepseek: 'DeepSeek' }
 
 export function formatModel(provider: ProviderId, model: string | null | undefined) {
   if (!model) return ''
+  if (provider === 'deepseek') model = model.replace(/\[1m\]$/, '')
   return modelOptions[provider].find((option) => option.value === model)?.label
     ?? model.replace(/^claude-/, '').replace(/(^|-)([a-z])/g, (_, prefix: string, letter: string) => prefix + letter.toUpperCase()).replace(/^Gpt(?=-|$)/, 'GPT')
 }

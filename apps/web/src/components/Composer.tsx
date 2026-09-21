@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowLeftRight, ArrowUp, File, Folder, ImagePlus, MessageSquarePlus, Square, X } from 'lucide-react'
+import { ArrowUp, File, Folder, ImagePlus, MessageSquarePlus, Square, X } from 'lucide-react'
 import type { Attachment, EntriesResponse, ProviderId } from '@agentdeck/shared'
+import { Select } from './Select'
 import { providerName } from '../format'
 import { readDraft, saveDraft } from '../session/drafts'
 import styles from './Composer.module.css'
@@ -17,7 +18,8 @@ type Props = {
   /** "新开一轮"（等价 /clear）；未就绪时不传，按钮置灰 */
   onFresh?: () => void
   provider: ProviderId
-  /** 空会话可以换 Agent：传了就把 Provider 名字渲染成切换按钮（只有两个 Provider，点一下换到另一个） */
+  imagesAllowed?: boolean
+  /** 空会话可以换 Agent：传了就把 Provider 名字渲染成三选一下拉 */
   onSwitchProvider?: (provider: ProviderId) => void
   /** 状态区 Provider 名字后面的会话信息（模型、思考等级、上下文用量） */
   meta: string
@@ -45,7 +47,7 @@ type Draft = { key: string; file: File; previewUrl: string } & ({ status: 'uploa
 
 const maxPerMessage = 5
 
-export function Composer({ draftKey, disabled, running, interrupting, onInterrupt, onFresh, provider, onSwitchProvider, meta, hint, hintError, placeholder, upload, search, onSend }: Props) {
+export function Composer({ draftKey, disabled, running, interrupting, onInterrupt, onFresh, provider, imagesAllowed = true, onSwitchProvider, meta, hint, hintError, placeholder, upload, search, onSend }: Props) {
   const [text, setText] = useState(() => readDraft(draftKey))
   useEffect(() => {
     saveDraft(draftKey, text)
@@ -96,6 +98,7 @@ export function Composer({ draftKey, disabled, running, interrupting, onInterrup
   const patch = (key: string, next: Partial<Draft>) => setDrafts((ds) => ds.map((d) => (d.key === key ? ({ ...d, ...next } as Draft) : d)))
 
   const addFiles = (files: Iterable<File>) => {
+    if (!imagesAllowed) return
     const images = [...files].filter((f) => f.type.startsWith('image/')).slice(0, Math.max(0, maxPerMessage - drafts.length))
     if (images.length === 0) return
     const added: Draft[] = images.map((file) => ({ key: crypto.randomUUID(), file, previewUrl: URL.createObjectURL(file), status: 'uploading' }))
@@ -115,11 +118,10 @@ export function Composer({ draftKey, disabled, running, interrupting, onInterrup
     })
   }
 
-  const otherProvider = (Object.keys(providerName) as ProviderId[]).find((p) => p !== provider)!
   const uploading = drafts.some((d) => d.status === 'uploading')
   const failed = drafts.find((d) => d.status === 'error')
   const ids = drafts.flatMap((d) => (d.status === 'done' ? [d.id] : []))
-  const canSend = !disabled && !uploading && !failed && (text.trim() !== '' || ids.length > 0)
+  const canSend = !disabled && !uploading && !failed && (imagesAllowed || drafts.length === 0) && (text.trim() !== '' || ids.length > 0)
   // 轮次进行中才提示"会排队"，且只在真的写了东西时——空输入框没必要一直挂着
   const queued = running && (text.trim() !== '' || ids.length > 0)
 
@@ -244,14 +246,13 @@ export function Composer({ draftKey, disabled, running, interrupting, onInterrup
                 e.target.value = ''
               }}
             />
-            <button type="button" className={styles.attach} onClick={() => fileInput.current?.click()} disabled={drafts.length >= maxPerMessage} aria-label="Add image" title="Add image">
+            <button type="button" className={styles.attach} onClick={() => fileInput.current?.click()} disabled={!imagesAllowed || drafts.length >= maxPerMessage} aria-label="Add image" title={imagesAllowed ? "Add image" : "DeepSeek Pro 不支持图片"}>
               <ImagePlus size={16} />
             </button>
-            {onSwitchProvider ? (
-              <button type="button" className={styles.provider} onClick={() => onSwitchProvider(otherProvider)} title={`Switch to ${providerName[otherProvider]}`}>
-                {providerName[provider]}
-                <ArrowLeftRight size={12} />
-              </button>
+            {onSwitchProvider && drafts.length === 0 ? (
+              <div className={styles.providerSelect}>
+                <Select value={provider} onChange={(p) => onSwitchProvider(p as ProviderId)} options={(Object.keys(providerName) as ProviderId[]).map((p) => ({ value: p, label: providerName[p] }))} />
+              </div>
             ) : (
               <span className={styles.provider}>{providerName[provider]}</span>
             )}

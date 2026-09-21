@@ -10,6 +10,7 @@ import type { ClientMessage, CreateSessionBody, CreateWorkspaceBody, ListDirsRes
 import { openStore } from './store/db';
 import { createAttachmentStore, isImageMime, maxAttachmentBytes, maxAttachmentsPerMessage } from './store/attachments';
 import { createHub, HubError } from './hub';
+import { verifyDeepseekConnection } from './providers/claude';
 import { fileDiff, listChanges, listEntries, readWorkspaceFile } from './changes';
 
 const repoRoot = resolve(import.meta.dirname, '../../..');
@@ -97,7 +98,22 @@ app.get<{ Querystring: { path?: string } }>('/api/fs/dirs', (req): ListDirsRespo
   return { path, parent: path === home ? null : dirname(path), dirs };
 });
 
-app.get('/api/settings', () => hub.settings());
+app.get('/api/settings', (_req, reply) => reply.header('cache-control', 'no-store').send(hub.settings()));
+
+// 密钥只在用户点眼睛时单独读取，不进入普通设置响应或客户端查询缓存。
+app.post('/api/settings/deepseek/reveal-key', (_req, reply) => reply.header('cache-control', 'no-store').send({ apiKey: store.getDeepseekApiKey() }));
+
+app.post('/api/settings/deepseek/test', async () => {
+  const { baseUrl, model } = hub.settings().deepseek;
+  const apiKey = store.getDeepseekApiKey();
+  if (!apiKey) throw new HubError(400, '请先保存 DeepSeek API Key');
+  try {
+    return await verifyDeepseekConnection(repoRoot, { baseUrl, apiKey }, model);
+  } catch (error) {
+    // 上游错误可能包含认证信息，不写入日志或回传密钥。
+    throw new HubError(502, (error instanceof Error ? error.message : String(error)).replaceAll(apiKey, '[redacted]'));
+  }
+});
 
 const providerDefaults = {
   type: 'object',
@@ -106,7 +122,7 @@ const providerDefaults = {
 };
 app.put<{ Body: UpdateSettingsBody }>(
   '/api/settings',
-  { schema: { body: { type: 'object', required: ['claude', 'codex'], properties: { claude: providerDefaults, codex: providerDefaults } } } },
+  { schema: { body: { type: 'object', required: ['claude', 'codex', 'deepseek'], properties: { claude: providerDefaults, codex: providerDefaults, deepseek: { ...providerDefaults, required: [...providerDefaults.required, 'baseUrl'], properties: { ...providerDefaults.properties, baseUrl: { type: 'string' }, apiKey: { type: 'string' } } } } } } },
   (req) => {
     hub.updateSettings(req.body);
     return hub.settings();
@@ -160,7 +176,7 @@ app.get<{ Params: { id: string }; Querystring: { q?: string } }>('/api/sessions/
 
 app.patch<{ Params: { id: string }; Body: UpdateSessionBody }>(
   '/api/sessions/:id',
-  { schema: { body: { type: 'object', properties: { archived: { type: 'boolean' }, provider: { enum: ['claude', 'codex'] } }, oneOf: [{ required: ['archived'] }, { required: ['provider'] }] } } },
+  { schema: { body: { type: 'object', properties: { archived: { type: 'boolean' }, provider: { enum: ['claude', 'codex', 'deepseek'] } }, oneOf: [{ required: ['archived'] }, { required: ['provider'] }] } } },
   (req) => ('provider' in req.body ? hub.setProvider(req.params.id, req.body.provider) : hub.setArchived(req.params.id, req.body.archived)),
 );
 
@@ -177,6 +193,7 @@ app.post<{ Params: { id: string } }>('/api/sessions/:id/interrupt', async (req) 
 // multipart 单文件字段 file。只收图片（方案 §9.2）；HEIC 需客户端先转 JPEG（iOS 相册选图默认会转）
 app.post<{ Params: { id: string } }>('/api/sessions/:id/attachments', async (req, reply) => {
   const session = hub.getSession(req.params.id);
+  if (session.provider === 'deepseek' && session.model === 'deepseek-v4-pro') throw new HubError(400, 'DeepSeek Pro 不支持图片，请新建 Flash 会话');
   const file = await req.file();
   if (!file) throw new HubError(400, 'Missing file field "file"');
   if (!isImageMime(file.mimetype)) throw new HubError(415, `Unsupported type ${file.mimetype}; only PNG / JPEG / WebP / GIF are accepted`);

@@ -56,17 +56,17 @@ export function NewSessionPage() {
         </label>
         <label className={styles.field}>
           <span>Agent</span>
-          <Select value={provider} onChange={(v) => setProvider(v as ProviderId)} options={(Object.keys(providerName) as ProviderId[]).map((p) => ({ value: p, label: p }))} />
+          <Select value={provider} onChange={(v) => setProvider(v as ProviderId)} options={(Object.keys(providerName) as ProviderId[]).map((p) => ({ value: p, label: providerName[p] }))} />
         </label>
         <div className={styles.pair}>
           <label className={styles.field}>
             <span>Model</span>
             <Select value={model} onChange={(v) => patch('model', v)} options={[{ value: '', label: 'Default' }, ...modelOptions[provider]]} />
           </label>
-          <label className={styles.field}>
+          {provider !== 'deepseek' && <label className={styles.field}>
             <span>Effort</span>
             <Select value={effort} onChange={(v) => patch('effort', v)} options={[{ value: '', label: 'Default' }, ...effortOptions[provider]]} />
-          </label>
+          </label>}
         </div>
         <label className={styles.field}>
           <span>Permission mode</span>

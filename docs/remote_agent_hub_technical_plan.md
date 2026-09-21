@@ -271,6 +271,18 @@ data: "..."
 **2026-09-19 验证结论：**未设置 `ANTHROPIC_API_KEY` 时，SDK 直接复用本机 `claude` 的 claude.ai OAuth 登录态（init 消息 `apiKeySource: "none"`），并持续推送订阅额度 `rate_limit_event`。单用户自托管场景技术上无障碍；上述条款约束仅在对外提供时生效。详见 16.1。
 
 
+## 6.6 DeepSeek 复用 Claude SDK（2026-09-21）
+
+DeepSeek 在 UI / Session 中作为独立 `provider: 'deepseek'`，路由到现有 Claude Provider。设置中保存独立的默认模型、权限和 API 地址，密钥单独存于 settings 表，不进入普通设置响应、事件流或前端持久存储。仅点击显示密钥时读取原文，响应 `Cache-Control: no-store`。
+
+启动时按会话构造环境，并在 flag 层 `settings.env` 覆盖 user/project 设置：`ANTHROPIC_BASE_URL`、`ANTHROPIC_AUTH_TOKEN`、主模型与 Opus/Sonnet/Haiku 别名、子 Agent 模型、effort 和压缩窗口。SDK 模型附加 `[1m]`，实际 API 请求使用 `deepseek-flash` 或 `deepseek-v4-pro`。Claude 官方会话继续使用原本的本机登录，不修改全局环境。
+
+模型和权限在会话创建时固定；API 地址和 Key 是连接配置，在会话进程下次启动时读取最新值。现有上下文恢复、工具与审批沿用 Claude 实现，Pro 图片输入在 UI 与服务端拒绝，DeepSeek 不转发 Claude 订阅额度事件。
+
+新增 `POST /api/settings/deepseek/reveal-key` 和 `POST /api/settings/deepseek/test`。后者使用同一环境构造函数，经真实 SDK 发最短文本请求，无工具、不持久化会话、60 秒超时。
+
+验证范围限于配置生效：已用真实 SDK + 本地 Anthropic 兼容端点确认 Flash/Pro 模型和认证请求，并确认会话配置覆盖 project settings 中的冲突配置。真实 DeepSeek 连通需设置有效 Key 后验证，不宣称工具全功能回归通过。配置依据：[DeepSeek Claude Code 接入](https://api-docs.deepseek.com/quick_start/agent_integrations/claude_code)、[模型说明](https://api-docs.deepseek.com/quick_start/pricing)。
+
 # 7. 统一 Agent 协议
 
 统一层的目的不是制造“最低共同能力”，而是让 UI 有稳定的数据模型。Provider 差异通过 capabilities 表达。

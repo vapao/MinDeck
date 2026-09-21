@@ -236,3 +236,13 @@
   font-size: 12px;
   color: var(--text-3);
 }
+
+.secret {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.secret .input {
+  flex: 1;
+  min-width: 0;
+}

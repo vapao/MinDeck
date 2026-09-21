@@ -33,7 +33,16 @@ Mac Mini 上自托管的 Claude / Codex 多端控制台：Agent 在 Mac Mini 上
 | 10 | 改动侧栏（桌面端）：cwd 内只读 `git status` / `git diff -- <file>` / 读文件，`turn.completed` 与写类工具完成后节流刷新，非 git 目录隐藏；自解析 unified diff，不引 diff 库、不做语法高亮 | 一轮结束能看到改了哪些文件及 diff |
 | 11 | `@` 文件引用（`GET /api/sessions/:id/entries?q=`：相对 cwd，`~` 展开为家目录，直接子项在前、深层匹配在后，目录以 `/` 结尾可继续往里敲；cwd 内递归限 4 层 / 3000 项 / 1.5s，`~` 下只列直接子项；Composer 弹层支持上下键 / Enter / Tab / Escape）。**未做**：会话中切模型（Codex `turn/start` 按轮传 model / effort 很简单；Claude 仅 `setModel()`，effort 无 setter 需 resume 重开）——先看全局默认值够不够用 | 低频，待观察 |
 | 12 | 会话归档与侧栏收纳：`sessions.archived_at`、`PATCH /api/sessions/:id { archived }`（归档 running / waiting_user 409；给归档会话发消息自动取消归档）；侧栏顶部「Active / Inactive」两个页签共用同一套分组列表（分组按组内最近活动排、可折叠（localStorage）且折叠后仍露出 running / waiting_user 的会话）：Active 行 hover 可移到 Inactive，Inactive 行 hover 可移回 / 永久删除（删除只在这里）；会话页头部保留「删除」（2026-09-21 从「移到 Inactive / 移回」改回：该位置固定为删除，收纳操作只在侧栏行上），「新开一轮」按钮移到输入框发送按钮左侧，弹窗仍是可选删除旧会话（不是移到 Inactive）；图标用 `EyeOff` / `Eye`（语义是从 Active 页签隐藏，不是归档）。背景：项目一多侧栏撑不下，单独的"活跃列表"又把各项目会话混在一起——"只展示活跃"和"按项目分组"叠在一起才对。**未做**：侧栏过滤框（先看归档够不够用） | 移到 Inactive 后从 Active 页签消失、Inactive 页签可移回；折叠组里等审批的会话仍可见 |
-| 13 | 空会话换 Agent：`PATCH /api/sessions/:id { provider }`，只允许还没任何事件、Provider 未启动的会话（否则 409，上下文在 Provider 那边换了等于丢光，不做中途切换），model / effort 按新 Provider 的设置默认值重置、permissionMode 保留；Composer 状态区的 Provider 名字在空会话时是切换按钮（两个 Provider，点一下换到另一个）；新建会话页默认沿用上一次选的 Provider（`localStorage newSession:provider`，新建与切换时都记） | 空会话点一下 Provider 名字变成另一个；发过消息后不再可点 |
+| 13 | 空会话换 Agent：`PATCH /api/sessions/:id { provider }`，只允许还没任何事件、Provider 未启动的会话（否则 409，上下文在 Provider 那边换了等于丢光，不做中途切换），model / effort 按新 Provider 的设置默认值重置、permissionMode 保留；Composer 状态区的 Provider 名字在空会话时是切换按钮（原为两个 Provider 互换，DeepSeek 接入后改为三选一下拉）；新建会话页默认沿用上一次选的 Provider（`localStorage newSession:provider`，新建与切换时都记） | 空会话可从下拉切换 Provider；发过消息后不再可选 |
+
+## DeepSeek 接入（2026-09-21）
+
+- 页面与会话 `provider` 为 `claude | codex | deepseek`，三者平级；DeepSeek 复用 Claude Provider / SDK，不另写工具和审批实现。
+- 设置页独立配置 API 地址、API Key、Flash / Pro 默认模型和权限。API ID 为 `deepseek-flash` / `deepseek-v4-pro`；Pro 不支持图片，前后端都拒绝图片输入。effort 与压缩参数按 DeepSeek 官方 Claude Code 配置注入，不提供额外调节项。
+- Key 单独保存在 SQLite `settings.deepseek_api_key`，普通设置接口只返回 `apiKeyConfigured`；输入框默认隐藏，点击眼睛才通过不缓存的独立接口获取已保存原文。保存时省略 Key 保留原值，空字符串清除。
+- 仅 DeepSeek 会话注入 API 端点、认证、主模型 / 模型别名 / 子 Agent 模型；同时通过 SDK flag 层 `settings.env` 覆盖 user/project 配置。不修改 Hub 全局环境或本机 Claude 配置。规则 4 的本机登录保持适用于官方 Claude 会话。
+- 默认模型和权限只作用于新会话；API 地址和 Key 在 DeepSeek Provider 进程下次启动（含 resume）时读取。已有会话的 Provider 不变。DeepSeek 不展示 Claude 订阅额度。
+- 「验证连接」经真实 SDK 发简短请求，无工具、不保存测试会话，需先保存配置，有少量 API 费用。已通过真实 SDK + 本地兼容端点验证 Flash/Pro 请求的端点、认证、模型 ID，以及 project settings 覆盖；设置页密码显隐 / 保存恢复 / 三方新建与切换已桌面浏览器验收。真实 DeepSeek 服务需填写 Key 后验证。
 
 ## 技术栈与命令
 

@@ -1,6 +1,6 @@
 // Domain 类型与 REST / WS 契约。只定义当前切片用到的部分（方案 §7.2、§14）。
 
-export type ProviderId = 'claude' | 'codex';
+export type ProviderId = 'claude' | 'codex' | 'deepseek';
 
 export type SessionStatus = 'idle' | 'running' | 'waiting_user' | 'error';
 
@@ -45,10 +45,16 @@ export const permissionModeOptions: readonly SelectOption[] = [
 
 /** 应用级默认值：新建会话时未覆盖就用它；model / effort 空字符串 = 交给 Provider 默认 */
 export type ProviderDefaults = { model: string; effort: string; permissionMode: PermissionMode };
-export type Settings = Record<ProviderId, ProviderDefaults>;
+export type Settings = Record<'claude' | 'codex', ProviderDefaults> & {
+  deepseek: ProviderDefaults & { baseUrl: string; apiKeyConfigured: boolean };
+};
 
 /** 各 Provider 支持的模型，手工维护的硬编码列表，不做动态拉取；出新模型时手动改这里 */
 export const modelOptions: Record<ProviderId, readonly SelectOption[]> = {
+  deepseek: [
+    { value: 'deepseek-flash', label: 'DeepSeek Flash' },
+    { value: 'deepseek-v4-pro', label: 'DeepSeek Pro' },
+  ],
   claude: [
     { value: 'fable', label: 'Fable' },
     { value: 'opus', label: 'Opus' },
@@ -63,6 +69,7 @@ export const modelOptions: Record<ProviderId, readonly SelectOption[]> = {
 
 /** 各 Provider 接受的思考等级（Claude：SDK EffortLevel；Codex：model_reasoning_effort），同样手工维护 */
 export const effortOptions: Record<ProviderId, readonly SelectOption[]> = {
+  deepseek: [],
   claude: [
     { value: 'low', label: 'Low' },
     { value: 'medium', label: 'Medium' },
@@ -251,7 +258,10 @@ export type EntriesResponse = { entries: { path: string; name: string; dir: bool
 
 /** GET / PUT /api/settings */
 export type SettingsResponse = Settings;
-export type UpdateSettingsBody = Settings;
+export type UpdateSettingsBody = Omit<Settings, 'deepseek'> & {
+  /** apiKey 省略保留原值；空字符串清除。普通设置响应不含密钥。 */
+  deepseek: Omit<Settings['deepseek'], 'apiKeyConfigured'> & { apiKey?: string };
+};
 
 /** GET /api/usage：账号级额度，按 rateLimitType 取最新值；Hub 内存缓存，重启后到首轮跑完前为空 */
 export type UsageResponse = Record<string, UsageInfo>;

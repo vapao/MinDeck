@@ -19,6 +19,8 @@ export const api = {
   listDirs: (path?: string) => request<ListDirsResponse>(`/api/fs/dirs${path ? `?path=${encodeURIComponent(path)}` : ''}`),
   getSettings: () => request<SettingsResponse>('/api/settings'),
   updateSettings: (body: UpdateSettingsBody) => request<SettingsResponse>('/api/settings', { method: 'PUT', body: JSON.stringify(body) }),
+  testDeepseek: () => request<{ baseUrl: string; model: string }>('/api/settings/deepseek/test', { method: 'POST' }),
+  revealDeepseekKey: () => request<{ apiKey: string }>('/api/settings/deepseek/reveal-key', { method: 'POST', cache: 'no-store' }),
   getUsage: () => request<UsageResponse>('/api/usage'),
   listSessions: () => request<ListSessionsResponse>('/api/sessions'),
   listEntries: (sessionId: string, q: string) => request<EntriesResponse>(`/api/sessions/${sessionId}/entries?q=${encodeURIComponent(q)}`),
