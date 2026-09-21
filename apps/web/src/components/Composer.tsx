@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowUp, File, Folder, ImagePlus, Square, X } from 'lucide-react'
+import { ArrowUp, File, Folder, ImagePlus, MessageSquarePlus, Square, X } from 'lucide-react'
 import type { Attachment, EntriesResponse } from '@agentdeck/shared'
 import styles from './Composer.module.css'
 
@@ -12,6 +12,8 @@ type Props = {
   running: boolean
   interrupting: boolean
   onInterrupt: () => void
+  /** "新开一轮"（等价 /clear）；未就绪时不传，按钮置灰 */
+  onFresh?: () => void
   /** 状态区左侧的会话信息（模型、思考等级、上下文用量） */
   meta: string
   /** 需要用户注意的状态（排队、等待、报错）；为空时状态区只显示 meta */
@@ -38,7 +40,7 @@ type Draft = { key: string; file: File; previewUrl: string } & ({ status: 'uploa
 
 const maxPerMessage = 5
 
-export function Composer({ draftKey, disabled, running, interrupting, onInterrupt, meta, hint, hintError, placeholder, upload, search, onSend }: Props) {
+export function Composer({ draftKey, disabled, running, interrupting, onInterrupt, onFresh, meta, hint, hintError, placeholder, upload, search, onSend }: Props) {
   const [text, setText] = useState(() => localStorage.getItem(`draft:${draftKey}`) ?? '')
   useEffect(() => {
     if (text) localStorage.setItem(`draft:${draftKey}`, text)
@@ -246,6 +248,9 @@ export function Composer({ draftKey, disabled, running, interrupting, onInterrup
                 {failed ? failed.message : uploading ? 'Uploading images…' : hint || 'A turn is running; your message will be queued as a follow-up'}
               </span>
             )}
+            <button type="button" className={styles.fresh} onClick={onFresh} disabled={!onFresh} aria-label="Start fresh" title="Start a new session in the same workspace with a fresh context">
+              <MessageSquarePlus size={16} />
+            </button>
             {running ? (
               <button type="button" className={styles.stop} onClick={onInterrupt} disabled={interrupting} aria-label="Stop" title="Stop the current turn">
                 <Square size={14} />

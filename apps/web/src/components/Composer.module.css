@@ -114,7 +114,8 @@
   background: var(--hover);
   color: var(--text);
 }
-.attach {
+.attach,
+.fresh {
   flex: none;
   width: 30px;
   height: 30px;
@@ -126,13 +127,18 @@
   color: var(--text-3);
   cursor: pointer;
 }
-.attach:hover:enabled {
+.attach:hover:enabled,
+.fresh:hover:enabled {
   background: var(--hover);
   color: var(--text);
 }
-.attach:disabled {
+.attach:disabled,
+.fresh:disabled {
   color: var(--text-4);
   cursor: default;
+}
+.fresh {
+  margin-left: auto;
 }
 .input {
   width: 100%;
@@ -155,7 +161,6 @@
 .send,
 .stop {
   flex: none;
-  margin-left: auto;
   width: 28px;
   height: 28px;
   display: grid;
@@ -192,7 +197,8 @@
 @media (max-width: 1023px) {
   .send,
   .stop,
-  .attach {
+  .attach,
+  .fresh {
     width: 40px;
     height: 40px;
   }

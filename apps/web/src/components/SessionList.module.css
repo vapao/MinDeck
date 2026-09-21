@@ -82,6 +82,10 @@
 .row:hover .actions {
   display: flex;
 }
+/* 操作按钮正好压在时间上，hover 时把时间让出来 */
+.row:hover .time {
+  visibility: hidden;
+}
 .action {
   display: grid;
   width: 24px;

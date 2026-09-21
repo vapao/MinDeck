@@ -42,32 +42,6 @@
   font-size: 13px;
   font-weight: 600;
 }
-.fresh {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  height: 29px;
-  padding: 0 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-control);
-  background: var(--surface);
-  color: var(--text-2);
-  font-weight: 500;
-  cursor: pointer;
-  transition:
-    border-color 120ms ease,
-    background 120ms ease;
-}
-.fresh:hover:not(:disabled) {
-  border-color: var(--border-3);
-  background: var(--surface-2);
-  color: var(--text-strong);
-}
-.fresh:disabled {
-  opacity: 0.42;
-  cursor: default;
-}
 .iconButton {
   flex: none;
   width: 28px;
@@ -133,20 +107,9 @@
   .stream {
     padding: 16px;
   }
-  .fresh {
-    height: 44px;
-  }
   .iconButton {
     width: 44px;
     height: 44px;
-  }
-  .fresh {
-    width: 44px;
-    padding: 0;
-    justify-content: center;
-  }
-  .freshLabel {
-    display: none;
   }
   .back {
     width: 44px;

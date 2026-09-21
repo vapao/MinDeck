@@ -1,5 +1,5 @@
 import { useState, useSyncExternalStore, type ReactNode } from 'react'
-import { Archive, ArchiveRestore, ChevronDown, ChevronRight, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, Eye, EyeOff, Trash2 } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { Session, SessionStatus } from '@agentdeck/shared'
 import { api } from '../api'
@@ -58,10 +58,10 @@ export function SessionTabs({ sessions, activeId }: { sessions: Session[]; activ
   const actions = (s: Session): Action[] =>
     tab === 'active'
       ? s.status === 'idle' || s.status === 'error'
-        ? [{ icon: <Archive size={14} />, label: 'Move to inactive', onClick: () => setArchived.mutate({ id: s.id, archived: true }) }]
+        ? [{ icon: <EyeOff size={14} />, label: 'Move to inactive', onClick: () => setArchived.mutate({ id: s.id, archived: true }) }]
         : []
       : [
-          { icon: <ArchiveRestore size={14} />, label: 'Move back to active', onClick: () => setArchived.mutate({ id: s.id, archived: false }) },
+          { icon: <Eye size={14} />, label: 'Move back to active', onClick: () => setArchived.mutate({ id: s.id, archived: false }) },
           { icon: <Trash2 size={14} />, label: 'Delete permanently', danger: true, onClick: () => onRemove(s.id) },
         ]
 
