@@ -6,9 +6,11 @@ import { api } from '../api'
 import { formatTime } from '../format'
 import { navigate } from '../router'
 import { dialog } from './Dialog'
+import { isUnread, useSeen } from '../session/seen'
 import styles from './SessionList.module.css'
 
-const statusText: Record<SessionStatus, string> = { running: 'Running', waiting_user: 'Waiting for you', idle: 'Idle', error: 'Error' }
+// idle 不显示：空闲是常态，逐行写 Idle 只是噪音；跑完还没看过的显示 Done
+const statusText: Record<Exclude<SessionStatus, 'idle'>, string> = { running: 'Running', waiting_user: 'Waiting for you', error: 'Error' }
 
 // 折叠状态按 cwd 记在 localStorage，桌面侧栏与移动端列表页共享
 const collapsedKey = 'agentdeck.collapsed'
@@ -82,9 +84,11 @@ export function SessionTabs({ sessions, activeId }: { sessions: Session[]; activ
 type Action = { icon: ReactNode; label: string; danger?: boolean; onClick: () => void }
 type Props = { sessions: Session[]; activeId?: string; onSelect: (id: string) => void; actions: (s: Session) => Action[]; empty: string }
 
-// 按工作区分组：分组按组内最近活动排；折叠的组仍露出 running / waiting_user 的会话，等审批的不会被藏掉
+// 按工作区分组：分组按组内最近活动排；折叠的组仍露出 running / waiting_user / 未读完成的会话，等你处理的不会被藏掉
 function SessionList({ sessions, activeId, onSelect, actions, empty }: Props) {
   const collapsed = new Set<string>(JSON.parse(useSyncExternalStore(subscribeCollapsed, readCollapsed)))
+  const seen = useSeen()
+  const needsAttention = (s: Session) => s.status === 'running' || s.status === 'waiting_user' || isUnread(s, seen)
   const groups = new Map<string, Session[]>()
   // sessions 已按 updatedAt 倒序，首次出现的顺序就是分组顺序
   for (const s of sessions) groups.set(s.cwd, [...(groups.get(s.cwd) ?? []), s])
@@ -97,7 +101,7 @@ function SessionList({ sessions, activeId, onSelect, actions, empty }: Props) {
     <div className={styles.list}>
       {[...groups].map(([cwd, items]) => {
         const isCollapsed = collapsed.has(cwd)
-        const visible = isCollapsed ? items.filter((s) => s.status === 'running' || s.status === 'waiting_user') : items
+        const visible = isCollapsed ? items.filter(needsAttention) : items
         return (
           <section key={cwd} className={styles.group}>
             <button type="button" className={styles.groupHead} onClick={() => toggleCollapsed(cwd)} aria-expanded={!isCollapsed}>
@@ -108,7 +112,6 @@ function SessionList({ sessions, activeId, onSelect, actions, empty }: Props) {
             {visible.map((s) => (
               <div key={s.id} className={styles.row}>
                 <button type="button" className={styles.item} data-active={s.id === activeId || undefined} onClick={() => onSelect(s.id)}>
-                  <span className={styles.dot} data-status={s.status} />
                   <span className={styles.body}>
                     <span className={styles.titleRow}>
                       <span className={styles.title}>{s.title ?? 'New session'}</span>
@@ -116,7 +119,11 @@ function SessionList({ sessions, activeId, onSelect, actions, empty }: Props) {
                     </span>
                     <span className={styles.metaRow}>
                       <code className={styles.chip}>{s.provider}</code>
-                      <span className={styles.status} data-status={s.status}>{statusText[s.status]}</span>
+                      {s.status === 'idle' ? (
+                        isUnread(s, seen) && <span className={styles.status} data-status="done">Done</span>
+                      ) : (
+                        <span className={styles.status} data-status={s.status}>{statusText[s.status]}</span>
+                      )}
                     </span>
                   </span>
                   <ChevronRight size={16} className={styles.chevron} />

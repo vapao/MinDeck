@@ -4,6 +4,7 @@ import { useMediaQuery } from './session/useMediaQuery'
 import { useSessions } from './session/useSessions'
 import { notificationsSupported, useNotificationPermission, useNotifications } from './session/useNotifications'
 import { SessionTabs } from './components/SessionList'
+import { useMarkSeen } from './session/seen'
 import { RateMeter } from './components/RateMeter'
 import { useResizable } from './components/Resizer'
 import { NewSessionPage } from './pages/NewSessionPage'
@@ -20,6 +21,7 @@ export default function App() {
   const sessionId = pathname.match(/^\/s\/([^/]+)$/)?.[1]
   const sessions = useSessions()
   useNotifications(sessions.data, sessionId)
+  useMarkSeen(sessions.data, sessionId)
 
   const page = sessionId ? <SessionPage sessionId={sessionId} /> : pathname === '/workspaces' ? <WorkspacesPage /> : pathname === '/settings' ? <SettingsPage /> : null
 

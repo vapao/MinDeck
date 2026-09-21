@@ -253,7 +253,7 @@ export function Composer({ draftKey, disabled, running, interrupting, onInterrup
             </button>
             {running ? (
               <button type="button" className={styles.stop} onClick={onInterrupt} disabled={interrupting} aria-label="Stop" title="Stop the current turn">
-                <Square size={14} />
+                <Square size={12} />
               </button>
             ) : (
               <button type="button" className={styles.send} onClick={submit} disabled={!canSend} aria-label="Send">
