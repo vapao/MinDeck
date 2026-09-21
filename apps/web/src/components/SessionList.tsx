@@ -7,6 +7,7 @@ import { formatTime } from '../format'
 import { navigate } from '../router'
 import { dialog } from './Dialog'
 import { isUnread, useSeen } from '../session/seen'
+import { useDraftSessions } from '../session/drafts'
 import { leaveSession } from '../session/useSessions'
 import { useMediaQuery } from '../session/useMediaQuery'
 import styles from './SessionList.module.css'
@@ -88,11 +89,12 @@ export function SessionTabs({ sessions, activeId }: { sessions: Session[]; activ
 type Action = { icon: ReactNode; label: string; danger?: boolean; onClick: () => void }
 type Props = { sessions: Session[]; activeId?: string; onSelect: (id: string) => void; actions: (s: Session) => Action[]; empty: string }
 
-// 按工作区分组：分组按组内最近活动排；折叠的组仍露出 running / waiting_user / 未读完成的会话，等你处理的不会被藏掉
+// 按工作区分组：分组按组内最近活动排；折叠后仍露出运行中、等待、未读完成和有草稿的会话
 function SessionList({ sessions, activeId, onSelect, actions, empty }: Props) {
   const collapsed = new Set<string>(JSON.parse(useSyncExternalStore(subscribeCollapsed, readCollapsed)))
   const seen = useSeen()
-  const needsAttention = (s: Session) => s.status === 'running' || s.status === 'waiting_user' || isUnread(s, seen)
+  const drafts = useDraftSessions(sessions)
+  const needsAttention = (s: Session) => s.status === 'running' || s.status === 'waiting_user' || isUnread(s, seen) || drafts.has(s.id)
   const groups = new Map<string, Session[]>()
   // sessions 已按 updatedAt 倒序，首次出现的顺序就是分组顺序
   for (const s of sessions) groups.set(s.cwd, [...(groups.get(s.cwd) ?? []), s])
@@ -119,6 +121,7 @@ function SessionList({ sessions, activeId, onSelect, actions, empty }: Props) {
                   <span className={styles.body}>
                     <span className={styles.titleRow}>
                       <span className={styles.title}>{s.title ?? 'New session'}</span>
+                      {drafts.has(s.id) && <span className={styles.draft} title="Unsent draft">Draft</span>}
                       <span className={styles.time}>{formatTime(s.updatedAt)}</span>
                     </span>
                     <span className={styles.metaRow}>

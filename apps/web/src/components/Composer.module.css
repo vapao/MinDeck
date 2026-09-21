@@ -217,6 +217,16 @@ button.provider:hover {
   cursor: default;
 }
 @media (max-width: 1023px) {
+  .provider,
+  button.provider {
+    display: none;
+  }
+  .meta::before {
+    content: none;
+  }
+  .input {
+    font-size: 16px;
+  }
   .send,
   .stop,
   .attach,

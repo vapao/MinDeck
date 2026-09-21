@@ -23,10 +23,10 @@ export function layout(items: StreamItem[]): Entry[] {
   return out
 }
 
-// 一轮里最后一条 Agent 文本就是汇总说明，保持可见；用户消息、报错、落款也可见；其余归入过程块，放在第一个过程项的位置
+// 一轮里最后一条 Agent 文本就是汇总说明；用户消息、报错、落款和仍待回答的卡片保持可见，其余归入过程块。
 function collapse(turn: StreamItem[]): Entry[] {
   const finalIdx = turn.findLastIndex((it) => it.kind === 'assistant')
-  const isProcess = (it: StreamItem, i: number) => i !== finalIdx && it.kind !== 'user' && it.kind !== 'error' && it.kind !== 'turn'
+  const isProcess = (it: StreamItem, i: number) => i !== finalIdx && it.kind !== 'user' && it.kind !== 'error' && it.kind !== 'turn' && !((it.kind === 'question' || it.kind === 'approval') && it.state === 'pending')
   const process = turn.filter(isProcess)
   if (process.length === 0) return turn
   const block: Entry = { kind: 'process', key: `p${turn[turn.length - 1].key}`, items: process, steps: process.length, tools: summarizeTools(process) }

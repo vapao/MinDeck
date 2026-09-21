@@ -17,7 +17,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 0 12px 0 16px;
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 600;
   color: var(--text-strong);
   border-bottom: 1px solid var(--border);
@@ -27,21 +27,10 @@
   align-items: center;
   gap: 9px;
 }
-/* 品牌标：琥珀方块 + 墨色小点 */
 .mark {
-  display: grid;
-  place-items: center;
-  width: 18px;
-  height: 18px;
-  border-radius: 5px;
-  background: var(--accent);
-}
-.mark::after {
-  content: '';
-  width: 5px;
-  height: 5px;
-  border-radius: 2px;
-  background: var(--on-accent);
+  flex: none;
+  width: 24px;
+  height: 24px;
 }
 .bell {
   display: flex;

@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { ArrowLeftRight, ArrowUp, File, Folder, ImagePlus, MessageSquarePlus, Square, X } from 'lucide-react'
 import type { Attachment, EntriesResponse, ProviderId } from '@agentdeck/shared'
 import { providerName } from '../format'
+import { readDraft, saveDraft } from '../session/drafts'
 import styles from './Composer.module.css'
 
 type Props = {
@@ -45,10 +46,9 @@ type Draft = { key: string; file: File; previewUrl: string } & ({ status: 'uploa
 const maxPerMessage = 5
 
 export function Composer({ draftKey, disabled, running, interrupting, onInterrupt, onFresh, provider, onSwitchProvider, meta, hint, hintError, placeholder, upload, search, onSend }: Props) {
-  const [text, setText] = useState(() => localStorage.getItem(`draft:${draftKey}`) ?? '')
+  const [text, setText] = useState(() => readDraft(draftKey))
   useEffect(() => {
-    if (text) localStorage.setItem(`draft:${draftKey}`, text)
-    else localStorage.removeItem(`draft:${draftKey}`)
+    saveDraft(draftKey, text)
   }, [draftKey, text])
   const [drafts, setDrafts] = useState<Draft[]>([])
   const [dragging, setDragging] = useState(false)

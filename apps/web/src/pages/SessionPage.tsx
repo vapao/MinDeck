@@ -1,13 +1,15 @@
-import { useEffect, useMemo, useRef, useState, type UIEvent } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type UIEvent } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { ChevronLeft, GitBranch, Trash2 } from 'lucide-react'
+import { Loading } from '../components/Loading'
 import type { ProviderId, Resolution } from '@agentdeck/shared'
 import { api } from '../api'
-import { formatTokens, providerName } from '../format'
+import { formatEffort, formatModel, formatTokens, providerName } from '../format'
 import { navigate } from '../router'
 import { useSessionStream, type StreamItem } from '../session/useSessionStream'
 import { groupTools, layout, type Entry } from '../session/layout'
 import { useMediaQuery } from '../session/useMediaQuery'
+import { useAutoHideScrollbar } from '../session/useAutoHideScrollbar'
 import { leaveSession, useSessions } from '../session/useSessions'
 import { ChangesPanel } from '../components/ChangesPanel'
 import { UserMessage } from '../components/UserMessage'
@@ -98,6 +100,30 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
   }, [gone, queryClient])
   // 改动侧栏只在桌面端；开关记在 localStorage，默认开
   const desktop = useMediaQuery('(min-width: 1024px)')
+  const page = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    const viewport = window.visualViewport
+    if (desktop || !viewport) return
+    const el = page.current!
+    const sync = () => {
+      // 键盘和 Safari 工具栏会改变可见区域；首次进入就测量，不依赖聚焦触发 resize。
+      // 手动缩放时保留布局，避免页面跟着缩放反复重排。
+      if (viewport.scale !== 1) return
+      el.style.setProperty('--viewport-height', `${viewport.height}px`)
+      el.style.setProperty('--viewport-top', `${viewport.offsetTop}px`)
+    }
+    sync()
+    viewport.addEventListener('resize', sync)
+    viewport.addEventListener('scroll', sync)
+    window.addEventListener('pageshow', sync)
+    return () => {
+      viewport.removeEventListener('resize', sync)
+      viewport.removeEventListener('scroll', sync)
+      window.removeEventListener('pageshow', sync)
+      el.style.removeProperty('--viewport-height')
+      el.style.removeProperty('--viewport-top')
+    }
+  }, [desktop, sessionId])
   const [showChanges, setShowChanges] = useState(() => localStorage.getItem('changesPanel') !== 'off')
   const toggleChanges = () => {
     setShowChanges((v) => {
@@ -106,6 +132,7 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
     })
   }
   const stream = useRef<HTMLElement>(null)
+  useAutoHideScrollbar(stream)
   const column = useRef<HTMLDivElement>(null)
   // 用户往上翻看历史时不再自动跟到底部；回到底部附近后恢复跟随
   const follow = useRef(true)
@@ -130,10 +157,21 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
     observer.observe(column.current!)
     return () => observer.disconnect()
   }, [])
-  useEffect(() => {
+  const positioned = useRef(false)
+  useLayoutEffect(() => {
     follow.current = true
     anchor.current = 0
+    positioned.current = false
   }, [sessionId])
+  useLayoutEffect(() => {
+    if (positioned.current || session?.id !== sessionId || connection !== 'open') return
+    // 历史回放中过程块折叠会让 scrollTop 回退，不能把它当作用户上翻而漏掉首次定位。
+    const el = stream.current!
+    follow.current = true
+    el.scrollTop = el.scrollHeight
+    anchor.current = el.scrollTop
+    positioned.current = true
+  }, [sessionId, session?.id, connection])
 
   // 已结束轮次的过程块默认折叠；展开的记在这里（按块 key），换会话清空
   const [opened, setOpened] = useState<Set<string>>(() => new Set())
@@ -163,7 +201,7 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
         ? `${provider} will continue once you handle the request above`
         : ''
   // 状态区 Provider 名字后面：模型 · 思考等级 · 上下文用量；init 前模型取创建时指定的；没指定 effort（用 Provider 默认）就不显示
-  const meta = [model ?? info?.model, info?.effort, context !== null && formatTokens(context)].filter(Boolean).join(' · ')
+  const meta = [formatModel(provider, model ?? info?.model), formatEffort(provider, info?.effort), context !== null && formatTokens(context)].filter(Boolean).join(' · ')
 
   const renderItem = (it: StreamItem) => {
     switch (it.kind) {
@@ -231,7 +269,7 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
     })
 
   return (
-    <div className={styles.page}>
+    <div ref={page} className={styles.page}>
       <header className={styles.topbar}>
         <button type="button" className={styles.back} onClick={() => navigate('/')} aria-label="Back">
           <ChevronLeft size={20} />
@@ -253,6 +291,9 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
         <div className={styles.conversation}>
           <main ref={stream} className={styles.stream} onScroll={onScroll}>
             <div ref={column} className={styles.column}>
+              {connection !== 'open' && entries.length === 0 && (
+                <Loading label="Loading conversation…" />
+              )}
               {renderEntries(entries)}
               {turnStartedAt && running && <WorkingRow since={turnStartedAt} />}
             </div>

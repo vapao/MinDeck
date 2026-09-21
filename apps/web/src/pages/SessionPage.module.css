@@ -39,7 +39,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--text-strong);
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 600;
 }
 .iconButton {
@@ -104,6 +104,32 @@
   background: var(--bg);
 }
 @media (max-width: 1023px) {
+  .topbar {
+    border-bottom: 0;
+    /* 点击区域延伸到内容边距外，图标另做光学对齐。 */
+    padding-left: 6px;
+    padding-right: 6px;
+  }
+  .title {
+    font-size: 16px;
+  }
+  .back svg {
+    width: 32px;
+    height: 32px;
+    /* Chevron 的笔画只占 SVG 中部，抵消内部留白，让箭头尖对齐正文左缘。 */
+    transform: translateX(-7px);
+  }
+  .iconButton svg {
+    width: 22px;
+    height: 22px;
+  }
+  .page {
+    position: fixed;
+    top: var(--viewport-top, 0px);
+    left: 0;
+    right: 0;
+    height: var(--viewport-height, 100dvh);
+  }
   .stream {
     padding: 16px;
   }
@@ -114,5 +140,6 @@
   .back {
     width: 44px;
     height: 44px;
+    margin-left: 0;
   }
 }

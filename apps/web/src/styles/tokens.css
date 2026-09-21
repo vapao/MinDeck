@@ -43,7 +43,7 @@
   --radius-card: 8px;
   --shadow-menu: 0 12px 36px rgba(0, 0, 0, 0.42);
 
-  --topbar-h: 52px;
+  --topbar-h: 60px;
   /* 消息列与输入框同宽；助手内容、工具组、卡片都撑满列宽，只有用户气泡收窄 */
   --stream-w: 880px;
   --user-w: 660px;

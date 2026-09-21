@@ -33,7 +33,7 @@ export function QuestionCard({ request, provider, state, answers, response, reso
     <div className={styles.card} data-state={state}>
       <div className={styles.head}>
         <CircleHelp size={16} className={styles.headIcon} />
-        {state === 'pending' ? `${provider} is asking` : state === 'expired' ? 'Question expired' : 'Question · answered'}
+        {state === 'pending' ? `${provider} is asking${request.delivery === 'async' ? ' · non-blocking' : ''}` : state === 'expired' ? 'Question expired' : 'Question · answered'}
         <span className={styles.headMeta}>{state === 'pending' ? (request.questions.some((q) => q.multiSelect) ? 'Multi-select' : 'Single choice') : resolvedAt ? formatTime(resolvedAt) : ''}</span>
       </div>
       <div className={styles.body}>

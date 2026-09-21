@@ -14,6 +14,7 @@ export function createNormalizer() {
     switch (n.method) {
       case 'item/started':
         if (n.params.item.type === 'agentMessage') {
+          if (n.params.item.delivery === 'async' && n.params.item.questions?.length) return [];
           streaming = { id: n.params.item.id, text: '' };
           return [];
         }
@@ -28,6 +29,8 @@ export function createNormalizer() {
         const item = n.params.item;
         if (item.type === 'agentMessage') {
           streaming = null;
+          // 异步问题由 Provider 转成问答卡，避免把同一问题再显示成普通消息。
+          if (item.delivery === 'async' && item.questions?.length) return [];
           return [{ type: 'message.completed', payload: { messageId: item.id, text: item.text } }];
         }
         return itemCompleted(item);

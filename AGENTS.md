@@ -72,6 +72,8 @@ cd apps/server && node scripts/p0-codex-harness.mjs    # Codex app-server 回归
 12. **一个 Hub 进程只维持一个 app-server**（`providers/codex/index.ts` 里的模块级单例），thread 按 `threadId` 路由；账号级通知（额度）广播给所有 Codex 会话，各自去重。
 13. **Codex 审批的"本会话允许"只在回包 `availableDecisions` 含 `acceptForSession` 时提供**；不用 `acceptWithExecpolicyAmendment`（会写持久化 execpolicy 规则）。
 
+14. **Codex 异步提问来自 `agentMessage.delivery = "async"` + `questions`**（真实协议验收）：转成非阻塞问答卡，不是 `item/tool/requestUserInput`。答案作为用户消息通过 `turn/start` 发送（运行中注入当前轮，空闲时新开一轮），不走普通追加指令队列；轮结束后仍可回答，中断 / 关闭时作废。
+
 ## 工程习惯
 
 - YAGNI：只解决当前切片的需求，抽象等重复出现再提。Provider 在 `apps/server/src/providers/` 里是目录，不拆包。

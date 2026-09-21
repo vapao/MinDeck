@@ -1,5 +1,8 @@
 .page {
-  height: 100%;
+  position: fixed;
+  inset: 0;
+  height: 100dvh;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
 }
@@ -11,15 +14,26 @@
   height: calc(var(--topbar-h) + env(safe-area-inset-top));
   padding: 0 16px;
   padding-top: env(safe-area-inset-top);
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 600;
   color: var(--text-strong);
   background: var(--panel);
-  border-bottom: 1px solid var(--border);
+}
+.brandName {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mark {
+  flex: none;
+  width: 28px;
+  height: 28px;
 }
 .nav {
   display: flex;
   gap: 4px;
+  /* 抵消 44px 点击区域相对 24px 图标多出的内边距。 */
+  margin-right: -10px;
 }
 .navButton {
   width: 44px;
@@ -52,6 +66,7 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overscroll-behavior-y: contain;
   padding: 12px 8px;
   padding-bottom: max(12px, env(safe-area-inset-bottom));
 }

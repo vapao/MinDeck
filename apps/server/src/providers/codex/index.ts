@@ -59,11 +59,22 @@ export function startCodexSession({ cwd, resume, model, effort, permissionMode, 
   let turnId: string | null = null;
   // 每轮一个 controller：interrupt 时触发，让 Hub 作废本轮还在等的审批
   let abort = new AbortController();
+  // 异步问题可以在一轮结束后回答，只在中断 / 关闭会话时作废。
+  let asyncQuestions = new AbortController();
 
   const handler: ThreadHandler = {
     onNotification(n) {
       if (n.method === 'turn/completed') turnId = null;
       for (const e of normalize(n)) onEvent(e);
+      if (n.method === 'item/completed') {
+        const item = n.params.item;
+        if (item.type === 'agentMessage' && item.delivery === 'async' && item.questions?.length) {
+          void onPending({
+            kind: 'question', toolUseId: item.id, delivery: 'async',
+            questions: item.questions.map((q) => ({ question: q.title, header: '', multiSelect: false, options: (q.options ?? []).map((label) => ({ label, description: '' })) })),
+          }, asyncQuestions.signal);
+        }
+      }
     },
     async onRequest(r) {
       switch (r.method) {
@@ -101,7 +112,10 @@ export function startCodexSession({ cwd, resume, model, effort, permissionMode, 
           throw new RpcError(-32601, `AgentDeck does not support ${r.method}`);
       }
     },
-    onExit,
+    onExit(error) {
+      asyncQuestions.abort();
+      onExit(error);
+    },
   };
 
   // 本机 ~/.codex/config.toml 是 approval_policy=never + danger-full-access（AGENTS.md 规则 10）：thread 级显式覆盖，并校验回包。
@@ -127,7 +141,7 @@ export function startCodexSession({ cwd, resume, model, effort, permissionMode, 
 
   return {
     send({ text, images }) {
-      abort = new AbortController();
+      if (!turnId) abort = new AbortController();
       // 图片已在本机磁盘，直接走 localImage（方案 §5.3）
       const input: UserInput[] = [
         ...(text ? [{ type: 'text' as const, text, text_elements: [] }] : []),
@@ -147,9 +161,12 @@ export function startCodexSession({ cwd, resume, model, effort, permissionMode, 
     async interrupt() {
       if (!threadId || !turnId) return;
       abort.abort();
+      asyncQuestions.abort();
+      asyncQuestions = new AbortController();
       await rpc.request('turn/interrupt', { threadId, turnId });
     },
     close() {
+      asyncQuestions.abort();
       if (threadId) threads.delete(threadId);
     },
   };

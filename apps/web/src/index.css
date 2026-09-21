@@ -14,7 +14,7 @@ body {
   margin: 0;
 }
 
-/* dvh 跟随移动端浏览器工具栏 / 键盘收放，避免底栏被挡 */
+/* dvh 跟随浏览器工具栏；手机会话页另用 visualViewport 适配键盘。 */
 #root {
   height: 100%;
   height: 100dvh;
@@ -50,6 +50,27 @@ body {
 }
 ::-webkit-scrollbar-track {
   background: transparent;
+}
+
+/* 只隐藏滑块颜色，保留滚动条宽度，避免显隐时消息重新换行。 */
+[data-auto-hide-scrollbar] {
+  --scrollbar-thumb: transparent;
+}
+[data-auto-hide-scrollbar][data-scrolling] {
+  --scrollbar-thumb: rgba(255, 255, 255, 0.11);
+}
+[data-auto-hide-scrollbar]::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+}
+[data-auto-hide-scrollbar]::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+@supports not selector(::-webkit-scrollbar) {
+  [data-auto-hide-scrollbar] {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) transparent;
+  }
 }
 
 button,

@@ -132,7 +132,7 @@ export type PendingRequestBody =
       /** Provider 建议的规则原文，resolve 时原样交还 Provider，UI 不解释 */
       suggestions: unknown[];
     }
-  | { kind: 'question'; toolUseId: string; questions: QuestionSpec[] };
+  | { kind: 'question'; toolUseId: string; questions: QuestionSpec[]; /** 异步提问的答案通过用户消息送回 Provider */ delivery?: 'async' };
 
 export type PendingRequest = PendingRequestBody & {
   id: string;

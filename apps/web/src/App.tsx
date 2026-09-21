@@ -1,9 +1,12 @@
+import { useRef } from 'react'
 import { Bell, FolderOpen, MessageSquare, Plus, Settings } from 'lucide-react'
+import { useAutoHideScrollbar } from './session/useAutoHideScrollbar'
 import { navigate, usePathname } from './router'
 import { useMediaQuery } from './session/useMediaQuery'
 import { useSessions } from './session/useSessions'
 import { notificationsSupported, useNotificationPermission, useNotifications } from './session/useNotifications'
 import { SessionTabs } from './components/SessionList'
+import { Loading } from './components/Loading'
 import { useMarkSeen } from './session/seen'
 import { RateMeter } from './components/RateMeter'
 import { useResizable } from './components/Resizer'
@@ -52,6 +55,8 @@ function EmptyState() {
 }
 
 function Sidebar({ activeId }: { activeId?: string }) {
+  const list = useRef<HTMLDivElement>(null)
+  useAutoHideScrollbar(list)
   const sessions = useSessions()
   const notify = useNotificationPermission()
   const { width, handle } = useResizable('sidebar', 280, 220, 480, 'left')
@@ -60,7 +65,7 @@ function Sidebar({ activeId }: { activeId?: string }) {
       <div {...handle} />
       <div className={styles.brand}>
         <span className={styles.brandName}>
-          <span className={styles.mark} />
+          <img className={styles.mark} src="/favicon.svg" alt="" />
           AgentDeck
         </span>
         {notificationsSupported && notify.permission === 'default' && (
@@ -70,8 +75,8 @@ function Sidebar({ activeId }: { activeId?: string }) {
           </button>
         )}
       </div>
-      <div className={styles.sidebarList}>
-        <SessionTabs sessions={sessions.data ?? []} activeId={activeId} />
+      <div ref={list} className={styles.sidebarList}>
+        {sessions.isPending ? <Loading label="Loading sessions…" /> : <SessionTabs sessions={sessions.data ?? []} activeId={activeId} />}
       </div>
       <button type="button" className={styles.newButton} onClick={() => navigate('/new')}>
         <Plus size={16} />

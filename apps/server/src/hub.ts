@@ -90,11 +90,15 @@ export function createHub(store: Store, attachments: AttachmentStore) {
     const request: PendingRequest = { ...body, id: randomUUID(), sessionId, status: 'pending', createdAt: new Date().toISOString(), resolvedAt: null };
     store.createPending(request);
     emit(sessionId, requestedEvent(request));
-    setStatus(sessionId, 'waiting_user');
+    if (body.kind !== 'question' || body.delivery !== 'async') setStatus(sessionId, 'waiting_user');
     return new Promise((resolve) => {
-      waiting.set(request.id, resolve);
+      const expire = () => settle(request.id, null);
+      waiting.set(request.id, (resolution) => {
+        signal.removeEventListener('abort', expire);
+        resolve(resolution);
+      });
       // turn 被中断等情况下 Provider 会放弃这次请求：作废并通知各端
-      signal.addEventListener('abort', () => settle(request.id, null), { once: true });
+      signal.addEventListener('abort', expire, { once: true });
     });
   }
 
@@ -104,7 +108,10 @@ export function createHub(store: Store, attachments: AttachmentStore) {
     if (!request) throw new HubError(404, 'Request not found');
     if (!store.resolvePending(requestId, resolution, resolution ? 'resolved' : 'expired')) return false;
     emit(request.sessionId, resolvedEvent(request, resolution));
-    if (store.pendingBySession(request.sessionId).length === 0) setStatus(request.sessionId, 'running');
+    if (getSession(request.sessionId).status === 'waiting_user' &&
+        !store.pendingBySession(request.sessionId).some((p) => p.kind !== 'question' || p.delivery !== 'async')) {
+      setStatus(request.sessionId, 'running');
+    }
     waiting.get(requestId)?.(resolution);
     waiting.delete(requestId);
     return true;
@@ -263,6 +270,16 @@ export function createHub(store: Store, attachments: AttachmentStore) {
       if (!request) throw new HubError(404, 'Request not found');
       if (resolution.kind !== request.kind) throw new HubError(400, `Request kind is ${request.kind}, got ${resolution.kind}`);
       if (!settle(requestId, resolution)) throw new HubError(409, 'Already handled elsewhere');
+      if (request.kind === 'question' && request.delivery === 'async' && resolution.kind === 'question') {
+        const session = getSession(request.sessionId);
+        const provider = ensureProvider(session);
+        const text = request.questions.map((q) => `${q.question}：${resolution.answers[q.question]?.join('、') || resolution.response || ''}`).join('\n');
+        emit(session.id, { type: 'message.user', payload: { text, attachments: [] } });
+        if (session.archivedAt) store.setSessionArchivedAt(session.id, null);
+        // Codex turn/start 在有 active turn 时直接注入答案，不经过普通追加指令的轮后队列。
+        if (session.status === 'running' || session.status === 'waiting_user') provider.send({ text, images: [] });
+        else dispatch(session.id, provider, { text, files: [] });
+      }
       return store.lastSeq(request.sessionId);
     },
 
