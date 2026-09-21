@@ -13,13 +13,18 @@ export function NewSessionPage() {
   const workspaces = useQuery({ queryKey: ['workspaces'], queryFn: api.listWorkspaces })
   const settings = useQuery({ queryKey: ['settings'], queryFn: api.getSettings })
   const [cwd, setCwd] = useState('')
-  const [provider, setProvider] = useState<ProviderId>('claude')
+  // 默认沿用上一次的选择（新建或空会话切换时记下）
+  const [provider, setProvider] = useState<ProviderId>(() => {
+    const last = localStorage.getItem('newSession:provider')
+    return last && last in providerName ? (last as ProviderId) : 'claude'
+  })
   // 模型 / 思考等级 / 权限模式默认跟设置走；这里改只影响本次创建
   const [override, setOverride] = useState<Partial<Record<ProviderId, { model?: string; effort?: string; permissionMode?: string }>>>({})
   const queryClient = useQueryClient()
   const create = useMutation({
     mutationFn: api.createSession,
     onSuccess: (session) => {
+      localStorage.setItem('newSession:provider', session.provider)
       queryClient.invalidateQueries({ queryKey: ['sessions'] })
       navigate(`/s/${session.id}`)
     },

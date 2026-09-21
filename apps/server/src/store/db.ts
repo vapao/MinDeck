@@ -70,6 +70,8 @@ export function openStore(path: string) {
   const updateStatus = db.prepare(`UPDATE sessions SET status = ?, updated_at = ? WHERE id = ?`);
   // 归档不动 updated_at：它不是会话活动，取消归档后仍按原来的活动时间排
   const updateArchivedAt = db.prepare(`UPDATE sessions SET archived_at = ? WHERE id = ?`);
+  // 换 Provider 不动 updated_at：跟归档一样不算会话活动
+  const updateProvider = db.prepare(`UPDATE sessions SET provider = ?, model = ?, effort = ? WHERE id = ?`);
   const updateProviderSessionId = db.prepare(
     `UPDATE sessions SET provider_session_id = ?, updated_at = ? WHERE id = ?`,
   );
@@ -185,6 +187,9 @@ export function openStore(path: string) {
     },
     setSessionArchivedAt(id: string, archivedAt: string | null) {
       updateArchivedAt.run(archivedAt, id);
+    },
+    setSessionProvider(id: string, provider: Session['provider'], model: string | null, effort: string | null) {
+      updateProvider.run(provider, model, effort, id);
     },
     setProviderSessionId(id: string, providerSessionId: string) {
       updateProviderSessionId.run(providerSessionId, new Date().toISOString(), id);

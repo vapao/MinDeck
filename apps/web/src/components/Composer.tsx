@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowUp, File, Folder, ImagePlus, MessageSquarePlus, Square, X } from 'lucide-react'
-import type { Attachment, EntriesResponse } from '@agentdeck/shared'
+import { ArrowLeftRight, ArrowUp, File, Folder, ImagePlus, MessageSquarePlus, Square, X } from 'lucide-react'
+import type { Attachment, EntriesResponse, ProviderId } from '@agentdeck/shared'
+import { providerName } from '../format'
 import styles from './Composer.module.css'
 
 type Props = {
@@ -14,7 +15,10 @@ type Props = {
   onInterrupt: () => void
   /** "新开一轮"（等价 /clear）；未就绪时不传，按钮置灰 */
   onFresh?: () => void
-  /** 状态区左侧的会话信息（模型、思考等级、上下文用量） */
+  provider: ProviderId
+  /** 空会话可以换 Agent：传了就把 Provider 名字渲染成切换按钮（只有两个 Provider，点一下换到另一个） */
+  onSwitchProvider?: (provider: ProviderId) => void
+  /** 状态区 Provider 名字后面的会话信息（模型、思考等级、上下文用量） */
   meta: string
   /** 需要用户注意的状态（排队、等待、报错）；为空时状态区只显示 meta */
   hint: string
@@ -40,7 +44,7 @@ type Draft = { key: string; file: File; previewUrl: string } & ({ status: 'uploa
 
 const maxPerMessage = 5
 
-export function Composer({ draftKey, disabled, running, interrupting, onInterrupt, onFresh, meta, hint, hintError, placeholder, upload, search, onSend }: Props) {
+export function Composer({ draftKey, disabled, running, interrupting, onInterrupt, onFresh, provider, onSwitchProvider, meta, hint, hintError, placeholder, upload, search, onSend }: Props) {
   const [text, setText] = useState(() => localStorage.getItem(`draft:${draftKey}`) ?? '')
   useEffect(() => {
     if (text) localStorage.setItem(`draft:${draftKey}`, text)
@@ -111,6 +115,7 @@ export function Composer({ draftKey, disabled, running, interrupting, onInterrup
     })
   }
 
+  const otherProvider = (Object.keys(providerName) as ProviderId[]).find((p) => p !== provider)!
   const uploading = drafts.some((d) => d.status === 'uploading')
   const failed = drafts.find((d) => d.status === 'error')
   const ids = drafts.flatMap((d) => (d.status === 'done' ? [d.id] : []))
@@ -242,6 +247,14 @@ export function Composer({ draftKey, disabled, running, interrupting, onInterrup
             <button type="button" className={styles.attach} onClick={() => fileInput.current?.click()} disabled={drafts.length >= maxPerMessage} aria-label="Add image" title="Add image">
               <ImagePlus size={16} />
             </button>
+            {onSwitchProvider ? (
+              <button type="button" className={styles.provider} onClick={() => onSwitchProvider(otherProvider)} title={`Switch to ${providerName[otherProvider]}`}>
+                {providerName[provider]}
+                <ArrowLeftRight size={12} />
+              </button>
+            ) : (
+              <span className={styles.provider}>{providerName[provider]}</span>
+            )}
             <span className={styles.meta}>{meta}</span>
             {(failed || uploading || hint || queued) && (
               <span className={styles.hint} data-error={(failed || hintError) || undefined} data-queue={(!failed && !uploading && !hint && queued) || undefined}>

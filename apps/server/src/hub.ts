@@ -197,6 +197,18 @@ export function createHub(store: Store, attachments: AttachmentStore) {
       return getSession(sessionId);
     },
 
+    /** 换 Provider 只对空会话开放：Provider 进程在首条消息时才惰性启动，之前换只是改一列；有过消息就不该换（上下文在 Provider 那边） */
+    setProvider(sessionId: string, provider: Session['provider']): Session {
+      if (!(provider in providers)) throw new HubError(400, `Unknown provider ${provider}`);
+      const session = getSession(sessionId);
+      if (session.provider === provider) return session;
+      if (session.providerSessionId || live.has(sessionId) || store.lastSeq(sessionId) > 0) throw new HubError(409, 'Session already has messages; start a new session to use another agent');
+      // model / effort 两个 Provider 不通用，按新 Provider 的设置默认值重来；permissionMode 与 Provider 无关，保留
+      const defaults = settings()[provider];
+      store.setSessionProvider(sessionId, provider, defaults.model.trim() || null, defaults.effort.trim() || null);
+      return getSession(sessionId);
+    },
+
     /** 只删 idle / error 的会话：运行中的让用户先中断或等结束，Hub 不处理关 Provider 的时序 */
     deleteSession(sessionId: string) {
       const session = getSession(sessionId);

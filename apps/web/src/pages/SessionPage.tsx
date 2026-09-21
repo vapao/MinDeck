@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type UIEvent } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { ChevronLeft, GitBranch, Trash2 } from 'lucide-react'
-import type { Resolution } from '@agentdeck/shared'
+import type { ProviderId, Resolution } from '@agentdeck/shared'
 import { api } from '../api'
 import { formatTokens, providerName } from '../format'
 import { navigate } from '../router'
@@ -26,10 +26,11 @@ import styles from './SessionPage.module.css'
 export function SessionPage({ sessionId }: { sessionId: string }) {
   const { session, status, model, items, connection, replay, context, turnStartedAt, gone, changesVersion } = useSessionStream(sessionId)
   const queryClient = useQueryClient()
-  // 标题由首条消息生成，snapshot 里的 session 不会跟着更新；列表查询在发送成功后会失效重取，从它读最新值
+  // 标题由首条消息生成、Provider 可在空会话时切换，snapshot 里的 session 不会跟着更新；列表查询在这些操作后会失效重取，优先从它读
   const sessions = useSessions()
   const listed = sessions.data?.find((s) => s.id === sessionId)
-  const title = listed?.title ?? session?.title ?? 'New session'
+  const info = listed ?? session
+  const title = info?.title ?? 'New session'
   const send = useMutation({
     mutationFn: (body: { text: string; attachmentIds: string[] }) => api.sendMessage(sessionId, body),
     // 首条消息决定列表里的标题；归档中的会话发消息后服务端会自动取消归档
@@ -40,11 +41,19 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
   // 先建新的、切过去，再删旧的：这样旧会话的 session.deleted 不会打到还开着的页面上；删失败（如刚好又跑起来 409）只提示
   const fresh = useMutation({
     mutationFn: async (discard: boolean) => {
-      const s = await api.createSession({ provider: session!.provider, cwd: session!.cwd })
+      const s = await api.createSession({ provider: info!.provider, cwd: info!.cwd })
       navigate(`/s/${s.id}`)
       if (discard) await api.deleteSession(sessionId).catch((err: Error) => dialog.alert({ title: 'New session created, but the old one was not deleted', message: err.message }))
     },
     onSettled: () => queryClient.invalidateQueries({ queryKey: ['sessions'] }),
+  })
+  // 空会话换 Agent：Provider 进程还没起，服务端只改一列（有消息了会 409）。记成下次新建的默认选择
+  const switchProvider = useMutation({
+    mutationFn: (provider: ProviderId) => api.updateSession(sessionId, { provider }),
+    onSuccess: (s) => {
+      localStorage.setItem('newSession:provider', s.provider)
+      queryClient.invalidateQueries({ queryKey: ['sessions'] })
+    },
   })
   const onFresh = async () => {
     // 运行中的不问，直接保留
@@ -143,8 +152,9 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
 
   const running = status === 'running' || status === 'waiting_user'
   // snapshot 到达前先按 claude 渲染，随后被真实 provider 覆盖
-  const provider = session?.provider ?? 'claude'
-  const mutationError = send.error ?? fresh.error ?? interrupt.error
+  const provider = info?.provider ?? 'claude'
+  const canSwitchProvider = !!info && items.length === 0 && !info.providerSessionId && status === 'idle' && !send.isPending && !switchProvider.isPending
+  const mutationError = send.error ?? fresh.error ?? interrupt.error ?? switchProvider.error
   const hint = mutationError
     ? mutationError.message
     : connection !== 'open'
@@ -152,8 +162,8 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
       : status === 'waiting_user'
         ? `${provider} will continue once you handle the request above`
         : ''
-  // 状态区：Provider · 模型 · 思考等级 · 上下文用量；init 前模型取创建时指定的；没指定 effort（用 Provider 默认）就不显示
-  const meta = [providerName[provider], model ?? session?.model, session?.effort, context !== null && formatTokens(context)].filter(Boolean).join(' · ')
+  // 状态区 Provider 名字后面：模型 · 思考等级 · 上下文用量；init 前模型取创建时指定的；没指定 effort（用 Provider 默认）就不显示
+  const meta = [model ?? info?.model, info?.effort, context !== null && formatTokens(context)].filter(Boolean).join(' · ')
 
   const renderItem = (it: StreamItem) => {
     switch (it.kind) {
@@ -258,6 +268,8 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
                 interrupting={interrupt.isPending}
                 onInterrupt={() => interrupt.mutate()}
                 onFresh={session && !fresh.isPending ? onFresh : undefined}
+                provider={provider}
+                onSwitchProvider={canSwitchProvider ? (p) => switchProvider.mutate(p) : undefined}
                 meta={meta}
                 hint={hint}
                 hintError={mutationError !== null}

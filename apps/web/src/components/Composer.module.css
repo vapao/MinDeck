@@ -22,11 +22,35 @@
   margin-left: -6px;
   margin-right: -4px;
 }
+.provider,
 .meta {
   flex: none;
   font-size: 12px;
   color: var(--text-3);
   white-space: nowrap;
+}
+/* 空会话时 Provider 名字是切换按钮：外观仍是一段文字，hover 才像按钮 */
+button.provider {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 6px;
+  margin: 0 -6px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: none;
+  cursor: pointer;
+}
+button.provider:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.meta:empty {
+  display: none;
+}
+.meta::before {
+  content: '· ';
 }
 .hint {
   flex: 1;
@@ -45,9 +69,6 @@
 }
 .hint[data-queue] {
   color: var(--running);
-}
-.meta:empty + .hint::before {
-  content: none;
 }
 .box:focus-within,
 .box[data-dragging] {

@@ -160,8 +160,8 @@ app.get<{ Params: { id: string }; Querystring: { q?: string } }>('/api/sessions/
 
 app.patch<{ Params: { id: string }; Body: UpdateSessionBody }>(
   '/api/sessions/:id',
-  { schema: { body: { type: 'object', required: ['archived'], properties: { archived: { type: 'boolean' } } } } },
-  (req) => hub.setArchived(req.params.id, req.body.archived),
+  { schema: { body: { type: 'object', properties: { archived: { type: 'boolean' }, provider: { enum: ['claude', 'codex'] } }, oneOf: [{ required: ['archived'] }, { required: ['provider'] }] } } },
+  (req) => ('provider' in req.body ? hub.setProvider(req.params.id, req.body.provider) : hub.setArchived(req.params.id, req.body.archived)),
 );
 
 app.delete<{ Params: { id: string } }>('/api/sessions/:id', (req) => {
