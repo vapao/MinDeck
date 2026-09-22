@@ -20,7 +20,7 @@ export async function generateTitle(config: TitleSettings, text: string, control
       const res = await fetch(`${connection.baseUrl}/v1/messages`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-api-key': connection.apiKey, 'anthropic-version': '2023-06-01' },
-        body: JSON.stringify({ model: config.model, max_tokens: 64, system: instructions, messages: [{ role: 'user', content: prompt }] }),
+        body: JSON.stringify({ model: config.model, max_tokens: 64, thinking: { type: 'disabled' }, system: instructions, messages: [{ role: 'user', content: prompt }] }),
         signal: controller.signal,
       });
       if (!res.ok) throw new Error(`DeepSeek title request failed: ${res.status} ${(await res.text()).slice(0, 200)}`);
