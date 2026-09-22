@@ -34,6 +34,14 @@ export function mappedPath(path: string) {
   if (!local || !remote || (path !== prefix && !path.startsWith(prefix + '/'))) return null
   return local.replace(/\/+$/, '') + path.slice(prefix.length)
 }
+export function openProjectFinder(path: string) {
+  const local = mappedPath(path)
+  if (!local) {
+    void dialog.alert({ title: 'Set up Finder', message: 'Configure this project’s folder mapping in Settings → Finder on this Mac, and install the AgentDeck Finder helper on your MacBook.' })
+    return
+  }
+  window.location.href = `agentdeck-finder://reveal?path=${encodeURIComponent(local)}`
+}
 export function openProjectTerminal(path: string) {
   const host = localStorage.getItem('terminal:sshHost') ?? ''
   if (!host) {

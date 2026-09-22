@@ -21,7 +21,7 @@ import { TurnRow, WorkingRow } from '../components/TurnRow'
 import { ConnectionBanner } from '../components/ConnectionBanner'
 import { ApprovalCard } from '../components/ApprovalCard'
 import { QuestionCard } from '../components/QuestionCard'
-import { openProjectTerminal } from '../components/FilePreview'
+import { openProjectFinder, openProjectTerminal } from '../components/FilePreview'
 import { Composer } from '../components/Composer'
 import { dialog } from '../components/Dialog'
 import styles from './SessionPage.module.css'
@@ -310,6 +310,7 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
                 interrupting={interrupt.isPending}
                 onInterrupt={() => interrupt.mutate()}
                 onTerminal={desktop && info?.cwd ? () => openProjectTerminal(info.cwd) : undefined}
+                onFinder={desktop && info?.cwd ? () => openProjectFinder(info.cwd) : undefined}
                 onFresh={session && !fresh.isPending ? onFresh : undefined}
                 provider={provider}
                 imagesAllowed={provider !== 'deepseek' || info?.model !== 'deepseek-v4-pro'}

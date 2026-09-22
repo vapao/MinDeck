@@ -27,6 +27,8 @@ bash scripts/install-finder-helper.sh
 
 下载始终可用；目录仅支持 Finder。没有映射的路径提示到 Settings 配置。手机上保持映射为空，使用预览和下载。
 
+桌面输入框底部的 Open in Finder 文件夹图标位于终端入口左侧，点击直接打开当前会话的项目目录（cwd），沿用上述映射和辅助应用。没有匹配的映射时提示前往 Settings 配置。
+
 ## 项目 SSH 终端
 
 桌面输入框底部的 Open in iTerm2 图标位于 Start fresh 左侧。Settings → iTerm2 on this Mac 中填写 MacBook `~/.ssh/config` 的主机别名（如 `mac-mini`），也可填写 `user@hostname`；端口、密钥等放在 SSH config 中。该设置只保存在当前浏览器，未配置时按钮提示设置。
