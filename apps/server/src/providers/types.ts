@@ -24,9 +24,13 @@ export type StartOptions = {
   effort?: string;
   /** 'approval'（默认）走 Hub 审批卡；'bypass' 让 Provider 不经审批直接执行，风险自负 */
   permissionMode: PermissionMode;
+  /** Hub 自己的会话编排 MCP 端点，headers 里带调用方会话；autoApprove 里的工具 Provider 侧不再审批 */
+  agentdeckMcp: AgentdeckMcp;
   onEvent(event: ProviderOutput): void;
   /** 审批 / 提问：等用户在某个设备上处理；signal 触发（如 turn 被中断）时 resolve 为 null */
   onPending(body: PendingRequestBody, signal: AbortSignal): Promise<Resolution | null>;
   /** Provider 进程结束（正常关闭或抛错）后调用一次 */
   onExit(error?: unknown): void;
 };
+
+export type AgentdeckMcp = { url: string; headers: Record<string, string>; timeoutSec: number; autoApprove: readonly string[] };

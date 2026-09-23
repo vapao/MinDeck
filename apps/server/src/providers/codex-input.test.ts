@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout } from 'node:timers/promises';
 import { createHub } from '../hub';
+import { agentdeckMcpFor } from '../mcp';
 import { openStore } from '../store/db';
 import { createAttachmentStore } from '../store/attachments';
 
@@ -40,7 +41,7 @@ createInterface({ input: process.stdin }).on('line', (line) => {
 `, { mode: 0o755 });
   process.env.PATH = `${dir}:${previousPath}`;
   const store = openStore(':memory:');
-  const hub = createHub(store, createAttachmentStore(store, join(dir, 'uploads')));
+  const hub = createHub(store, createAttachmentStore(store, join(dir, 'uploads')), (id) => agentdeckMcpFor('http://127.0.0.1:0/mcp', id));
   const until = async (check: () => boolean) => {
     for (let i = 0; i < 200; i++) { if (check()) return; await setTimeout(10); }
     assert.fail('Timed out waiting for fake app-server');

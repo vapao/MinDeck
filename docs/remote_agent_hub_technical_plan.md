@@ -767,6 +767,29 @@ error { code, message }
 
 **6. 高频通知不落库。**`item/reasoning/*Delta`、`item/commandExecution/outputDelta` 直接丢弃；`thread/tokenUsage/updated` 映射为 `context.updated`，其余未映射通知也直接丢弃。
 
+## 16.3 会话编排 MCP P0 验证记录（2026-09-23，切片 15）
+
+**环境：**codex-cli 0.156.0、`@anthropic-ai/claude-agent-sdk` 0.3.280、`@modelcontextprotocol/sdk` 1.30.0。验证脚本 `apps/server/scripts/p0-mcp-harness.mjs`（临时无状态 Streamable HTTP MCP，`whoami` 回显请求头、`slow` 阻塞 N 秒）；随后在临时 Hub 上由真实 Claude / Codex approval 会话调用全部工具，驱动脚本经 WS 自动批准审批卡。
+
+| **P0 项**                                  | **结果** | **证据**                                                                                                         |
+|--------------------------------------------|----------|------------------------------------------------------------------------------------------------------------------|
+| 按会话注入的请求头到达服务端               | 通过     | Claude `mcpServers.<name>.headers`、Codex thread `config.mcp_servers.<name>.http_headers` 都原样带到               |
+| 长阻塞工具调用（90s）                      | 通过     | Claude 设 `timeout`（ms）、Codex 设 `tool_timeout_sec` 后均正常返回                                                |
+| Claude approval 模式下 MCP 工具走审批      | 通过     | `default` 模式调用 MCP 工具会进 `canUseTool`；bypass 不进                                                         |
+| Codex approval 模式下 MCP 工具走审批       | 通过     | `on-request` 时每次调用前发 `mcpServer/elicitation/request`（`_meta.codex_approval_kind = "mcp_tool_call"`），回 `{ action: "accept", content: {} }` 后执行；`never` 时不发 |
+| Codex 按工具免审                           | 通过     | `mcp_servers.<name>.tools.<tool>.approval_mode = "approve"` 后该工具不再发 elicitation，其余工具照发                |
+| Hub 端到端                                 | 通过     | Claude 调 list → create（Hub 审批卡，批准后建出 Codex 会话）→ get_session 等待 → send_message（SDK 审批卡）→ afterSeq 增量读；Codex 调 list → send_message（elicitation 映射的审批卡）→ get_session 等待；对自己会话等待被拒 |
+
+### 对设计有影响的发现
+
+**1. Codex 的 MCP 工具审批不是 `requestApproval`，而是 elicitation。**Provider 原先对所有 elicitation 回"不支持"，approval 模式下任何 MCP 工具（包括本机配置的其他 MCP server）都会失败。现把 `codex_approval_kind = "mcp_tool_call"` 的 elicitation 映射为审批卡，真正要表单数据的 elicitation 仍不支持。回包里没有工具名，卡片标题用 `mcp:<serverName>`、说明用 `message`、参数用 `_meta.tool_params`；不提供"本会话允许"（`persist` 语义未验证）。
+
+**2. Claude 的 `allowedTools` 会遮蔽 `canUseTool` 并每次打印警告。**免审工具改在 `canUseTool` 开头直接放行。
+
+**3. 调用方识别靠请求头，不是安全边界。**REST 无鉴权，bypass 会话照样能 `curl` Hub；派生审批拦的是 Agent 经由工具自主派生。
+
+**4. Codex 的 MCP 工具返回 `isError` 时 `mcpToolCall.error` 仍为 null**，工具卡显示成功（已有行为，未处理）。
+
 # 17. 决策记录
 
 | **决策**    | **结论**                  | **理由**                                             |

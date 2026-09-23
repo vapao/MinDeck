@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { ApprovalDecision, QuestionSpec, Resolution } from '@agentdeck/shared';
 import type { ProviderSession, StartOptions } from '../types';
 import { RpcError, spawnAppServer, type AppServerRpc } from './rpc';
@@ -52,7 +53,7 @@ export function shutdownCodex() {
   shared?.rpc.kill();
 }
 
-export function startCodexSession({ cwd, resume, model, effort, permissionMode, onEvent, onPending, onExit }: StartOptions): ProviderSession {
+export function startCodexSession({ cwd, resume, model, effort, permissionMode, agentdeckMcp, onEvent, onPending, onExit }: StartOptions): ProviderSession {
   const { rpc, ready, threads } = appServer();
   const { normalize } = createNormalizer();
   let threadId: string | null = null;
@@ -107,6 +108,18 @@ export function startCodexSession({ cwd, resume, model, effort, permissionMode, 
           );
           return { answers };
         }
+        case 'mcpServer/elicitation/request': {
+          // approval 模式下 MCP 工具调用的审批以 elicitation 到达（P0 §16.3），靠 _meta.codex_approval_kind 区分；真正向用户要表单数据的 elicitation 仍不支持
+          const p = r.params;
+          const meta = p._meta as { codex_approval_kind?: string; tool_params?: unknown } | null;
+          if (meta?.codex_approval_kind !== 'mcp_tool_call') throw new RpcError(-32601, 'AgentDeck does not support MCP elicitation');
+          const res = await onPending(
+            { kind: 'approval', toolName: `mcp:${p.serverName}`, toolUseId: randomUUID(), input: meta.tool_params ?? {}, description: p.message, sessionAllowPatterns: [], suggestions: [] },
+            abort.signal,
+          );
+          if (res === null) return { action: 'cancel', content: null, _meta: null };
+          return res.kind === 'approval' && res.decision !== 'deny' ? { action: 'accept', content: {}, _meta: null } : { action: 'decline', content: null, _meta: null };
+        }
         default:
           // 其余服务端请求（MCP elicitation、动态工具等）一律按不支持回复，Codex 会把该调用当失败继续
           throw new RpcError(-32601, `AgentDeck does not support ${r.method}`);
@@ -126,6 +139,14 @@ export function startCodexSession({ cwd, resume, model, effort, permissionMode, 
     approvalPolicy: (bypass ? 'never' : 'on-request') as 'never' | 'on-request',
     sandbox: (bypass ? 'danger-full-access' : 'workspace-write') as 'danger-full-access' | 'workspace-write',
     approvalsReviewer: 'user' as const,
+    config: {
+      'mcp_servers.agentdeck': {
+        url: agentdeckMcp.url,
+        http_headers: agentdeckMcp.headers,
+        tool_timeout_sec: agentdeckMcp.timeoutSec,
+        tools: Object.fromEntries(agentdeckMcp.autoApprove.map((t) => [t, { approval_mode: 'approve' }])),
+      },
+    },
   };
   const expectedSandboxType = bypass ? 'dangerFullAccess' : 'workspaceWrite';
   const opened = ready.then(async () => {

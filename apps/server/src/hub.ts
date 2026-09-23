@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { getEffortOptions, modelOptions, permissionModeOptions, type AgentEvent, type Attachment, type MessageDelta, type PendingRequest, type PendingRequestBody, type PermissionMode, type ProviderEvent, type ProviderOutput, type Resolution, type Session, type SessionStatus, type Settings, type UpdateSettingsBody, type UsageInfo } from '@agentdeck/shared';
 import type { Store } from './store/db';
 import type { AttachmentStore } from './store/attachments';
-import type { ProviderSession, StartOptions } from './providers/types';
+import type { AgentdeckMcp, ProviderSession, StartOptions } from './providers/types';
 import { startClaudeSession } from './providers/claude';
 import { shutdownCodex, startCodexSession } from './providers/codex';
 
@@ -16,7 +16,7 @@ export class HubError extends Error {
 }
 
 // Hub：Session 元数据 + append-only 事件流 + 多端 fan-out。Provider 会话在首条消息时才拉起。
-export function createHub(store: Store, attachments: AttachmentStore) {
+export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (sessionId: string) => AgentdeckMcp) {
   const live = new Map<string, ProviderSession>();
   /** 订阅者收到的是落库后的事件（带 seq）或不落库的流式片段 */
   type LiveMessage = { type: 'event'; event: AgentEvent } | MessageDelta;
@@ -93,6 +93,7 @@ export function createHub(store: Store, attachments: AttachmentStore) {
 
   // 先落库再广播（方案 §10.1），然后挂起等待某个设备 resolve
   function createPending(sessionId: string, body: PendingRequestBody, signal: AbortSignal): Promise<Resolution | null> {
+    if (signal.aborted) return Promise.resolve(null);
     const request: PendingRequest = { ...body, id: randomUUID(), sessionId, status: 'pending', createdAt: new Date().toISOString(), resolvedAt: null };
     store.createPending(request);
     emit(sessionId, requestedEvent(request));
@@ -105,6 +106,7 @@ export function createHub(store: Store, attachments: AttachmentStore) {
       });
       // turn 被中断等情况下 Provider 会放弃这次请求：作废并通知各端
       signal.addEventListener('abort', expire, { once: true });
+      if (signal.aborted) expire();
     });
   }
 
@@ -135,6 +137,7 @@ export function createHub(store: Store, attachments: AttachmentStore) {
       model: session.model ?? undefined,
       effort: session.effort ?? undefined,
       permissionMode: session.permissionMode,
+      agentdeckMcp: mcpFor(session.id),
       onPending: (body, signal) => createPending(session.id, body, signal),
       onEvent(event) {
         // 会话已被删除：Provider 收尾时可能还有零星消息，直接丢弃，不能再往已删的 session 写
@@ -334,6 +337,8 @@ export function createHub(store: Store, attachments: AttachmentStore) {
     },
 
     pendingRequests: store.pendingBySession,
+    /** 不经 Provider、由 Hub 自己在该会话上弹的审批（MCP 派生会话） */
+    createPending,
 
     subscribe(sessionId: string, listener: (m: LiveMessage) => void, onDeleted: () => void): () => void {
       let set = listeners.get(sessionId);

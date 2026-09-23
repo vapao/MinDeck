@@ -15,6 +15,7 @@ import { createHub, HubError } from './hub';
 import { verifyDeepseekConnection } from './providers/claude';
 import { fileDiff, listChanges, listEntries, readWorkspaceFile } from './changes';
 import { createServices } from './services';
+import { agentdeckMcpFor, registerMcpRoute } from './mcp';
 
 const repoRoot = resolve(import.meta.dirname, '../../..');
 // 端口分配见 ~/Workspace/mac-mini-tailscale-web-ports.md：8004 只监听本机；开发时由 vite dev server 代理，生产由 Tailscale Serve 8450 映射到这里
@@ -29,7 +30,7 @@ const webDist = process.env.AGENTDECK_WEB_DIST ?? resolve(repoRoot, 'apps/web/di
 mkdirSync(dirname(dbPath), { recursive: true });
 const store = openStore(dbPath);
 const attachments = createAttachmentStore(store, uploadsDir);
-const hub = createHub(store, attachments);
+const hub = createHub(store, attachments, (sessionId) => agentdeckMcpFor(`http://127.0.0.1:${port}/mcp`, sessionId));
 const services = createServices(store, resolve(repoRoot, 'data/logs/services'));
 // 首次启动把本仓库种进去，否则新建会话页是空的
 if (store.listWorkspaces().length === 0) store.createWorkspace({ id: randomUUID(), path: repoRoot, alias: basename(repoRoot), createdAt: new Date().toISOString() });
@@ -261,6 +262,8 @@ app.post<{ Params: { id: string }; Body: ResolvePendingBody }>(
   { schema: { body: { type: 'object', required: ['kind'], properties: { kind: { type: 'string', enum: ['approval', 'question'] } } } } },
   (req) => ({ seq: hub.resolvePending(req.params.id, req.body) }),
 );
+
+registerMcpRoute(app, hub, store);
 
 // 浏览器允许任意站点跨站发起 WebSocket（§11.3 Origin 检查）：Origin 存在时必须与访问的 Host 一致；非浏览器客户端没有 Origin，放行
 const checkOrigin = (req: { headers: { origin?: string; host?: string } }) => !req.headers.origin || req.headers.origin.endsWith(`//${req.headers.host}`);

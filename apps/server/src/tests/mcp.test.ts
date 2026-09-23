@@ -1,0 +1,55 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { setTimeout } from 'node:timers/promises';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+import { openStore } from '../store/db';
+import { createAttachmentStore } from '../store/attachments';
+import { createHub } from '../hub';
+import { agentdeckMcpFor, createMcpServer } from '../mcp';
+
+// 规则（2026-09-23 与开发者确认）：Agent 经 MCP 派生会话必须由用户在调用方会话的审批卡上批准；拒绝或审批作废都不能建出会话。
+test('create_session needs approval and leaves no empty session when the first message fails', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'agentdeck-mcp-'));
+  const store = openStore(':memory:');
+  const hub = createHub(store, createAttachmentStore(store, join(dir, 'uploads')), (id) => agentdeckMcpFor('http://127.0.0.1:0/mcp', id));
+  try {
+    store.createWorkspace({ id: 'workspace', path: dir, alias: 'test', createdAt: new Date().toISOString() });
+    const caller = hub.createSession('claude', dir);
+    const until = async (check: () => boolean) => {
+      for (let i = 0; i < 200; i++) { if (check()) return; await setTimeout(10); }
+      assert.fail('Timed out waiting for the approval card');
+    };
+
+    for (const outcome of ['deny', 'abort', 'already-aborted', 'approve-without-key'] as const) {
+      const controller = new AbortController();
+      const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
+      await createMcpServer(hub, store, caller.id, controller.signal).connect(serverSide);
+      const client = new Client({ name: 'test', version: '0' });
+      await client.connect(clientSide);
+
+      if (outcome === 'already-aborted') controller.abort();
+      const call = client.callTool({ name: 'create_session', arguments: { provider: outcome === 'approve-without-key' ? 'deepseek' : 'codex', prompt: 'do something' } });
+      if (outcome !== 'already-aborted') {
+        await until(() => hub.pendingRequests(caller.id).length === 1);
+        assert.equal(hub.listSessions().length, 1, 'no session before approval');
+        const request = hub.pendingRequests(caller.id)[0];
+        if (outcome === 'abort') controller.abort();
+        else hub.resolvePending(request.id, { kind: 'approval', decision: outcome === 'deny' ? 'deny' : 'allow_once' });
+      }
+
+      const result = await call;
+      assert.equal(result.isError, true);
+      assert.equal(hub.listSessions().length, 1, `no session after ${outcome}`);
+      assert.equal(hub.pendingRequests(caller.id).length, 0, `no pending approval after ${outcome}`);
+      await client.close();
+    }
+  } finally {
+    hub.close();
+    store.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
