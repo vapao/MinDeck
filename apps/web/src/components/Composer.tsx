@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { ArrowUp, File, Folder, FolderOpen, ImagePlus, MessageSquarePlus, Square, SquareTerminal, X } from 'lucide-react'
-import type { Attachment, EntriesResponse, ProviderId } from '@agentdeck/shared'
+import { getEffortOptions, modelOptions, type Attachment, type EntriesResponse, type ProviderId } from '@agentdeck/shared'
 import { Select } from './Select'
 import { providerName } from '../format'
 import { readDraft, saveDraft } from '../session/drafts'
@@ -23,6 +23,8 @@ type Props = {
   imagesAllowed?: boolean
   /** 空会话可以换 Agent：传了就把 Provider 名字渲染成三选一下拉 */
   onSwitchProvider?: (provider: ProviderId) => void
+  /** 空会话可以换模型 / 思考等级：传了就在 Provider 后面渲染下拉；空字符串 = Provider 默认 */
+  modelSelect?: { model: string; effort: string; onChange: (model: string, effort: string) => void }
   /** 状态区 Provider 名字后面的会话信息（模型、思考等级、上下文用量） */
   meta: string
   /** 需要用户注意的状态（排队、等待、报错）；为空时状态区只显示 meta */
@@ -49,7 +51,7 @@ type Draft = { key: string; file: File; previewUrl: string } & ({ status: 'uploa
 
 const maxPerMessage = 5
 
-export function Composer({ draftKey, disabled, running, interrupting, onInterrupt, onFresh, onTerminal, onFinder, provider, imagesAllowed = true, onSwitchProvider, meta, hint, hintError, placeholder, upload, search, onSend }: Props) {
+export function Composer({ draftKey, disabled, running, interrupting, onInterrupt, onFresh, onTerminal, onFinder, provider, imagesAllowed = true, onSwitchProvider, modelSelect, meta, hint, hintError, placeholder, upload, search, onSend }: Props) {
   const [text, setText] = useState(() => readDraft(draftKey))
   useEffect(() => {
     saveDraft(draftKey, text)
@@ -257,6 +259,18 @@ export function Composer({ draftKey, disabled, running, interrupting, onInterrup
               </div>
             ) : (
               <span className={styles.provider}>{providerName[provider]}</span>
+            )}
+            {modelSelect && drafts.length === 0 && (
+              <>
+                <div className={styles.providerSelect}>
+                  <Select ariaLabel="Model" value={modelSelect.model} onChange={(m) => modelSelect.onChange(m, modelSelect.effort)} options={[{ value: '', label: 'Default' }, ...modelOptions[provider]]} />
+                </div>
+                {provider !== 'deepseek' && (
+                  <div className={styles.providerSelect}>
+                    <Select ariaLabel="Effort" value={modelSelect.effort} onChange={(e) => modelSelect.onChange(modelSelect.model, e)} options={[{ value: '', label: 'Default' }, ...getEffortOptions(provider, modelSelect.model || null)]} />
+                  </div>
+                )}
+              </>
             )}
             <span className={styles.meta}>{meta}</span>
             {(failed || uploading || hint || queued) && (

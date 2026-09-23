@@ -246,9 +246,10 @@ export type InterruptResponse = { ok: true };
 
 /**
  * PATCH /api/sessions/:id：归档 / 取消归档（归档 running / waiting_user 的会话 409，跟删除一样让用户先中断），
- * 或给还没发过消息的空会话换 Provider（已有消息 / Provider 已启动则 409：上下文在 Provider 那边，换了等于丢光，不如新建）
+ * 或给还没发过消息的空会话换 Provider / 模型与思考等级（已有消息 / Provider 已启动则 409：上下文在 Provider 那边，换了等于丢光，不如新建）。
+ * model / effort 空字符串 = Provider 默认；effort 不被新模型支持时服务端重置为默认
  */
-export type UpdateSessionBody = { archived: boolean } | { provider: ProviderId };
+export type UpdateSessionBody = { archived: boolean } | { provider: ProviderId } | { model: string; effort: string };
 export type UpdateSessionResponse = Session;
 
 /** DELETE /api/sessions/:id：连同事件、待处理请求、附件（含文件）一起删；running / waiting_user 时 409 */

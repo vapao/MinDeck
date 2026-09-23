@@ -169,6 +169,16 @@ export function createHub(store: Store, attachments: AttachmentStore) {
     provider.send({ text, images: files.map((a) => ({ mimeType: a.mimeType, path: attachments.pathOf(a) })) });
   }
 
+  // Provider 进程在首条消息时才惰性启动，之前会话配置只是几列
+  const isEmptySession = (session: Session) => !session.providerSessionId && !live.has(session.id) && store.lastSeq(session.id) === 0;
+
+  /** 空字符串 = 交给 Provider 默认，落库为 null；DeepSeek 没有 Provider 默认，回到 Flash */
+  function normalizeModel(provider: Session['provider'], model: string): string | null {
+    const value = model.trim() || (provider === 'deepseek' ? 'deepseek-flash' : null);
+    if (value && !modelOptions[provider].some((o) => o.value === value)) throw new HubError(400, `${provider} does not support model ${value}`);
+    return value;
+  }
+
   return {
     /** model / effort 省略时取设置里的默认值；空字符串 = 交给 Provider 默认，落库为 null。permissionMode 省略时也取默认值，没有"交给 Provider 默认"这一说 */
     createSession(provider: Session['provider'], cwd: string, override: { model?: string; effort?: string; permissionMode?: PermissionMode } = {}): Session {
@@ -176,10 +186,9 @@ export function createHub(store: Store, attachments: AttachmentStore) {
       // cwd 只能是 UI 里添加过的工作区（方案 §11.3 allowlist）
       if (!store.getWorkspaceByPath(cwd)) throw new HubError(400, `cwd is not a registered workspace`);
       const defaults = settings()[provider];
-      const model = (override.model ?? defaults.model).trim() || (provider === 'deepseek' ? 'deepseek-flash' : null);
+      const model = normalizeModel(provider, override.model ?? defaults.model);
       const effort = (override.effort ?? defaults.effort).trim() || null;
       const permissionMode = override.permissionMode ?? defaults.permissionMode;
-      if (model && !modelOptions[provider].some((o) => o.value === model)) throw new HubError(400, `${provider} does not support model ${model}`);
       if (effort && !getEffortOptions(provider, model).some((o) => o.value === effort)) throw new HubError(400, `${provider} model ${model ?? 'Default'} does not support effort ${effort}`);
       if (!permissionModeOptions.some((o) => o.value === permissionMode)) throw new HubError(400, `Unsupported permission mode ${permissionMode}`);
       const now = new Date().toISOString();
@@ -227,10 +236,20 @@ export function createHub(store: Store, attachments: AttachmentStore) {
       if (!(provider in providers)) throw new HubError(400, `Unknown provider ${provider}`);
       const session = getSession(sessionId);
       if (session.provider === provider) return session;
-      if (session.providerSessionId || live.has(sessionId) || store.lastSeq(sessionId) > 0) throw new HubError(409, 'Session already has messages; start a new session to use another agent');
+      if (!isEmptySession(session)) throw new HubError(409, 'Session already has messages; start a new session to use another agent');
       // model / effort 两个 Provider 不通用，按新 Provider 的设置默认值重来；permissionMode 与 Provider 无关，保留
       const defaults = settings()[provider];
       store.setSessionProvider(sessionId, provider, defaults.model.trim() || null, defaults.effort.trim() || null);
+      return getSession(sessionId);
+    },
+
+    /** 换模型 / 思考等级同样只对空会话开放（理由同 setProvider）；effort 不被新模型支持时回到 Provider 默认，而不是报错 */
+    setModel(sessionId: string, model: string, effort: string): Session {
+      const session = getSession(sessionId);
+      if (!isEmptySession(session)) throw new HubError(409, 'Session already has messages; start a new session to change the model');
+      const nextModel = normalizeModel(session.provider, model);
+      const nextEffort = effort.trim() && getEffortOptions(session.provider, nextModel).some((o) => o.value === effort.trim()) ? effort.trim() : null;
+      store.setSessionProvider(sessionId, session.provider, nextModel, nextEffort);
       return getSession(sessionId);
     },
 

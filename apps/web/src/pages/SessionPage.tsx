@@ -58,6 +58,11 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
       queryClient.invalidateQueries({ queryKey: ['sessions'] })
     },
   })
+  // 空会话换模型 / 思考等级：同上只改列；不记进 localStorage，下个新会话仍用设置页默认值
+  const switchModel = useMutation({
+    mutationFn: ({ model, effort }: { model: string; effort: string }) => api.updateSession(sessionId, { model, effort }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['sessions'] }),
+  })
   const onFresh = async () => {
     // 运行中的不问，直接保留
     const canDiscard = status === 'idle' || status === 'error'
@@ -192,8 +197,8 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
   const running = status === 'running' || status === 'waiting_user'
   // snapshot 到达前先按 claude 渲染，随后被真实 provider 覆盖
   const provider = info?.provider ?? 'claude'
-  const canSwitchProvider = !!info && items.length === 0 && !info.providerSessionId && status === 'idle' && !send.isPending && !switchProvider.isPending
-  const mutationError = send.error ?? fresh.error ?? interrupt.error ?? switchProvider.error
+  const canSwitchProvider = !!info && items.length === 0 && !info.providerSessionId && status === 'idle' && !send.isPending && !switchProvider.isPending && !switchModel.isPending
+  const mutationError = send.error ?? fresh.error ?? interrupt.error ?? switchProvider.error ?? switchModel.error
   const hint = mutationError
     ? mutationError.message
     : connection !== 'open'
@@ -202,7 +207,8 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
         ? `${provider} will continue once you handle the request above`
         : ''
   // 状态区 Provider 名字后面：模型 · 思考等级 · 上下文用量；init 前模型取创建时指定的；没指定 effort（用 Provider 默认）就不显示
-  const meta = [formatModel(provider, model ?? info?.model), formatEffort(provider, info?.effort), context !== null && formatTokens(context)].filter(Boolean).join(' · ')
+  // 可切换时模型和思考等级已经是下拉，不再重复显示
+  const meta = [!canSwitchProvider && formatModel(provider, model ?? info?.model), !canSwitchProvider && formatEffort(provider, info?.effort), context !== null && formatTokens(context)].filter(Boolean).join(' · ')
 
   const renderItem = (it: StreamItem) => {
     switch (it.kind) {
@@ -315,6 +321,7 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
                 provider={provider}
                 imagesAllowed={provider !== 'deepseek' || info?.model !== 'deepseek-v4-pro'}
                 onSwitchProvider={canSwitchProvider ? (p) => switchProvider.mutate(p) : undefined}
+                modelSelect={canSwitchProvider ? { model: info.model ?? '', effort: info.effort ?? '', onChange: (m, e) => switchModel.mutate({ model: m, effort: e }) } : undefined}
                 meta={meta}
                 hint={hint}
                 hintError={mutationError !== null}

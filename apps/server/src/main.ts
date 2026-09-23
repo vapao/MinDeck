@@ -196,8 +196,8 @@ app.get<{ Params: { id: string }; Querystring: { path?: string; q?: string; hidd
 
 app.patch<{ Params: { id: string }; Body: UpdateSessionBody }>(
   '/api/sessions/:id',
-  { schema: { body: { type: 'object', properties: { archived: { type: 'boolean' }, provider: { enum: ['claude', 'codex', 'deepseek'] } }, oneOf: [{ required: ['archived'] }, { required: ['provider'] }] } } },
-  (req) => ('provider' in req.body ? hub.setProvider(req.params.id, req.body.provider) : hub.setArchived(req.params.id, req.body.archived)),
+  { schema: { body: { type: 'object', properties: { archived: { type: 'boolean' }, provider: { enum: ['claude', 'codex', 'deepseek'] }, model: { type: 'string' }, effort: { type: 'string' } }, oneOf: [{ required: ['archived'] }, { required: ['provider'] }, { required: ['model', 'effort'] }] } } },
+  (req) => ('provider' in req.body ? hub.setProvider(req.params.id, req.body.provider) : 'model' in req.body ? hub.setModel(req.params.id, req.body.model, req.body.effort) : hub.setArchived(req.params.id, req.body.archived)),
 );
 
 app.delete<{ Params: { id: string } }>('/api/sessions/:id', (req) => {
