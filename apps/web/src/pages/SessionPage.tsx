@@ -7,6 +7,7 @@ import { api } from '../api'
 import { formatEffort, formatModel, formatTokens, providerName } from '../format'
 import { navigate } from '../router'
 import { useSessionStream, type StreamItem } from '../session/useSessionStream'
+import { saveDraft } from '../session/drafts'
 import { groupTools, layout, type Entry } from '../session/layout'
 import { useMediaQuery } from '../session/useMediaQuery'
 import { useAutoHideScrollbar } from '../session/useAutoHideScrollbar'
@@ -50,6 +51,29 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
     },
     onSettled: () => queryClient.invalidateQueries({ queryKey: ['sessions'] }),
   })
+  // 分叉 / 原地回退：服务端从这条消息之前复制出新会话，原消息文字预填进新会话输入框（图片不带）。
+  // 原地回退 = 分叉后删掉原会话，顺序同「新开一轮」：先跳过去再删，删失败只提示
+  const rewind = useMutation({
+    mutationFn: async ({ seq, text, inPlace }: { seq: number; text: string; inPlace: boolean }) => {
+      const s = await api.forkSession(sessionId, { beforeSeq: seq, rewind: inPlace })
+      saveDraft(s.id, text)
+      navigate(`/s/${s.id}`)
+      if (inPlace) await api.deleteSession(sessionId).catch((err: Error) => dialog.alert({ title: 'Rewound into a new session, but the old one was not deleted', message: err.message }))
+    },
+    onError: (err) => dialog.alert({ title: 'Rewind failed', message: err.message }),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['sessions'] }),
+  })
+  const onRewind = async (it: Extract<StreamItem, { kind: 'user' }>) => {
+    const inPlace = await dialog.confirm({
+      title: 'Go back to before this message?',
+      message: 'Continue from the conversation before this message, with the message put back in the input box. "Rewind in place" deletes this session; "Fork" keeps it. Files changed by the agent are not rolled back.',
+      ok: 'Rewind in place',
+      cancel: 'Fork',
+      danger: true,
+    })
+    if (inPlace === null) return
+    rewind.mutate({ seq: it.seq, text: it.text, inPlace })
+  }
   // 空会话换 Agent：Provider 进程还没起，服务端只改一列（有消息了会 409）。记成下次新建的默认选择
   const switchProvider = useMutation({
     mutationFn: (provider: ProviderId) => api.updateSession(sessionId, { provider }),
@@ -213,7 +237,7 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
   const renderItem = (it: StreamItem) => {
     switch (it.kind) {
       case 'user':
-        return <UserMessage key={it.key} text={it.text} attachments={it.attachments} at={it.at} />
+        return <UserMessage key={it.key} text={it.text} attachments={it.attachments} at={it.at} onRewind={it.forkable && !running && !rewind.isPending ? () => onRewind(it) : undefined} />
       case 'assistant':
         return <AssistantMessage sessionId={sessionId} key={it.key} text={it.text} streaming={it.streaming} />
       case 'error':

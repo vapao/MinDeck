@@ -8,7 +8,7 @@ import Fastify from 'fastify';
 import websocket from '@fastify/websocket';
 import multipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
-import type { ClientMessage, CreateServiceBody, CreateSessionBody, CreateWorkspaceBody, ListDirsResponse, ResolvePendingBody, SendMessageBody, ServerMessage, UpdateServiceBody, UpdateSessionBody, UpdateSettingsBody, UpdateWorkspaceBody, UsageResponse, Workspace } from '@agentdeck/shared';
+import type { ClientMessage, CreateServiceBody, CreateSessionBody, CreateWorkspaceBody, ForkSessionBody, ForkSessionResponse, ListDirsResponse, ResolvePendingBody, SendMessageBody, ServerMessage, UpdateServiceBody, UpdateSessionBody, UpdateSettingsBody, UpdateWorkspaceBody, UsageResponse, Workspace } from '@agentdeck/shared';
 import { openStore } from './store/db';
 import { createAttachmentStore, isImageMime, maxAttachmentBytes, maxAttachmentsPerMessage } from './store/attachments';
 import { createHub, HubError } from './hub';
@@ -227,6 +227,12 @@ app.patch<{ Params: { id: string }; Body: UpdateSessionBody }>(
   '/api/sessions/:id',
   { schema: { body: { type: 'object', properties: { archived: { type: 'boolean' }, provider: { enum: ['claude', 'codex', 'deepseek'] }, model: { type: 'string' }, effort: { type: 'string' } }, oneOf: [{ required: ['archived'] }, { required: ['provider'] }, { required: ['model', 'effort'] }] } } },
   (req) => ('provider' in req.body ? hub.setProvider(req.params.id, req.body.provider) : 'model' in req.body ? hub.setModel(req.params.id, req.body.model, req.body.effort) : hub.setArchived(req.params.id, req.body.archived)),
+);
+
+app.post<{ Params: { id: string }; Body: ForkSessionBody }>(
+  '/api/sessions/:id/fork',
+  { schema: { body: { type: 'object', required: ['beforeSeq', 'rewind'], properties: { beforeSeq: { type: 'integer' }, rewind: { type: 'boolean' } } } } },
+  (req): Promise<ForkSessionResponse> => hub.forkSession(req.params.id, req.body.beforeSeq, req.body.rewind),
 );
 
 app.delete<{ Params: { id: string } }>('/api/sessions/:id', (req) => {

@@ -4,7 +4,7 @@ import type { ProviderSession, StartOptions } from '../types';
 import { RpcError, spawnAppServer, type AppServerRpc } from './rpc';
 import { createNormalizer, stripShellWrapper } from './normalize';
 import type { ServerNotification, ServerRequest } from './schema';
-import type { ConfigReadResponse, ThreadStartResponse, TurnStartResponse, UserInput } from './schema/v2';
+import type { ConfigReadResponse, ThreadForkResponse, ThreadStartResponse, TurnStartResponse, UserInput } from './schema/v2';
 
 // 一个 Hub 进程只维持一个 app-server（方案 §5.1），多个 thread 共用；通知与服务端请求按 threadId 分发到各会话。
 
@@ -236,6 +236,16 @@ function commandDecision(res: Resolution, forSession: boolean): 'accept' | 'acce
   const d: ApprovalDecision = res.kind === 'approval' ? res.decision : 'deny';
   if (d === 'deny') return 'decline';
   return d === 'allow_session' && forSession ? 'acceptForSession' : 'accept';
+}
+
+/** 从 anchor 这一轮（含）之后截断，分叉出新 thread。权限由之后的 thread/resume 按会话设置：
+ * 分叉出的 thread 仍加载在 app-server 里时 resume 会忽略传入的 approvalPolicy / sandbox（P0 验证），所以先 unsubscribe 卸载 */
+export async function forkCodexThread(threadId: string, anchor: string, cwd: string): Promise<string> {
+  const { rpc, ready } = appServer();
+  await ready;
+  const res = (await rpc.request('thread/fork', { threadId, lastTurnId: anchor, cwd, excludeTurns: true })) as ThreadForkResponse;
+  await rpc.request('thread/unsubscribe', { threadId: res.thread.id });
+  return res.thread.id;
 }
 
 // 标题请求共用 app-server，但用临时 thread 与空目录隔离项目上下文。

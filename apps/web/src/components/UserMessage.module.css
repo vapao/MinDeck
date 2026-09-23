@@ -7,6 +7,35 @@
 .meta {
   font-size: 11px;
   color: var(--text-3);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.rewind {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: var(--text-3);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.row:hover .rewind,
+.rewind:focus-visible {
+  opacity: 1;
+}
+.rewind:hover {
+  color: var(--text);
+}
+/* 触屏没有 hover，按钮常显 */
+@media (hover: none) {
+  .rewind {
+    opacity: 1;
+  }
 }
 .bubble {
   max-width: min(var(--user-w), 100%);

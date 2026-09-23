@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Attachment, ImageMimeType } from '@agentdeck/shared';
 import type { Store } from './db';
@@ -28,6 +28,13 @@ export function createAttachmentStore(store: Store, root: string) {
       return a;
     },
     get: store.getAttachment,
+    /** 分叉时把附件文件复制到新会话目录，返回新附件（行由调用方连同会话一起写入）：附件只能被自己会话的消息引用 */
+    copyTo(a: Attachment, sessionId: string): Attachment {
+      const copy: Attachment = { ...a, id: randomUUID(), sessionId };
+      mkdirSync(join(root, sessionId), { recursive: true, mode: 0o700 });
+      copyFileSync(pathOf(a), pathOf(copy));
+      return copy;
+    },
     pathOf,
     /** 删除会话时清掉整个上传目录；行记录由 store.deleteSession 一并删 */
     removeAll(sessionId: string) {

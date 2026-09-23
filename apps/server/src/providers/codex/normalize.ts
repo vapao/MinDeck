@@ -43,9 +43,10 @@ export function createNormalizer() {
           events.push({ type: 'message.completed', payload: { messageId: streaming.id, text: streaming.text } });
           streaming = null;
         }
-        const { status, error, durationMs } = n.params.turn;
-        if (status === 'failed') events.push({ type: 'turn.failed', payload: { message: error?.message ?? 'turn failed' } });
-        else events.push({ type: 'turn.completed', payload: { reason: status === 'interrupted' ? 'interrupted' : 'completed', durationMs: durationMs ?? 0, costUsd: 0 } });
+        // turn id 即分叉锚点（thread/fork 的 lastTurnId）；steer 失败退回新开一轮时，Provider 报的是最后那一轮的结束，锚点随之是最后一轮
+        const { id: anchor, status, error, durationMs } = n.params.turn;
+        if (status === 'failed') events.push({ type: 'turn.failed', payload: { message: error?.message ?? 'turn failed', anchor } });
+        else events.push({ type: 'turn.completed', payload: { reason: status === 'interrupted' ? 'interrupted' : 'completed', durationMs: durationMs ?? 0, costUsd: 0, anchor } });
         return events;
       }
 

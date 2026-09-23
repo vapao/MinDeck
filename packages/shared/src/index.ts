@@ -189,8 +189,9 @@ export type EventPayloads = {
   'session.resumed': { providerSessionId: string; model: string };
   'session.status': { status: SessionStatus };
   'turn.started': Record<never, never>;
-  'turn.completed': { reason: TurnEndReason; durationMs: number; costUsd: number };
-  'turn.failed': { message: string };
+  /** anchor：Provider 侧这一轮的分叉点（Claude 最后一条主链消息 uuid / Codex 最后一个 turn id），没有则从下一条消息起不能分叉 */
+  'turn.completed': { reason: TurnEndReason; durationMs: number; costUsd: number; anchor?: string };
+  'turn.failed': { message: string; anchor?: string };
   'usage.updated': UsageInfo;
   /** 最近一次模型调用的上下文大小（prompt 侧 token 数，含缓存），Composer 状态区展示 */
   'context.updated': { tokens: number };
@@ -251,6 +252,13 @@ export type InterruptResponse = { ok: true };
  */
 export type UpdateSessionBody = { archived: boolean } | { provider: ProviderId } | { model: string; effort: string };
 export type UpdateSessionResponse = Session;
+
+/**
+ * POST /api/sessions/:id/fork：从 beforeSeq 那条开启一轮的用户消息之前分叉出新会话，原会话不动（idle / error 才行，否则 409）。
+ * rewind：原地回退，新会话沿用原标题（不加 "(fork)"），删原会话由前端跳转后自己调 DELETE
+ */
+export type ForkSessionBody = { beforeSeq: number; rewind: boolean };
+export type ForkSessionResponse = Session;
 
 /** DELETE /api/sessions/:id：连同事件、待处理请求、附件（含文件）一起删；running / waiting_user 时 409 */
 export type DeleteSessionResponse = { ok: true };

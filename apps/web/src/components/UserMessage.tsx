@@ -1,12 +1,20 @@
 import type { Attachment } from '@agentdeck/shared'
+import { GitBranch } from 'lucide-react'
 import { api } from '../api'
 import { formatTime } from '../format'
 import styles from './UserMessage.module.css'
 
-export function UserMessage({ text, attachments, at }: { text: string; attachments: Attachment[]; at: string }) {
+export function UserMessage({ text, attachments, at, onRewind }: { text: string; attachments: Attachment[]; at: string; onRewind?: () => void }) {
   return (
     <div className={styles.row}>
-      <div className={styles.meta}>You · {formatTime(at)}</div>
+      <div className={styles.meta}>
+        {onRewind && (
+          <button type="button" className={styles.rewind} onClick={onRewind} title="Fork or rewind to before this message">
+            <GitBranch size={12} /> Rewind
+          </button>
+        )}
+        You · {formatTime(at)}
+      </div>
       <div className={styles.bubble}>
         {attachments.length > 0 && (
           <div className={styles.images}>

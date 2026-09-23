@@ -11,7 +11,9 @@ export function createNormalizer(resumed: boolean) {
   let lastUsage = '';
   let lastContext = 0;
   // 一轮进行中插入的消息若没赶上工具边界，SDK 会在其后自成一轮、多出一个 result；只在 idle 时报最后那个结果
-  let turnEnd: ProviderEvent | null = null;
+  let turnEnd: ProviderEvent<'turn.completed' | 'turn.failed'> | null = null;
+  // 最后一条主链消息（顶层 assistant / user，含中断标记）的 uuid：一轮结束时作为分叉锚点，SDK forkSession 截到它为止（P0 已验证）
+  let lastChainUuid: string | undefined;
   // AskUserQuestion 的 tool_use / tool_result 不开工具卡：提问与回答由 canUseTool 产生的 user_input 事件承载，再出一张卡是冗余
   const hiddenToolIds = new Set<string>();
 
@@ -27,6 +29,7 @@ export function createNormalizer(resumed: boolean) {
         if (m.subtype === 'session_state_changed' && m.state === 'idle' && turnEnd) {
           const event = turnEnd;
           turnEnd = null;
+          event.payload.anchor = lastChainUuid;
           return [event];
         }
         return [];
@@ -58,6 +61,7 @@ export function createNormalizer(resumed: boolean) {
       case 'assistant': {
         // 一条完整的 API 响应：文本块合并成 message.completed（覆盖之前 delta 拼出的文本），tool_use 块各自开一张工具卡
         const events: ProviderEvent[] = [];
+        if (m.parent_tool_use_id === null) lastChainUuid = m.uuid;
         // 上下文大小 = 本次调用的 prompt 侧 token；子 Agent（parent_tool_use_id 非空）有自己的上下文，不算
         const u = m.message.usage;
         const context = u.input_tokens + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0);
@@ -77,6 +81,7 @@ export function createNormalizer(resumed: boolean) {
       }
 
       case 'user': {
+        if (m.parent_tool_use_id === null && m.uuid) lastChainUuid = m.uuid;
         // 只关心 tool_result 的成败；输出本身不保存（用户不看，白占体积）。其余 user 消息是 Hub 自己发出去的回显，UI 已经有了
         if (typeof m.message.content === 'string') return [];
         return m.message.content.flatMap((b): ProviderEvent[] =>

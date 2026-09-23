@@ -229,6 +229,23 @@ export function openStore(path: string) {
         throw err;
       }
     },
+    /** 分叉：新会话、复制过来的事件（seq 从 1 重排，保留原时间）和附件行在一个事务里写入 */
+    copySession(session: Session, events: (ProviderEvent & { createdAt: string })[], attachments: Attachment[]) {
+      db.exec('BEGIN');
+      try {
+        insertSession.run(
+          session.id, session.provider, session.cwd, session.providerSessionId,
+          session.status, session.model, session.effort, session.permissionMode, session.createdAt, session.updatedAt,
+        );
+        if (session.title) db.prepare('UPDATE sessions SET title = ? WHERE id = ?').run(session.title, session.id);
+        for (const a of attachments) insertAttachment.run(a.id, a.sessionId, a.name, a.mimeType, a.size, a.createdAt);
+        for (const e of events) insertEvent.get(session.id, session.id, e.type, JSON.stringify(e.payload), e.createdAt);
+        db.exec('COMMIT');
+      } catch (err) {
+        db.exec('ROLLBACK');
+        throw err;
+      }
+    },
     hasUserText(id: string): boolean {
       return db.prepare(`SELECT json_extract(payload, '$.text') AS text FROM events WHERE session_id = ? AND type = 'message.user'`).all(id).some((row) => (row.text as string).trim().length > 0);
     },

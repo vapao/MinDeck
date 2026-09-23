@@ -4,10 +4,12 @@ import { getEffortOptions, modelOptions, permissionModeOptions, type AgentEvent,
 import type { Store } from './store/db';
 import type { AttachmentStore } from './store/attachments';
 import type { AgentdeckMcp, ProviderSession, StartOptions } from './providers/types';
-import { startClaudeSession } from './providers/claude';
-import { shutdownCodex, startCodexSession } from './providers/codex';
+import { forkClaudeSession, startClaudeSession } from './providers/claude';
+import { forkCodexThread, shutdownCodex, startCodexSession } from './providers/codex';
 
 const providers: Record<Session['provider'], (o: StartOptions) => ProviderSession> = { claude: startClaudeSession, codex: startCodexSession, deepseek: startClaudeSession };
+/** 从 anchor 分叉出新的 Provider 会话，返回其 id；原会话记录不动 */
+const forks: Record<Session['provider'], (providerSessionId: string, anchor: string, cwd: string) => Promise<string>> = { claude: forkClaudeSession, codex: forkCodexThread, deepseek: forkClaudeSession };
 
 export class HubError extends Error {
   constructor(public statusCode: number, message: string) {
@@ -312,6 +314,52 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
       const nextEffort = effort.trim() && getEffortOptions(session.provider, nextModel).some((o) => o.value === effort.trim()) ? effort.trim() : null;
       store.setSessionProvider(sessionId, session.provider, nextModel, nextEffort);
       return getSession(sessionId);
+    },
+
+    /**
+     * 从 beforeSeq 那条开启一轮的用户消息之前分叉：Provider 侧按上一轮结束时记下的锚点复制出新会话，Hub 侧复制此前的事件与附件。
+     * 分叉点前一轮没有锚点（功能上线前的轮、被 Hub 重启打断的轮）时 409；第一轮之前分叉 = 同配置的空会话
+     */
+    async forkSession(sessionId: string, beforeSeq: number, rewind: boolean): Promise<Session> {
+      const source = getSession(sessionId);
+      if (source.status === 'running' || source.status === 'waiting_user') throw new HubError(409, 'Session is running; stop it or wait for it to finish before forking');
+      const events = store.eventsAfter(sessionId, 0);
+      const i = events.findIndex((e) => e.seq === beforeSeq);
+      // 一轮中途插入的消息已被 Provider 并进那一轮，没法从中间切开
+      if (i === -1 || events[i].type !== 'message.user' || events[i + 1]?.type !== 'turn.started') throw new HubError(400, 'Can only fork before a message that started a turn');
+      const kept = events.slice(0, i);
+      const lastStart = kept.findLast((e) => e.type === 'turn.started');
+      const lastEnd = kept.findLast((e) => e.type === 'turn.completed' || e.type === 'turn.failed');
+      let providerSessionId: string | null = null;
+      if (lastStart) {
+        const anchor = lastEnd && lastEnd.seq > lastStart.seq ? lastEnd.payload.anchor : undefined;
+        if (!anchor || !source.providerSessionId) throw new HubError(409, 'Cannot fork here: the previous turn has no fork point (it ran before forking was supported, or was cut short by a Hub restart)');
+        providerSessionId = await forks[source.provider](source.providerSessionId, anchor, source.cwd);
+      }
+      const now = new Date().toISOString();
+      const session: Session = {
+        ...source,
+        id: randomUUID(),
+        providerSessionId,
+        status: kept.findLast((e) => e.type === 'session.status')?.payload.status ?? 'idle',
+        // 没保留任何一轮就是全新对话，标题留给首条消息；title 可能是首条消息预览（没有 AI 标题时），照样沿用
+        title: !lastStart || !source.title ? null : rewind ? source.title : `${source.title} (fork)`,
+        archivedAt: null,
+        createdAt: now,
+        updatedAt: now,
+      };
+      const copied = [];
+      for (const e of kept) {
+        if (e.type !== 'message.user' || !e.payload.attachments.length) copied.push(e);
+        else copied.push({ ...e, payload: { ...e.payload, attachments: e.payload.attachments.map((a) => attachments.copyTo(a, session.id)) } });
+      }
+      // 截断处仍在等待的请求（如 Codex 异步提问）在新会话里没有对应的行，记为过期，否则会显示成可答的卡片
+      const resolved = new Set(kept.flatMap((e) => (e.type === 'approval.resolved' || e.type === 'user_input.resolved' ? [e.payload.requestId] : [])));
+      for (const e of kept) {
+        if ((e.type === 'approval.requested' || e.type === 'user_input.requested') && !resolved.has(e.payload.request.id)) copied.push({ ...resolvedEvent(e.payload.request, null), createdAt: now });
+      }
+      store.copySession(session, copied, copied.flatMap((e) => (e.type === 'message.user' ? e.payload.attachments : [])));
+      return getSession(session.id);
     },
 
     /** 只删 idle / error 的会话：运行中的让用户先中断或等结束，Hub 不处理关 Provider 的时序 */

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { query, type CanUseTool, type EffortLevel, type PermissionResult, type PermissionUpdate, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
+import { forkSession, query, type CanUseTool, type EffortLevel, type PermissionResult, type PermissionUpdate, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import type { QuestionSpec } from '@agentdeck/shared';
 import type { ProviderSession, StartOptions } from '../types';
 import { createNormalizer } from './normalize';
@@ -100,6 +100,11 @@ export function startClaudeSession({ cwd, resume, model, effort, permissionMode,
       inbox.close();
     },
   };
+}
+
+/** 复制出一份截到 anchor（含）的新会话记录，返回新 session id；原记录不动（DeepSeek 同用） */
+export async function forkClaudeSession(sessionId: string, anchor: string, cwd: string): Promise<string> {
+  return (await forkSession(sessionId, { dir: cwd, upToMessageId: anchor })).sessionId;
 }
 
 // 最小连通验证：与会话共用环境注入，经真实 SDK 请求，但不运行工具或保存测试会话。

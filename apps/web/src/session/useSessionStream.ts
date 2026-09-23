@@ -4,7 +4,8 @@ import type { AgentEvent, ApprovalDecision, Attachment, PendingRequest, Question
 // 会话页的实时状态 = 对事件流做 reduce（方案 §13.1）。一个 seq 只处理一次，重放与 live 共用同一条路径。
 
 export type StreamItem =
-  | { kind: 'user'; key: string; text: string; attachments: Attachment[]; at: string }
+  /** forkable：这条消息开启了一轮，且上一轮留有分叉锚点，可以从它之前分叉 / 回退 */
+  | { kind: 'user'; key: string; seq: number; text: string; attachments: Attachment[]; at: string; forkable: boolean }
   | { kind: 'assistant'; key: string; messageId: string; text: string; streaming: boolean }
   /** done 为 false 表示还在跑；服务端不保存工具输出，卡片只显示做了什么 */
   | { kind: 'tool'; key: string; toolUseId: string; name: string; summary: string; done: boolean; isError: boolean; at: string }
@@ -37,6 +38,8 @@ export type StreamState = {
   gone: boolean
   /** 工作区可能变了（工具完成 / 一轮结束）就 +1，改动侧栏据此刷新 */
   changesVersion: number
+  /** 下一轮开头的消息能否分叉：还没有过轮次，或上一轮结束时带了锚点（与服务端 forkSession 的判断一致） */
+  nextForkable: boolean
 }
 
 type Action =
@@ -45,7 +48,7 @@ type Action =
   | { type: 'replay.dismiss' }
   | { type: 'reset' }
 
-const initial: StreamState = { session: null, status: 'idle', model: null, items: [], lastSeq: 0, connection: 'connecting', replay: null, livePendingIds: [], context: null, turnStartedAt: null, gone: false, changesVersion: 0 }
+const initial: StreamState = { session: null, status: 'idle', model: null, items: [], lastSeq: 0, connection: 'connecting', replay: null, livePendingIds: [], context: null, turnStartedAt: null, gone: false, changesVersion: 0, nextForkable: true }
 
 function reduce(state: StreamState, action: Action): StreamState {
   if (action.type === 'reset') return initial
@@ -100,7 +103,7 @@ function applyEvent(state: StreamState, e: AgentEvent): StreamState {
   const items = state.items
   switch (e.type) {
     case 'message.user':
-      return { ...state, items: [...items, { kind: 'user', key: `u${e.seq}`, text: e.payload.text, attachments: e.payload.attachments ?? [], at: e.createdAt }] }
+      return { ...state, items: [...items, { kind: 'user', key: `u${e.seq}`, seq: e.seq, text: e.payload.text, attachments: e.payload.attachments ?? [], at: e.createdAt, forkable: false }] }
     case 'message.completed':
       return { ...state, items: mergeAssistantText(items, e.payload.messageId, e.payload.text, true) }
     case 'tool.started':
@@ -132,16 +135,21 @@ function applyEvent(state: StreamState, e: AgentEvent): StreamState {
       const cur = items[i] as Extract<StreamItem, { kind: 'question' }>
       return { ...state, items: items.toSpliced(i, 1, { ...cur, state: e.payload.answers ? 'resolved' : 'expired', answers: e.payload.answers, response: e.payload.response ?? null, resolvedAt: e.createdAt }) }
     }
-    case 'turn.started':
-      return { ...state, turnStartedAt: e.createdAt }
+    case 'turn.started': {
+      // 开启这一轮的消息紧挨在 turn.started 前面
+      const last = items.at(-1)
+      const started = last?.kind === 'user' && last.seq === e.seq - 1 ? items.toSpliced(-1, 1, { ...last, forkable: state.nextForkable }) : items
+      return { ...state, turnStartedAt: e.createdAt, nextForkable: false, items: started }
+    }
     case 'turn.failed':
-      return { ...state, turnStartedAt: null, items: [...items, { kind: 'error', key: `e${e.seq}`, message: e.payload.message, at: e.createdAt }] }
+      return { ...state, turnStartedAt: null, nextForkable: !!e.payload.anchor, items: [...items, { kind: 'error', key: `e${e.seq}`, message: e.payload.message, at: e.createdAt }] }
     case 'error':
       return { ...state, items: [...items, { kind: 'error', key: `e${e.seq}`, message: e.payload.message, at: e.createdAt }] }
     case 'turn.completed':
       return {
         ...state,
         turnStartedAt: null,
+        nextForkable: !!e.payload.anchor,
         changesVersion: state.changesVersion + 1,
         items: [...items, { kind: 'turn', key: `t${e.seq}`, reason: e.payload.reason, durationMs: e.payload.durationMs, at: e.createdAt }],
       }
