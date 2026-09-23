@@ -25,8 +25,6 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
   const deletedListeners = new Map<string, Set<() => void>>();
   // 正在等用户处理的 Provider 回调；Hub 重启后这些 Promise 不复存在，对应的行在启动时作废
   const waiting = new Map<string, (r: Resolution | null) => void>();
-  // 一轮进行中收到的追加指令（方案 §8.3）：本轮结束后按序发出。只在内存里，Hub 重启即丢
-  const queues = new Map<string, { text: string; files: Attachment[] }[]>();
   // 账号级额度，按 rateLimitType 保留最新值，GET /api/usage 直接返回
   const usage: Record<string, UsageInfo> = {};
   const titleJobs = new Map<string, AbortController>();
@@ -62,7 +60,7 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
   function setStatus(sessionId: string, status: SessionStatus) {
     store.setSessionStatus(sessionId, status);
     emit(sessionId, { type: 'session.status', payload: { status } });
-    // 排队的追加指令发完才算结束；waiting_user 不回调：父会话代批不了，靠用户自己处理
+    // 插入的追加指令处理完才算结束（Provider 只在那时报 turn 结束）；waiting_user 不回调：父会话代批不了，靠用户自己处理
     if (status === 'idle' || status === 'error') notifyWatchers(sessionId, status);
   }
 
@@ -177,17 +175,12 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
         if (event.type === 'session.started') store.setProviderSessionId(session.id, event.payload.providerSessionId);
         if (event.type === 'usage.updated') usage[event.payload.rateLimitType] = event.payload;
         broadcast(session.id, event);
-        // 一轮结束：有排队的追加指令就接着发，否则回到 idle / error
-        if (event.type === 'turn.completed' || event.type === 'turn.failed') {
-          const next = queues.get(session.id)?.shift();
-          if (next) dispatch(session.id, provider, next);
-          else setStatus(session.id, event.type === 'turn.completed' ? 'idle' : 'error');
-        }
+        if (event.type === 'turn.completed') setStatus(session.id, 'idle');
+        if (event.type === 'turn.failed') setStatus(session.id, 'error');
         if (event.type === 'error') setStatus(session.id, 'error');
       },
       onExit(error) {
         live.delete(session.id);
-        queues.delete(session.id);
         if (error && !closing && store.getSession(session.id)) {
           emit(session.id, { type: 'error', payload: { message: `${session.provider} process exited: ${error instanceof Error ? error.message : String(error)}` } });
           setStatus(session.id, 'error');
@@ -215,7 +208,7 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
   }
 
   /** origin 'user' 是用户从界面发的，会清零自动唤醒计数；'agent' 是 MCP send_message 或子会话回调 */
-  function sendMessage(sessionId: string, text: string, attachmentIds: string[], origin: 'user' | 'agent' = 'user'): { seq: number; queued: boolean } {
+  function sendMessage(sessionId: string, text: string, attachmentIds: string[], origin: 'user' | 'agent' = 'user'): { seq: number; steered: boolean } {
     const session = getSession(sessionId);
     if (origin === 'user') autoWakes.delete(sessionId);
     let files;
@@ -230,15 +223,10 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
     if (session.archivedAt) store.setSessionArchivedAt(sessionId, null);
     const firstText = !!text.trim() && !store.hasUserText(sessionId);
     const { seq } = emit(sessionId, { type: 'message.user', payload: { text, attachments: files } });
-    // 一个 Session 同时只允许一个 active turn（方案 §8.3）：进行中就排队，本轮结束后由 onEvent 接着发
-    const queued = session.status === 'running' || session.status === 'waiting_user';
-    if (queued) {
-      let q = queues.get(sessionId);
-      if (!q) queues.set(sessionId, (q = []));
-      q.push({ text, files });
-    } else {
-      dispatch(sessionId, provider, { text, files });
-    }
+    // 一轮进行中直接交给 Provider 插入当前轮，Agent 下一步就能看到，不等这一轮结束
+    const steered = session.status === 'running' || session.status === 'waiting_user';
+    if (steered) provider.send({ text, images: files.map((a) => ({ mimeType: a.mimeType, path: attachments.pathOf(a) })) });
+    else dispatch(sessionId, provider, { text, files });
     const config = settings();
     if (firstText && config.titles.enabled) {
       const controller = new AbortController();
@@ -249,7 +237,7 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
         () => { if (!closing && !controller.signal.aborted) console.warn(`Title generation failed for session ${sessionId}; keeping message preview`); },
       ).finally(() => titleJobs.delete(sessionId));
     }
-    return { seq, queued };
+    return { seq, steered };
   }
 
   return {
@@ -333,7 +321,6 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
       // 空闲会话的 Provider 进程可能还活着（等下一条消息），先关掉
       live.get(sessionId)?.close();
       live.delete(sessionId);
-      queues.delete(sessionId);
       watchers.delete(sessionId);
       autoWakes.delete(sessionId);
       titleJobs.get(sessionId)?.abort();
@@ -347,7 +334,7 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
 
     sendMessage,
 
-    /** 子会话这一轮（连同排队的追加指令）结束时，以一条消息回报给父会话；一次性 */
+    /** 子会话这一轮（连同插入的追加指令）结束时，以一条消息回报给父会话；一次性 */
     notifyWhenDone(childId: string, parentId: string) {
       let parents = watchers.get(childId);
       if (!parents) watchers.set(childId, (parents = new Map()));
@@ -358,8 +345,7 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
       const session = getSession(sessionId);
       const provider = live.get(sessionId);
       if (!provider || (session.status !== 'running' && session.status !== 'waiting_user')) throw new HubError(409, 'No turn is running');
-      // 用户要的是"停下来"：连同排队的追加指令一起丢弃
-      queues.delete(sessionId);
+      // 用户要的是"停下来"：Provider 连同还没被读到的插入消息一起丢弃
       await provider.interrupt();
     },
 
@@ -374,7 +360,7 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
         const text = request.questions.map((q) => `${q.question}：${resolution.answers[q.question]?.join('、') || resolution.response || ''}`).join('\n');
         emit(session.id, { type: 'message.user', payload: { text, attachments: [] } });
         if (session.archivedAt) store.setSessionArchivedAt(session.id, null);
-        // Codex turn/start 在有 active turn 时直接注入答案，不经过普通追加指令的轮后队列。
+        // 运行中插入当前轮，空闲时新开一轮
         if (session.status === 'running' || session.status === 'waiting_user') provider.send({ text, images: [] });
         else dispatch(session.id, provider, { text, files: [] });
       }

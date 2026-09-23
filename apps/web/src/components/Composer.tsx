@@ -275,7 +275,7 @@ export function Composer({ draftKey, disabled, running, interrupting, onInterrup
             <span className={styles.meta}>{meta}</span>
             {(failed || uploading || hint || queued) && (
               <span className={styles.hint} data-error={(failed || hintError) || undefined} data-queue={(!failed && !uploading && !hint && queued) || undefined}>
-                {failed ? failed.message : uploading ? 'Uploading images…' : hint || 'A turn is running; your message will be queued as a follow-up'}
+                {failed ? failed.message : uploading ? 'Uploading images…' : hint || 'A turn is running; your message will be delivered at its next step'}
               </span>
             )}
             {onFinder && <button type="button" className={styles.fresh} onClick={onFinder} aria-label="Open in Finder" title="Open this project folder in Finder"><FolderOpen size={16} /></button>}

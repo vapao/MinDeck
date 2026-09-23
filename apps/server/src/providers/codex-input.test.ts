@@ -9,7 +9,7 @@ import { agentdeckMcpFor } from '../mcp';
 import { openStore } from '../store/db';
 import { createAttachmentStore } from '../store/attachments';
 
-// 真实捕获的 async agentMessage 形状；验证答案不会被排进轮后队列或重复发送。
+// 真实捕获的 async agentMessage 形状；验证答案运行中 steer 进当前轮、空闲时新开一轮，且不重复发送。
 test('async agent questions become cards and answers reach both active and idle turns exactly once', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'agentdeck-input-'));
   const previousPath = process.env.PATH;
@@ -35,6 +35,13 @@ createInterface({ input: process.stdin }).on('line', (line) => {
     notify('item/started', { item });
     notify('item/completed', { item });
     if (text === 'idle' || text.includes('：')) complete();
+  }
+  if (m.method === 'turn/steer') {
+    send({ id: m.id, result: { turnId: m.params.expectedTurnId } });
+    const item = { type: 'agentMessage', id: 'answer' + count, text: m.params.input[0].text, delivery: null, questions: null };
+    notify('item/started', { item });
+    notify('item/completed', { item });
+    complete();
   }
   if (m.method === 'turn/interrupt') { send({ id: m.id, result: {} }); complete(); }
 });

@@ -8,8 +8,12 @@ export type OutgoingMessage = {
 
 /** 一个活的 Provider 会话：Hub 只通过这三个动作和它打交道（方案 §7.1 的最小子集） */
 export type ProviderSession = {
+  /**
+   * 空闲时开一轮；一轮进行中则插入当前轮，Agent 在下一步（工具调用返回后）就能看到。
+   * 不管插入了几条、Provider 内部实际跑了几轮，都只在全部处理完、回到空闲时发一次 turn.completed / turn.failed
+   */
   send(message: OutgoingMessage): void;
-  /** 打断当前 turn；Provider 随后发 turn.completed(reason: 'interrupted') */
+  /** 打断当前 turn，还没被 Agent 读到的插入消息一并丢弃；Provider 随后发 turn.completed(reason: 'interrupted') */
   interrupt(): Promise<void>;
   close(): void;
 };

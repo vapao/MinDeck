@@ -238,8 +238,8 @@ export type ListSessionsResponse = Session[];
 
 /** text 与 attachmentIds 至少有一个非空；附件必须属于同一 session */
 export type SendMessageBody = { text: string; attachmentIds?: string[] };
-/** queued：当前有一轮在跑，消息已排队，本轮结束后自动发出 */
-export type SendMessageResponse = { seq: number; queued: boolean };
+/** steered：当前有一轮在跑，消息已插入该轮，Agent 下一步就能看到 */
+export type SendMessageResponse = { seq: number; steered: boolean };
 
 /** POST /api/sessions/:id/interrupt，无 body；未在运行时 409 */
 export type InterruptResponse = { ok: true };

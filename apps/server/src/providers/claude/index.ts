@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { query, type CanUseTool, type EffortLevel, type PermissionResult, type PermissionUpdate, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import type { QuestionSpec } from '@agentdeck/shared';
@@ -44,7 +45,8 @@ export function startClaudeSession({ cwd, resume, model, effort, permissionMode,
       model: deepseek ? `${model ?? 'deepseek-flash'}[1m]` : model,
       // effort 只能在这里给，SDK 没有会话中的 setter；取值已由 Hub 按 shared effortOptions 校验
       effort: effort as EffortLevel | undefined,
-      env: { ...childEnv(), ...connectionEnv },
+      // session_state_changed: idle 是"插入的消息全部处理完"的唯一可靠信号（一轮里插入的消息可能被并入该轮，也可能在其后自成一轮）
+      env: { ...childEnv(), ...connectionEnv, CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: '1' },
       permissionMode: sdkPermissionMode,
       // 不设 systemPrompt 时 SDK 只给"最小提示词"，跟 CLI 不一样；用 preset 对齐
       systemPrompt: { type: 'preset', preset: 'claude_code' },
@@ -85,12 +87,14 @@ export function startClaudeSession({ cwd, resume, model, effort, permissionMode,
         ...images.map((img) => ({ type: 'image' as const, source: { type: 'base64' as const, media_type: img.mimeType, data: readFileSync(img.path).toString('base64') } })),
         ...(text ? [{ type: 'text' as const, text }] : []),
       ];
-      inbox.push({ type: 'user', message: { role: 'user', content }, parent_tool_use_id: null });
+      // 一轮进行中 push 的消息由 SDK 在下一个工具边界并入当前轮；带 uuid 才能被 interrupt 的 cancelQueued 撤回
+      inbox.push({ type: 'user', message: { role: 'user', content }, parent_tool_use_id: null, uuid: randomUUID() });
     },
-    // SDK 随后以 error_during_execution 结束该轮，normalizer 映射为 reason: 'interrupted'
+    // SDK 随后以 error_during_execution 结束该轮，normalizer 映射为 reason: 'interrupted'。
+    // cancelQueued 让还没并入的插入消息一起作废，否则中断后它们会自成一轮继续跑；运行时支持，但 SDK 类型没声明这个参数
     async interrupt() {
       markInterrupting();
-      await q.interrupt();
+      await (q.interrupt as (options: { cancelQueued: boolean }) => ReturnType<typeof q.interrupt>)({ cancelQueued: true });
     },
     close() {
       inbox.close();

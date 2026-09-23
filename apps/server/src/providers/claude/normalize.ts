@@ -10,6 +10,8 @@ export function createNormalizer(resumed: boolean) {
   let interrupting = false;
   let lastUsage = '';
   let lastContext = 0;
+  // 一轮进行中插入的消息若没赶上工具边界，SDK 会在其后自成一轮、多出一个 result；只在 idle 时报最后那个结果
+  let turnEnd: ProviderEvent | null = null;
   // AskUserQuestion 的 tool_use / tool_result 不开工具卡：提问与回答由 canUseTool 产生的 user_input 事件承载，再出一张卡是冗余
   const hiddenToolIds = new Set<string>();
 
@@ -21,6 +23,11 @@ export function createNormalizer(resumed: boolean) {
           if (started) return [];
           started = true;
           return [{ type: resumed ? 'session.resumed' : 'session.started', payload: { providerSessionId: m.session_id, model: m.model } }];
+        }
+        if (m.subtype === 'session_state_changed' && m.state === 'idle' && turnEnd) {
+          const event = turnEnd;
+          turnEnd = null;
+          return [event];
         }
         return [];
 
@@ -81,13 +88,14 @@ export function createNormalizer(resumed: boolean) {
         const wasInterrupting = interrupting;
         interrupting = false;
         if (m.subtype === 'success') {
-          return [{ type: 'turn.completed', payload: { reason: 'completed', durationMs: m.duration_ms, costUsd: m.total_cost_usd } }];
+          turnEnd = { type: 'turn.completed', payload: { reason: 'completed', durationMs: m.duration_ms, costUsd: m.total_cost_usd } };
+        } else if (wasInterrupting && m.subtype === 'error_during_execution') {
+          // interrupt 后 SDK 返回 error_during_execution（AGENTS.md 规则 3），是用户中断而不是错误
+          turnEnd = { type: 'turn.completed', payload: { reason: 'interrupted', durationMs: m.duration_ms, costUsd: m.total_cost_usd } };
+        } else {
+          turnEnd = { type: 'turn.failed', payload: { message: m.errors.length ? m.errors.join('\n') : m.subtype } };
         }
-        // interrupt 后 SDK 返回 error_during_execution（AGENTS.md 规则 3），是用户中断而不是错误
-        if (wasInterrupting && m.subtype === 'error_during_execution') {
-          return [{ type: 'turn.completed', payload: { reason: 'interrupted', durationMs: m.duration_ms, costUsd: m.total_cost_usd } }];
-        }
-        return [{ type: 'turn.failed', payload: { message: m.errors.length ? m.errors.join('\n') : m.subtype } }];
+        return [];
       }
 
       default:

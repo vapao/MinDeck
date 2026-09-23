@@ -136,7 +136,7 @@ export function createMcpServer(hub: Hub, store: Store, services: Services, call
   });
 
   server.registerTool('send_message', {
-    description: 'Send a message to another session. If it is running, the message is queued and sent after the current turn.',
+    description: 'Send a message to another session. If it is running, the message is delivered into the current turn and takes effect at its next step.',
     inputSchema: {
       id: z.string(),
       text: z.string().min(1),
@@ -150,7 +150,7 @@ export function createMcpServer(hub: Hub, store: Store, services: Services, call
   });
 
   server.registerTool('interrupt', {
-    description: 'Stop the running turn of another session; queued messages are dropped.',
+    description: 'Stop the running turn of another session; messages it has not picked up yet are dropped.',
     inputSchema: { id: z.string() },
   }, async ({ id }) => {
     notSelf(id);

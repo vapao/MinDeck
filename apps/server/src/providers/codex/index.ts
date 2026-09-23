@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { ApprovalDecision, QuestionSpec, Resolution } from '@agentdeck/shared';
+import type { ApprovalDecision, ProviderOutput, QuestionSpec, Resolution } from '@agentdeck/shared';
 import type { ProviderSession, StartOptions } from '../types';
 import { RpcError, spawnAppServer, type AppServerRpc } from './rpc';
 import { createNormalizer, stripShellWrapper } from './normalize';
@@ -58,6 +58,14 @@ export function startCodexSession({ cwd, resume, model, effort, permissionMode, 
   const { normalize } = createNormalizer();
   let threadId: string | null = null;
   let turnId: string | null = null;
+  let lastCompletedTurnId: string | null = null;
+  // send 按序执行：前一条的 turn/start 回包之前 turnId 还没有，后一条得等它才知道该 steer 还是新开一轮
+  let sending: Promise<void> = Promise.resolve();
+  let inFlight = 0;
+  // 有 send 在路上时一轮结束了：它 steer 失败会紧接着开新一轮，所以这个结束先压着，send 全部落定且没开新轮才报给 Hub
+  let deferredEnd: { turnId: string; event: ProviderOutput } | null = null;
+  // interrupt 时递增：还没送出去的消息随中断一并作废
+  let epoch = 0;
   // 每轮一个 controller：interrupt 时触发，让 Hub 作废本轮还在等的审批
   let abort = new AbortController();
   // 异步问题可以在一轮结束后回答，只在中断 / 关闭会话时作废。
@@ -65,8 +73,14 @@ export function startCodexSession({ cwd, resume, model, effort, permissionMode, 
 
   const handler: ThreadHandler = {
     onNotification(n) {
-      if (n.method === 'turn/completed') turnId = null;
-      for (const e of normalize(n)) onEvent(e);
+      if (n.method === 'turn/completed') {
+        turnId = null;
+        lastCompletedTurnId = n.params.turn.id;
+      }
+      for (const e of normalize(n)) {
+        if (inFlight && n.method === 'turn/completed' && (e.type === 'turn.completed' || e.type === 'turn.failed')) deferredEnd = { turnId: n.params.turn.id, event: e };
+        else onEvent(e);
+      }
       if (n.method === 'item/completed') {
         const item = n.params.item;
         if (item.type === 'agentMessage' && item.delivery === 'async' && item.questions?.length) {
@@ -162,24 +176,49 @@ export function startCodexSession({ cwd, resume, model, effort, permissionMode, 
 
   return {
     send({ text, images }) {
-      if (!turnId) abort = new AbortController();
       // 图片已在本机磁盘，直接走 localImage（方案 §5.3）
       const input: UserInput[] = [
         ...(text ? [{ type: 'text' as const, text, text_elements: [] }] : []),
         ...images.map((img) => ({ type: 'localImage' as const, path: img.path })),
       ];
-      opened
+      const sentAt = epoch;
+      inFlight++;
+      sending = sending
+        .then(() => opened)
         .then(
           async () => {
+            if (epoch !== sentAt) return;
+            if (turnId) {
+              try {
+                await rpc.request('turn/steer', { threadId: threadId!, expectedTurnId: turnId, input });
+                return;
+              } catch (err) {
+                // 这一轮恰好结束或不可插入（review / compact）：改为新开一轮
+                if (!(err instanceof RpcError)) throw err;
+              }
+            }
+            if (epoch !== sentAt) return;
+            abort = new AbortController();
             // model / effort 是"本轮及之后"的覆盖，每轮都带上保证 resume 后也一致
             const res = (await rpc.request('turn/start', { threadId: threadId!, input, model, effort })) as TurnStartResponse;
-            turnId = res.turn.id;
+            // 新一轮已开：之前压着的旧轮结束作废；极快的轮可能在回包前就已结束
+            if (deferredEnd?.turnId !== res.turn.id) deferredEnd = null;
+            turnId = res.turn.id === lastCompletedTurnId ? null : res.turn.id;
           },
           () => {}, // thread 没开起来已经走了 onExit，不再重复报
         )
-        .catch((err: Error) => onEvent({ type: 'turn.failed', payload: { message: `Codex refused to start the turn: ${err.message}` } }));
+        .catch((err: Error) => {
+          deferredEnd = null;
+          onEvent({ type: 'turn.failed', payload: { message: `Codex refused to start the turn: ${err.message}` } });
+        })
+        .finally(() => {
+          if (--inFlight || !deferredEnd) return;
+          onEvent(deferredEnd.event);
+          deferredEnd = null;
+        });
     },
     async interrupt() {
+      epoch++;
       if (!threadId || !turnId) return;
       abort.abort();
       asyncQuestions.abort();
