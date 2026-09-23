@@ -70,17 +70,18 @@ export function createMcpServer(hub: Hub, store: Store, callerId: string, signal
     .map((s) => ({ id: s.id, provider: s.provider, workspace: s.cwd, title: s.title, status: s.status, archived: !!s.archivedAt, updatedAt: s.updatedAt, ...(s.id === callerId ? { self: true } : {}) }))));
 
   server.registerTool('create_session', {
-    description: 'Start a new AgentDeck session and send it a first message. The user must approve this in AgentDeck; the call blocks until they do. Model, effort and permission mode come from AgentDeck settings. Returns the new session id; follow it with get_session.',
+    description: 'Delegate a task to a new AgentDeck session. Write the prompt as a handoff brief built from this conversation: the goal, the plan and decisions already agreed, scope boundaries, and open questions. Do not investigate the repository to write the prompt; the new session explores on its own. Do not restate project rules from AGENTS.md / CLAUDE.md; the new session loads them. Do not add work the user did not ask for. The user must approve in AgentDeck; the call blocks until they do. Model, effort and permission mode come from AgentDeck settings. Returns the new session id.',
     inputSchema: {
       provider: z.enum(['claude', 'codex', 'deepseek']),
       prompt: z.string().min(1).describe('First message for the new session'),
       workspace: z.string().optional().describe('Project path from list_workspaces; defaults to your own project'),
-      notify: z.boolean().optional().describe('Default true: when the session finishes this work, its result arrives in your conversation as a new message, so end your turn instead of waiting. Set false only if you need the result within this turn, then use get_session with waitSec'),
+      notify: z.boolean().optional().describe('Default false. Set true only when you need the result to continue your own work (e.g. the user asked you to compare, summarize, or build on it); the result then arrives later as a new message. Either way, do not wait or poll for the session — carry on with any remaining work.'),
     },
-  }, async ({ provider, prompt, workspace, notify = true }) => {
+  }, async ({ provider, prompt, workspace, notify = false }) => {
     const cwd = workspace ?? hub.getSession(callerId).cwd;
     // 先校验再弹卡，不让人批一张注定失败的请求
     if (!store.getWorkspaceByPath(cwd)) throw new HubError(400, `${cwd} is not an AgentDeck project; see list_workspaces`);
+    if (provider === 'deepseek' && !hub.settings().deepseek.apiKeyConfigured) throw new HubError(400, 'DeepSeek API Key is not configured in AgentDeck settings');
     const resolution = await hub.createPending(callerId, {
       kind: 'approval', toolName: 'AgentDeck: create session', toolUseId: randomUUID(), input: { provider, workspace: cwd, prompt },
       description: 'Start a new session with the default model and permission mode from Settings',
@@ -92,7 +93,7 @@ export function createMcpServer(hub: Hub, store: Store, callerId: string, signal
     try {
       hub.sendMessage(session.id, prompt, [], 'agent');
     } catch (error) {
-      // 消息尚未入库时恢复为审批前状态，避免留下无法使用的空会话（如 DeepSeek 缺少 Key）。
+      // 审批期间设置被改（如清掉 DeepSeek Key）导致首条消息发不出：删掉刚建的空会话，不留无法使用的会话
       if (hub.lastSeq(session.id) === 0) hub.deleteSession(session.id);
       throw error;
     }
@@ -130,9 +131,9 @@ export function createMcpServer(hub: Hub, store: Store, callerId: string, signal
     inputSchema: {
       id: z.string(),
       text: z.string().min(1),
-      notify: z.boolean().optional().describe('Default true: when the session finishes this work, its result arrives in your conversation as a new message, so end your turn instead of waiting. Set false only if you need the result within this turn, then use get_session with waitSec'),
+      notify: z.boolean().optional().describe('Default false. Set true only when you need the result to continue your own work (e.g. the user asked you to compare, summarize, or build on it); the result then arrives later as a new message. Either way, do not wait or poll for the session — carry on with any remaining work.'),
     },
-  }, ({ id, text, notify = true }) => {
+  }, ({ id, text, notify = false }) => {
     notSelf(id);
     const result = hub.sendMessage(id, text, [], 'agent');
     if (notify) hub.notifyWhenDone(id, callerId);

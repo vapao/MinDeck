@@ -139,7 +139,6 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
       });
       // turn 被中断等情况下 Provider 会放弃这次请求：作废并通知各端
       signal.addEventListener('abort', expire, { once: true });
-      if (signal.aborted) expire();
     });
   }
 
