@@ -261,6 +261,23 @@ export type CreateWorkspaceBody = { path: string; alias: string };
 /** PATCH /api/workspaces/:id */
 export type UpdateWorkspaceBody = { alias: string };
 
+// ---- 项目服务（切片 14）：Hub 代为启动 / 停止的开发服务，每个项目一组 ----
+
+/** subdir 相对项目根，空字符串 = 项目根；url 只用于展示链接（Tailscale 映射由用户自己配） */
+export type ServiceConfig = { name: string; command: string; subdir: string; url: string };
+export type Service = ServiceConfig & { id: string; workspaceId: string; running: boolean; createdAt: string };
+/** GET /api/services：全部项目的服务，按创建时间排 */
+export type ListServicesResponse = Service[];
+/** POST /api/services */
+export type CreateServiceBody = ServiceConfig & { workspaceId: string };
+/** PATCH /api/services/:id；运行中也可改，下次启动生效 */
+export type UpdateServiceBody = ServiceConfig;
+/**
+ * GET /api/services/:id/log?cursor=：从上次的 cursor 起的增量日志。cursor 对客户端不透明；
+ * 省略或服务已重新启动过时返回末尾 64KB 且 reset=true，客户端应先清空已显示的内容
+ */
+export type ServiceLogResponse = { text: string; cursor: string; reset: boolean };
+
 /** GET /api/fs/dirs?path=：列出 path 下的子目录（跳过隐藏目录），只允许家目录内；path 省略 = 家目录 */
 export type ListDirsResponse = { path: string; parent: string | null; dirs: { name: string; path: string }[] };
 

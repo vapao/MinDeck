@@ -14,7 +14,7 @@ Mac Mini 上自托管的 Claude / Codex 多端控制台：Agent 在 Mac Mini 上
 
 ## 当前状态与下一步
 
-- 已完成：方案、Claude / Codex 两侧 P0 验证、工程脚手架、UI 设计稿与规范、**切片 1–12**（切片 1–4 于 2026-09-19 浏览器验收通过；切片 5 于 2026-09-19 在真实 Hub 上用 REST + WS 脚本验收通过；切片 6 于 2026-09-19 在 launchd 托管的 Hub 上经 Tailscale 用桌面浏览器验收：PWA 注册、Hub 重启自动重连、离线期间事件按 seq 回放、390px 视口布局；切片 7、8 于 2026-09-19 桌面浏览器验收；切片 9 于 2026-09-19 用 REST + WS 脚本验收：删除广播、运行中 409、附件目录清理；切片 10 于 2026-09-19 桌面浏览器验收：文件列表、diff、整文件、越界路径拒绝；切片 11 的 `@` 引用于 2026-09-19 桌面浏览器验收：目录逐层浏览、键盘选择、`~` 展开、Escape；切片 12 于 2026-09-20 用 REST 脚本验证归档 / 恢复 / 校验，**桌面浏览器验收待做**；切片 13 于 2026-09-21 用 REST 脚本验证 PATCH provider / 归档路由，**浏览器验收待做**）。
+- 已完成：方案、Claude / Codex 两侧 P0 验证、工程脚手架、UI 设计稿与规范、**切片 1–14**（切片 1–4 于 2026-09-19 浏览器验收通过；切片 5 于 2026-09-19 在真实 Hub 上用 REST + WS 脚本验收通过；切片 6 于 2026-09-19 在 launchd 托管的 Hub 上经 Tailscale 用桌面浏览器验收：PWA 注册、Hub 重启自动重连、离线期间事件按 seq 回放、390px 视口布局；切片 7、8 于 2026-09-19 桌面浏览器验收；切片 9 于 2026-09-19 用 REST + WS 脚本验收：删除广播、运行中 409、附件目录清理；切片 10 于 2026-09-19 桌面浏览器验收：文件列表、diff、整文件、越界路径拒绝；切片 11 的 `@` 引用于 2026-09-19 桌面浏览器验收：目录逐层浏览、键盘选择、`~` 展开、Escape；切片 12 于 2026-09-20 用 REST 脚本验证归档 / 恢复 / 校验，**桌面浏览器验收待做**；切片 13 于 2026-09-21 用 REST 脚本验证 PATCH provider / 归档路由，**浏览器验收待做**；切片 14 于 2026-09-23 用 REST 脚本在临时 Hub 上验证 pnpm → vite 启动、Hub 重启后接管、重启 / 停止无残留进程、日志增量与 409，**浏览器验收待做**）。
 - **待办：真机 iPhone 走 Tailscale 完整跑一遍**（添加到主屏幕、相册选图、审批、切后台回来重连）——需要开发者手持设备，代码侧切片 6 已完成。
 - 使用定位（2026-09-19 与开发者确认）：Mac Mini 常驻服务端；**MacBook 上的桌面浏览器是主控制端**，手机只是辅助，不追求全功能。易用性切片（7–11）按此排优先级。
 - 实施按垂直切片推进，每片端到端可用：
@@ -34,6 +34,7 @@ Mac Mini 上自托管的 Claude / Codex 多端控制台：Agent 在 Mac Mini 上
 | 11 | `@` 文件引用（`GET /api/sessions/:id/entries?q=`：相对 cwd，`~` 展开为家目录，直接子项在前、深层匹配在后，目录以 `/` 结尾可继续往里敲；cwd 内递归限 4 层 / 3000 项 / 1.5s，`~` 下只列直接子项；Composer 弹层支持上下键 / Enter / Tab / Escape）。**未做**：会话中切模型（Codex `turn/start` 按轮传 model / effort 很简单；Claude 仅 `setModel()`，effort 无 setter 需 resume 重开）——先看全局默认值够不够用 | 低频，待观察 |
 | 12 | 会话归档与侧栏收纳：`sessions.archived_at`、`PATCH /api/sessions/:id { archived }`（归档 running / waiting_user 409；给归档会话发消息自动取消归档）；侧栏顶部「Active / Inactive」两个页签共用同一套分组列表（分组按组内最近活动排、可折叠（localStorage）且折叠后仍露出 running / waiting_user 的会话）：Active 行 hover 可移到 Inactive，Inactive 行 hover 可移回 / 永久删除（删除只在这里）；会话页头部保留「删除」（2026-09-21 从「移到 Inactive / 移回」改回：该位置固定为删除，收纳操作只在侧栏行上），「新开一轮」按钮移到输入框发送按钮左侧，弹窗仍是可选删除旧会话（不是移到 Inactive）；图标用 `EyeOff` / `Eye`（语义是从 Active 页签隐藏，不是归档）。背景：项目一多侧栏撑不下，单独的"活跃列表"又把各项目会话混在一起——"只展示活跃"和"按项目分组"叠在一起才对。**未做**：侧栏过滤框（先看归档够不够用） | 移到 Inactive 后从 Active 页签消失、Inactive 页签可移回；折叠组里等审批的会话仍可见 |
 | 13 | 空会话换 Agent：`PATCH /api/sessions/:id { provider }`，只允许还没任何事件、Provider 未启动的会话（否则 409，上下文在 Provider 那边换了等于丢光，不做中途切换），model / effort 按新 Provider 的设置默认值重置、permissionMode 保留；Composer 状态区的 Provider 名字在空会话时是切换按钮（原为两个 Provider 互换，DeepSeek 接入后改为三选一下拉）；新建会话页默认沿用上一次选的 Provider（`localStorage newSession:provider`，新建与切换时都记）。2026-09-23 起空会话同样可换模型 / 思考等级：`PATCH { model, effort }`，同一 409 条件，effort 不被新模型支持时服务端重置为默认，不记 localStorage | 空会话可从下拉切换 Provider；发过消息后不再可选 |
+| 14 | 项目服务：每个项目可配若干开发服务（`workspace_services` 表：名称、命令、相对项目根的子目录、展示用链接），桌面右侧面板 Services 页签里增删改、启动 / 停止 / 重启、看日志，侧栏分组头与页签上有运行点。进程以 `/bin/zsh -lc <cmd>` detached 启动自成进程组，输出直写 `data/logs/services/<id>.log`，**与 Hub 解耦**：Hub 重启 / `launchd.sh update` 不影响服务，重启后按库里 pid + `ps lstart` 接管（组长退出但组内仍有进程也算运行）；停止向整个进程组发 SIGTERM，5s 后 SIGKILL。只区分运行 / 停止，不记退出码。日志接口用不透明 cursor（inode:偏移）增量读，重新启动后 reset。运行中的服务不能删、所在项目不能移除（409）；移除项目连同服务配置一起删。**风险**：能连上 Hub 的设备都能配置并执行任意命令，等同 bypass 会话。**未做**：自动 `tailscale serve` 映射（链接由用户自己配）、Agent 感知服务、健康检查 / 自动重启、环境变量编辑、启动顺序 | 服务起停无残留进程；Hub 重启后服务仍在且显示运行中 |
 
 ## DeepSeek 接入（2026-09-21）
 
@@ -59,7 +60,7 @@ pnpm build           # 前端构建到 apps/web/dist，Hub 启动时若该目录
 pnpm start           # tsx apps/server/src/main.ts（生产，不 watch）
 scripts/launchd.sh install | uninstall | update | restart | status | logs   # 常驻：install 先 pnpm build 再写 ~/Library/LaunchAgents/com.agentdeck.hub.plist 并加载；update = pnpm build + 重启 Hub（改完代码用它）；restart 只重启；日志 data/logs/hub.log
 pnpm typecheck       # 三个工作区
-pnpm --filter @agentdeck/server test   # tsx --test：事件 seq 单调、PendingRequest 原子 resolve、附件路径/会话边界
+pnpm --filter @agentdeck/server test   # tsx --test：事件 seq 单调、PendingRequest 原子 resolve、附件路径/会话边界、服务停止杀整个进程组
 pnpm codex:schema    # codex app-server generate-ts → apps/server/src/providers/codex/schema（已 gitignore，按本机 codex 版本生成）
 cd apps/server && node scripts/p0-claude-harness.mjs   # Claude SDK 回归 harness，真实消耗额度
 cd apps/server && node scripts/p0-codex-harness.mjs    # Codex app-server 回归 harness，真实消耗额度

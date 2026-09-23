@@ -337,7 +337,7 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
             </div>
           </footer>
         </div>
-        {desktop && showChanges && <ChangesPanel sessionId={sessionId} version={changesVersion} />}
+        {desktop && showChanges && <ChangesPanel sessionId={sessionId} cwd={info?.cwd ?? ''} version={changesVersion} />}
       </div>
     </div>
   )

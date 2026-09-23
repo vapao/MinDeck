@@ -20,7 +20,7 @@ export function WorkspacesPage() {
     if (alias && alias !== current) rename.mutate({ id, alias })
   }
   const onRemove = async (id: string, alias: string) => {
-    if (await dialog.confirm({ title: `Remove "${alias}" from the list?`, message: 'Existing sessions in this directory are not affected.', ok: 'Remove', danger: true })) remove.mutate(id)
+    if (await dialog.confirm({ title: `Remove "${alias}" from the list?`, message: 'Existing sessions in this directory are not affected. Its services are removed too.', ok: 'Remove', danger: true })) remove.mutate(id)
   }
   const error = workspaces.error ?? remove.error ?? rename.error
 

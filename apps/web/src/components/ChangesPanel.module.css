@@ -204,3 +204,4 @@
 .resultText span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .resultPath { color: var(--text-3); font-size: 11px; }
 .iconButton[hidden] { display: none; }
+.runningDot { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }

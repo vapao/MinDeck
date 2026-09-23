@@ -1,7 +1,9 @@
 import { DatabaseSync } from 'node:sqlite';
-import type { AgentEvent, Attachment, EventType, PendingRequest, PendingRequestBody, PermissionMode, ProviderEvent, Resolution, Session, SessionStatus, Settings, Workspace } from '@agentdeck/shared';
+import type { AgentEvent, Attachment, EventType, PendingRequest, PendingRequestBody, PermissionMode, ProviderEvent, Resolution, ServiceConfig, Session, SessionStatus, Settings, Workspace } from '@agentdeck/shared';
 
 export type Store = ReturnType<typeof openStore>;
+/** pid 是服务进程组的组长；startedAt 是它在 ps 里的启动时间，用来识别 pid 是否已被别的进程复用 */
+export type ServiceRow = ServiceConfig & { id: string; workspaceId: string; pid: number | null; startedAt: string | null; createdAt: string };
 
 export function openStore(path: string) {
   const db = new DatabaseSync(path);
@@ -46,6 +48,17 @@ export function openStore(path: string) {
       path       TEXT NOT NULL UNIQUE,
       alias      TEXT NOT NULL,
       created_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS workspace_services (
+      id           TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+      name         TEXT NOT NULL,
+      command      TEXT NOT NULL,
+      subdir       TEXT NOT NULL,
+      url          TEXT NOT NULL,
+      pid          INTEGER,
+      started_at   TEXT,
+      created_at   TEXT NOT NULL
     );
     CREATE TABLE IF NOT EXISTS settings (
       key   TEXT PRIMARY KEY,
@@ -130,6 +143,13 @@ export function openStore(path: string) {
   const selectWorkspaceByPath = db.prepare(`SELECT * FROM workspaces WHERE path = ?`);
   const updateWorkspaceAlias = db.prepare(`UPDATE workspaces SET alias = ? WHERE id = ?`);
   const deleteWorkspace = db.prepare(`DELETE FROM workspaces WHERE id = ?`);
+  const insertService = db.prepare(`INSERT INTO workspace_services (id, workspace_id, name, command, subdir, url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`);
+  const selectServices = db.prepare(`SELECT * FROM workspace_services ORDER BY created_at`);
+  const selectService = db.prepare(`SELECT * FROM workspace_services WHERE id = ?`);
+  const updateService = db.prepare(`UPDATE workspace_services SET name = ?, command = ?, subdir = ?, url = ? WHERE id = ?`);
+  const updateServiceProcess = db.prepare(`UPDATE workspace_services SET pid = ?, started_at = ? WHERE id = ?`);
+  const deleteService = db.prepare(`DELETE FROM workspace_services WHERE id = ?`);
+  const deleteWorkspaceServices = db.prepare(`DELETE FROM workspace_services WHERE workspace_id = ?`);
   const selectSetting = db.prepare(`SELECT value FROM settings WHERE key = ?`);
   const upsertSetting = db.prepare(`INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`);
 
@@ -165,6 +185,17 @@ export function openStore(path: string) {
     createdAt: r.created_at as string,
   });
   const rowToWorkspace = (r: Record<string, unknown>): Workspace => ({ id: r.id as string, path: r.path as string, alias: r.alias as string, createdAt: r.created_at as string });
+  const rowToService = (r: Record<string, unknown>): ServiceRow => ({
+    id: r.id as string,
+    workspaceId: r.workspace_id as string,
+    name: r.name as string,
+    command: r.command as string,
+    subdir: r.subdir as string,
+    url: r.url as string,
+    pid: (r.pid as number | null) ?? null,
+    startedAt: (r.started_at as string | null) ?? null,
+    createdAt: r.created_at as string,
+  });
   const rowToEvent = (r: Record<string, unknown>): AgentEvent =>
     ({
       sessionId: r.session_id,
@@ -271,8 +302,29 @@ export function openStore(path: string) {
     setWorkspaceAlias(id: string, alias: string): boolean {
       return updateWorkspaceAlias.run(alias, id).changes === 1;
     },
+    /** 服务配置跟着项目走，一起删；是否还有服务在跑由调用方先检查 */
     deleteWorkspace(id: string): boolean {
+      deleteWorkspaceServices.run(id);
       return deleteWorkspace.run(id).changes === 1;
+    },
+    createService(s: ServiceRow) {
+      insertService.run(s.id, s.workspaceId, s.name, s.command, s.subdir, s.url, s.createdAt);
+    },
+    listServices(): ServiceRow[] {
+      return selectServices.all().map(rowToService);
+    },
+    getService(id: string): ServiceRow | undefined {
+      const row = selectService.get(id);
+      return row && rowToService(row);
+    },
+    updateService(id: string, c: ServiceConfig): boolean {
+      return updateService.run(c.name, c.command, c.subdir, c.url, id).changes === 1;
+    },
+    setServiceProcess(id: string, pid: number | null, startedAt: string | null) {
+      updateServiceProcess.run(pid, startedAt, id);
+    },
+    deleteService(id: string): boolean {
+      return deleteService.run(id).changes === 1;
     },
     /** 应用级默认值整份存一行 JSON；没存过时返回 null */
     getSettings(): Settings | null {

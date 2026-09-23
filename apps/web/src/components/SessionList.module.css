@@ -207,3 +207,11 @@
     display: block;
   }
 }
+.serviceDot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin-right: 4px;
+  border-radius: 50%;
+  background: var(--ok);
+}

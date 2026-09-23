@@ -10,6 +10,7 @@ import { isUnread, useSeen } from '../session/seen'
 import { useDraftSessions } from '../session/drafts'
 import { leaveSession } from '../session/useSessions'
 import { useMediaQuery } from '../session/useMediaQuery'
+import { useServices } from './ServicesPanel'
 import styles from './SessionList.module.css'
 
 // idle 不显示：空闲是常态，逐行写 Idle 只是噪音；跑完还没看过的显示 Done
@@ -101,6 +102,8 @@ function SessionList({ sessions, activeId, onSelect, actions, empty }: Props) {
   // 分组名优先用项目别名；已移除的工作区退回目录名
   const workspaces = useQuery({ queryKey: ['workspaces'], queryFn: api.listWorkspaces })
   const aliasOf = (cwd: string) => workspaces.data?.find((w) => w.path === cwd)?.alias ?? cwd.split('/').pop()
+  const services = useServices()
+  const servicesRunning = (cwd: string) => services.data?.some((s) => s.running && s.workspaceId === workspaces.data?.find((w) => w.path === cwd)?.id)
 
   if (groups.size === 0) return <div className={styles.empty}>{empty}</div>
   return (
@@ -113,6 +116,7 @@ function SessionList({ sessions, activeId, onSelect, actions, empty }: Props) {
             <button type="button" className={styles.groupHead} onClick={() => toggleCollapsed(cwd)} aria-expanded={!isCollapsed}>
               {isCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
               <span className={styles.groupName} title={cwd}>{aliasOf(cwd)}</span>
+              {servicesRunning(cwd) && <span className={styles.serviceDot} title="Services running" />}
               <code className={styles.groupCount}>{items.length}</code>
             </button>
             {visible.map((s) => (

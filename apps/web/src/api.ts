@@ -1,4 +1,4 @@
-import type { ProjectFilesResponse, CreateSessionBody, CreateSessionResponse, CreateWorkspaceBody, DeleteSessionResponse, DiffResponse, EntriesResponse, FileResponse, InterruptResponse, ListChangesResponse, ListDirsResponse, ListSessionsResponse, ListWorkspacesResponse, ResolvePendingBody, ResolvePendingResponse, SendMessageBody, SendMessageResponse, SettingsResponse, UpdateSessionBody, UpdateSessionResponse, UpdateSettingsBody, UpdateWorkspaceBody, UploadAttachmentResponse, UsageResponse, Workspace } from '@agentdeck/shared'
+import type { ProjectFilesResponse, CreateServiceBody, ListServicesResponse, Service, ServiceLogResponse, UpdateServiceBody, CreateSessionBody, CreateSessionResponse, CreateWorkspaceBody, DeleteSessionResponse, DiffResponse, EntriesResponse, FileResponse, InterruptResponse, ListChangesResponse, ListDirsResponse, ListSessionsResponse, ListWorkspacesResponse, ResolvePendingBody, ResolvePendingResponse, SendMessageBody, SendMessageResponse, SettingsResponse, UpdateSessionBody, UpdateSessionResponse, UpdateSettingsBody, UpdateWorkspaceBody, UploadAttachmentResponse, UsageResponse, Workspace } from '@agentdeck/shared'
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   // 只有 JSON body 才声明 content-type：FormData 由浏览器自己设 multipart boundary；无 body 的 DELETE 带上会被 Fastify 按空 JSON 拒绝
@@ -19,6 +19,12 @@ export const api = {
   createWorkspace: (body: CreateWorkspaceBody) => request<Workspace>('/api/workspaces', { method: 'POST', body: JSON.stringify(body) }),
   updateWorkspace: (id: string, body: UpdateWorkspaceBody) => request<Workspace>(`/api/workspaces/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   deleteWorkspace: (id: string) => request<{ ok: true }>(`/api/workspaces/${id}`, { method: 'DELETE' }),
+  listServices: () => request<ListServicesResponse>('/api/services'),
+  createService: (body: CreateServiceBody) => request<Service>('/api/services', { method: 'POST', body: JSON.stringify(body) }),
+  updateService: (id: string, body: UpdateServiceBody) => request<Service>(`/api/services/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  deleteService: (id: string) => request<{ ok: true }>(`/api/services/${id}`, { method: 'DELETE' }),
+  serviceAction: (id: string, action: 'start' | 'stop' | 'restart') => request<{ ok: true }>(`/api/services/${id}/${action}`, { method: 'POST' }),
+  serviceLog: (id: string, cursor: string) => request<ServiceLogResponse>(`/api/services/${id}/log?cursor=${encodeURIComponent(cursor)}`),
   listDirs: (path?: string) => request<ListDirsResponse>(`/api/fs/dirs${path ? `?path=${encodeURIComponent(path)}` : ''}`),
   getSettings: () => request<SettingsResponse>('/api/settings'),
   updateSettings: (body: UpdateSettingsBody) => request<SettingsResponse>('/api/settings', { method: 'PUT', body: JSON.stringify(body) }),

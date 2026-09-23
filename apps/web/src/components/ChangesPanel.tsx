@@ -1,17 +1,18 @@
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { ChevronLeft, FileCode, FileDiff, Folder, RefreshCw } from 'lucide-react'
+import { ChevronLeft, FileCode, FileDiff, Folder, RefreshCw, Server } from 'lucide-react'
 import type { ChangedFile } from '@agentdeck/shared'
 import { showFile } from './FilePreview'
 import { FilesPanel } from './FilesPanel'
+import { ServicesPanel, useServices } from './ServicesPanel'
 import { api } from '../api'
 import { useResizable } from './Resizer'
 import styles from './ChangesPanel.module.css'
 
-// 项目侧栏（桌面端）：改动 diff 与完整目录浏览。只读。
+// 项目侧栏（桌面端）：改动 diff、完整目录浏览（只读）与项目服务。
 // version 在一轮结束 / 工具完成时递增，面板据此节流刷新，不轮询。
 
-type Props = { sessionId: string; version: number }
+type Props = { sessionId: string; cwd: string; version: number }
 
 // 目录树：只含有改动的路径；只有一个子目录的目录链压成一行（apps/web/src）
 type TreeNode = { name: string; dirs: TreeNode[]; files: ChangedFile[] }
@@ -70,9 +71,9 @@ function Tree({ node, depth, onSelect }: { node: TreeNode; depth: number; onSele
   )
 }
 
-export function ChangesPanel({ sessionId, version }: Props) {
+export function ChangesPanel({ sessionId, cwd, version }: Props) {
   const changes = useQuery({ queryKey: ['changes', sessionId], queryFn: () => api.listChanges(sessionId) })
-  const [tab, setTab] = useState<'changes' | 'files'>('changes')
+  const [tab, setTab] = useState<'changes' | 'files' | 'services'>('changes')
   const [selected, setSelected] = useState<string | null>(null)
   const [view, setView] = useState<'diff' | 'file'>('diff')
   // 事件密集时（一轮里连着几十次 Edit）合并成 1.5s 一次
@@ -83,6 +84,9 @@ export function ChangesPanel({ sessionId, version }: Props) {
   }, [version, refetch])
   useEffect(() => setSelected(null), [sessionId])
   const { width, handle } = useResizable('changes', 380, 280, 720, 'right')
+  const services = useServices()
+  const workspaces = useQuery({ queryKey: ['workspaces'], queryFn: api.listWorkspaces })
+  const workspaceId = workspaces.data?.find((w) => w.path === cwd)?.id
 
   const files = changes.data?.files ?? []
   return (
@@ -91,6 +95,7 @@ export function ChangesPanel({ sessionId, version }: Props) {
       <header className={styles.head}>
         <button type="button" className={styles.tab} aria-pressed={tab === 'changes'} onClick={() => setTab('changes')}><FileDiff size={14} />Changes{changes.data?.git && <code className={styles.count}>{files.length}</code>}</button>
         <button type="button" className={styles.tab} aria-pressed={tab === 'files'} onClick={() => setTab('files')}><Folder size={14} />Files</button>
+        <button type="button" className={styles.tab} aria-pressed={tab === 'services'} onClick={() => setTab('services')}><Server size={14} />Services{services.data?.some((s) => s.running && workspaceId === s.workspaceId) && <span className={styles.runningDot} />}</button>
         <span style={{ flex: 1 }} />
         <button type="button" hidden={tab !== 'changes'} className={styles.iconButton} onClick={() => refetch()} disabled={changes.isFetching} aria-label="Refresh">
           <RefreshCw size={14} className={changes.isFetching ? styles.spin : undefined} />
@@ -125,6 +130,7 @@ export function ChangesPanel({ sessionId, version }: Props) {
       </div>}
       </section>
       <FilesPanel key={sessionId} sessionId={sessionId} active={tab === 'files'} version={version} />
+      <ServicesPanel key={cwd} cwd={cwd} active={tab === 'services'} />
     </aside>
   )
 }
