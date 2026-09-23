@@ -75,8 +75,9 @@ export function createMcpServer(hub: Hub, store: Store, callerId: string, signal
       provider: z.enum(['claude', 'codex', 'deepseek']),
       prompt: z.string().min(1).describe('First message for the new session'),
       workspace: z.string().optional().describe('Project path from list_workspaces; defaults to your own project'),
+      notify: z.boolean().optional().describe('Default true: when the session finishes this work, its result arrives in your conversation as a new message, so end your turn instead of waiting. Set false only if you need the result within this turn, then use get_session with waitSec'),
     },
-  }, async ({ provider, prompt, workspace }) => {
+  }, async ({ provider, prompt, workspace, notify = true }) => {
     const cwd = workspace ?? hub.getSession(callerId).cwd;
     // 先校验再弹卡，不让人批一张注定失败的请求
     if (!store.getWorkspaceByPath(cwd)) throw new HubError(400, `${cwd} is not an AgentDeck project; see list_workspaces`);
@@ -89,17 +90,18 @@ export function createMcpServer(hub: Hub, store: Store, callerId: string, signal
     signal.throwIfAborted();
     const session = hub.createSession(provider, cwd);
     try {
-      hub.sendMessage(session.id, prompt, []);
+      hub.sendMessage(session.id, prompt, [], 'agent');
     } catch (error) {
       // 消息尚未入库时恢复为审批前状态，避免留下无法使用的空会话（如 DeepSeek 缺少 Key）。
       if (hub.lastSeq(session.id) === 0) hub.deleteSession(session.id);
       throw error;
     }
+    if (notify) hub.notifyWhenDone(session.id, callerId);
     return json({ sessionId: session.id });
   });
 
   server.registerTool('get_session', {
-    description: `Read a session: status, open approvals / questions, and conversation entries (user and assistant messages, one-line tool summaries) after afterSeq, at most ${maxEntries} latest. Pass nextSeq from the previous call as afterSeq to read only new entries. With waitSec, first waits until the session stops running (idle, error, or waiting for the user) or the time runs out.`,
+    description: `Read a session: status, open approvals / questions, and conversation entries (user and assistant messages, one-line tool summaries) after afterSeq, at most ${maxEntries} latest. Pass nextSeq from the previous call as afterSeq to read only new entries. With waitSec, first waits until the session stops running (idle, error, or waiting for the user) or the time runs out; prefer the notify option of create_session / send_message over waiting.`,
     inputSchema: {
       id: z.string(),
       afterSeq: z.number().int().min(0).optional(),
@@ -125,10 +127,16 @@ export function createMcpServer(hub: Hub, store: Store, callerId: string, signal
 
   server.registerTool('send_message', {
     description: 'Send a message to another session. If it is running, the message is queued and sent after the current turn.',
-    inputSchema: { id: z.string(), text: z.string().min(1) },
-  }, ({ id, text }) => {
+    inputSchema: {
+      id: z.string(),
+      text: z.string().min(1),
+      notify: z.boolean().optional().describe('Default true: when the session finishes this work, its result arrives in your conversation as a new message, so end your turn instead of waiting. Set false only if you need the result within this turn, then use get_session with waitSec'),
+    },
+  }, ({ id, text, notify = true }) => {
     notSelf(id);
-    return json(hub.sendMessage(id, text, []));
+    const result = hub.sendMessage(id, text, [], 'agent');
+    if (notify) hub.notifyWhenDone(id, callerId);
+    return json(result);
   });
 
   server.registerTool('interrupt', {

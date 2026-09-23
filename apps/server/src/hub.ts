@@ -30,6 +30,11 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
   // 账号级额度，按 rateLimitType 保留最新值，GET /api/usage 直接返回
   const usage: Record<string, UsageInfo> = {};
   const titleJobs = new Map<string, AbortController>();
+  // 子会话结束后回调父会话（MCP notify）：子会话 id → 父会话 id → 登记时子会话的 lastSeq。一次性，只在内存里，Hub 重启即丢
+  const watchers = new Map<string, Map<string, number>>();
+  // 父会话在用户没插话的情况下被自动回调唤醒的次数：两个 Agent 可能互相派活、来回唤醒，bypass 下没人拦
+  const autoWakes = new Map<string, number>();
+  const maxAutoWakes = 5;
   let closing = false;
 
   store.expireAllPending();
@@ -57,6 +62,34 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
   function setStatus(sessionId: string, status: SessionStatus) {
     store.setSessionStatus(sessionId, status);
     emit(sessionId, { type: 'session.status', payload: { status } });
+    // 排队的追加指令发完才算结束；waiting_user 不回调：父会话代批不了，靠用户自己处理
+    if (status === 'idle' || status === 'error') notifyWatchers(sessionId, status);
+  }
+
+  function notifyWatchers(childId: string, status: 'idle' | 'error') {
+    const parents = watchers.get(childId);
+    if (!parents) return;
+    watchers.delete(childId);
+    const child = getSession(childId);
+    for (const [parentId, sinceSeq] of parents) {
+      if (!store.getSession(parentId)) continue;
+      const wakes = autoWakes.get(parentId) ?? 0;
+      if (wakes >= maxAutoWakes) {
+        emit(parentId, { type: 'error', payload: { message: `Skipped the result of session ${childId}: ${maxAutoWakes} automatic wake-ups in a row without your input. Send a message to continue.` } });
+        continue;
+      }
+      autoWakes.set(parentId, wakes + 1);
+      const events = store.eventsAfter(childId, sinceSeq);
+      const reply = events.findLast((e) => e.type === 'message.completed')?.payload.text;
+      const interrupted = events.some((e) => e.type === 'turn.completed' && e.payload.reason === 'interrupted');
+      const outcome = status === 'error' ? 'failed' : interrupted ? 'was interrupted' : 'finished';
+      const text = [
+        `[AgentDeck] Session ${childId} (${child.provider}${child.title ? `, "${child.title}"` : ''}) ${outcome}.`,
+        reply ? `Last reply:\n${reply}` : 'No reply.',
+        `Use get_session with afterSeq ${sinceSeq} for details.`,
+      ].join('\n\n');
+      sendMessage(parentId, text, [], 'agent');
+    }
   }
 
   const emptyDefaults: Settings = { titles: { enabled: false, provider: 'claude', model: 'claude-haiku-4-5' }, claude: { model: '', effort: '', permissionMode: 'approval' }, codex: { model: '', effort: '', permissionMode: 'approval' }, deepseek: { model: 'deepseek-flash', effort: '', permissionMode: 'approval', baseUrl: 'https://api.deepseek.com/anthropic', apiKeyConfigured: false } };
@@ -182,6 +215,44 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
     return value;
   }
 
+  /** origin 'user' 是用户从界面发的，会清零自动唤醒计数；'agent' 是 MCP send_message 或子会话回调 */
+  function sendMessage(sessionId: string, text: string, attachmentIds: string[], origin: 'user' | 'agent' = 'user'): { seq: number; queued: boolean } {
+    const session = getSession(sessionId);
+    if (origin === 'user') autoWakes.delete(sessionId);
+    let files;
+    try {
+      files = attachments.forMessage(sessionId, attachmentIds);
+    } catch (err) {
+      throw new HubError(400, (err as Error).message);
+    }
+    if (files.length && session.provider === 'deepseek' && session.model === 'deepseek-v4-pro') throw new HubError(400, 'DeepSeek Pro 不支持图片，请新建 Flash 会话');
+    const provider = ensureProvider(session);
+    // 从归档里点进来继续聊：一旦又活起来就得回到侧栏，否则会在看不见的地方跑
+    if (session.archivedAt) store.setSessionArchivedAt(sessionId, null);
+    const firstText = !!text.trim() && !store.hasUserText(sessionId);
+    const { seq } = emit(sessionId, { type: 'message.user', payload: { text, attachments: files } });
+    // 一个 Session 同时只允许一个 active turn（方案 §8.3）：进行中就排队，本轮结束后由 onEvent 接着发
+    const queued = session.status === 'running' || session.status === 'waiting_user';
+    if (queued) {
+      let q = queues.get(sessionId);
+      if (!q) queues.set(sessionId, (q = []));
+      q.push({ text, files });
+    } else {
+      dispatch(sessionId, provider, { text, files });
+    }
+    const config = settings();
+    if (firstText && config.titles.enabled) {
+      const controller = new AbortController();
+      titleJobs.set(sessionId, controller);
+      const connection = config.titles.provider === 'deepseek' ? { baseUrl: config.deepseek.baseUrl, apiKey: store.getDeepseekApiKey() } : undefined;
+      void generateTitle(config.titles, text, controller, connection).then(
+        (title) => { if (!closing && !controller.signal.aborted) store.setSessionTitle(sessionId, title); },
+        () => { if (!closing && !controller.signal.aborted) console.warn(`Title generation failed for session ${sessionId}; keeping message preview`); },
+      ).finally(() => titleJobs.delete(sessionId));
+    }
+    return { seq, queued };
+  }
+
   return {
     /** model / effort 省略时取设置里的默认值；空字符串 = 交给 Provider 默认，落库为 null。permissionMode 省略时也取默认值，没有"交给 Provider 默认"这一说 */
     createSession(provider: Session['provider'], cwd: string, override: { model?: string; effort?: string; permissionMode?: PermissionMode } = {}): Session {
@@ -264,6 +335,8 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
       live.get(sessionId)?.close();
       live.delete(sessionId);
       queues.delete(sessionId);
+      watchers.delete(sessionId);
+      autoWakes.delete(sessionId);
       titleJobs.get(sessionId)?.abort();
       store.deleteSession(sessionId);
       // 表已一致，目录删失败也不回滚；残留会在下次删除同 id 时被 force 覆盖
@@ -273,40 +346,13 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
       deletedListeners.delete(sessionId);
     },
 
-    sendMessage(sessionId: string, text: string, attachmentIds: string[]): { seq: number; queued: boolean } {
-      const session = getSession(sessionId);
-      let files;
-      try {
-        files = attachments.forMessage(sessionId, attachmentIds);
-      } catch (err) {
-        throw new HubError(400, (err as Error).message);
-      }
-      if (files.length && session.provider === 'deepseek' && session.model === 'deepseek-v4-pro') throw new HubError(400, 'DeepSeek Pro 不支持图片，请新建 Flash 会话');
-      const provider = ensureProvider(session);
-      // 从归档里点进来继续聊：一旦又活起来就得回到侧栏，否则会在看不见的地方跑
-      if (session.archivedAt) store.setSessionArchivedAt(sessionId, null);
-      const firstText = !!text.trim() && !store.hasUserText(sessionId);
-      const { seq } = emit(sessionId, { type: 'message.user', payload: { text, attachments: files } });
-      // 一个 Session 同时只允许一个 active turn（方案 §8.3）：进行中就排队，本轮结束后由 onEvent 接着发
-      const queued = session.status === 'running' || session.status === 'waiting_user';
-      if (queued) {
-        let q = queues.get(sessionId);
-        if (!q) queues.set(sessionId, (q = []));
-        q.push({ text, files });
-      } else {
-        dispatch(sessionId, provider, { text, files });
-      }
-      const config = settings();
-      if (firstText && config.titles.enabled) {
-        const controller = new AbortController();
-        titleJobs.set(sessionId, controller);
-        const connection = config.titles.provider === 'deepseek' ? { baseUrl: config.deepseek.baseUrl, apiKey: store.getDeepseekApiKey() } : undefined;
-        void generateTitle(config.titles, text, controller, connection).then(
-          (title) => { if (!closing && !controller.signal.aborted) store.setSessionTitle(sessionId, title); },
-          () => { if (!closing && !controller.signal.aborted) console.warn(`Title generation failed for session ${sessionId}; keeping message preview`); },
-        ).finally(() => titleJobs.delete(sessionId));
-      }
-      return { seq, queued };
+    sendMessage,
+
+    /** 子会话这一轮（连同排队的追加指令）结束时，以一条消息回报给父会话；一次性 */
+    notifyWhenDone(childId: string, parentId: string) {
+      let parents = watchers.get(childId);
+      if (!parents) watchers.set(childId, (parents = new Map()));
+      parents.set(parentId, store.lastSeq(childId));
     },
 
     async interrupt(sessionId: string) {
