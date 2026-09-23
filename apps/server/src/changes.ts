@@ -109,6 +109,11 @@ async function repoChanges(root: string, prefix: string): Promise<ChangedFile[]>
     const y = p[1];
     const path = p.slice(3);
     if (x === 'R' || x === 'C') i++; // 跳过原路径
+    // Git 把未跟踪的嵌套仓库报成 `目录/`，改为展示该仓库自己的文件改动。
+    if (path.endsWith('/')) {
+      if (await exists(join(root, path, '.git'))) files.push(...await repoChanges(join(root, path), prefix + path));
+      continue;
+    }
     // 合并 index / worktree 两列成一个字母：未跟踪 ?、删除 D、新增 A、其余按修改 M
     const status: ChangedFile['status'] = x === '?' ? '?' : x === 'D' || y === 'D' ? 'D' : x === 'A' ? 'A' : x === 'R' ? 'R' : 'M';
     files.push({ path: prefix + path, status, ...(stats.get(path) ?? { additions: null, deletions: null }) });
