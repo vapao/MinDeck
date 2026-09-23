@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { flushSync } from 'react-dom'
 import { useQuery } from '@tanstack/react-query'
 import Markdown, { defaultUrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -64,11 +65,53 @@ export function FilePreviewHost() {
 function Preview({ sessionId, path, line }: { sessionId: string; path: string; line?: number }) {
   const ref = useRef<HTMLDialogElement>(null)
   const [source, setSource] = useState(false)
-  const [zoom, setZoom] = useState(false)
+  // null = fit to the preview; otherwise a multiple of the image's natural size
+  const [scale, setScale] = useState<number | null>(null)
+  const [natural, setNatural] = useState(0)
   const [imageError, setImageError] = useState(false)
+  const imageRef = useRef<HTMLImageElement>(null)
   const q = useQuery({ queryKey: ['output', sessionId, path], queryFn: () => api.outputFile(sessionId, path), staleTime: 0, retry: false })
   useEffect(() => { ref.current!.showModal() }, [])
   useEffect(() => { if (q.data && line) ref.current?.querySelector(`[data-line="${line}"]`)?.scrollIntoView({ block: 'center' }) }, [q.data, line])
+  // Keeps the point under (x, y) in place; flushSync so the next pinch event measures the new size
+  const zoomTo = (next: number | null, x?: number, y?: number) => {
+    const img = imageRef.current!
+    const box = img.parentElement!
+    const view = box.getBoundingClientRect()
+    x ??= view.left + view.width / 2
+    y ??= view.top + view.height / 2
+    const before = img.getBoundingClientRect()
+    flushSync(() => setScale(next === null ? null : Math.min(10, Math.max(0.1, next))))
+    const after = img.getBoundingClientRect()
+    box.scrollLeft += after.left + (x - before.left) / before.width * after.width - x
+    box.scrollTop += after.top + (y - before.top) / before.height * after.height - y
+  }
+  const currentScale = () => imageRef.current!.getBoundingClientRect().width / imageRef.current!.naturalWidth
+  useEffect(() => {
+    const box = imageRef.current?.parentElement
+    if (!natural || !box) return
+    // Trackpad pinch arrives as ctrl+wheel in Chrome / Firefox and as gesture events in Safari
+    const wheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return
+      e.preventDefault()
+      zoomTo(currentScale() * Math.exp(-Math.max(-50, Math.min(50, e.deltaY)) / 100), e.clientX, e.clientY)
+    }
+    let start = 1
+    const gestureStart = (e: Event) => { e.preventDefault(); start = currentScale() }
+    const gestureChange = (e: Event) => {
+      e.preventDefault()
+      const g = e as Event & { scale: number; clientX: number; clientY: number }
+      zoomTo(start * g.scale, g.clientX, g.clientY)
+    }
+    box.addEventListener('wheel', wheel, { passive: false })
+    box.addEventListener('gesturestart', gestureStart)
+    box.addEventListener('gesturechange', gestureChange)
+    return () => {
+      box.removeEventListener('wheel', wheel)
+      box.removeEventListener('gesturestart', gestureStart)
+      box.removeEventListener('gesturechange', gestureChange)
+    }
+  }, [natural])
   const close = () => { selected = null; listeners.forEach((l) => l()) }
   const file = q.data
   const local = file && mappedPath(file.path)
@@ -78,14 +121,18 @@ function Preview({ sessionId, path, line }: { sessionId: string; path: string; l
     <header className={modal.head}>
       <strong className={`${modal.title} ${styles.fileTitle}`} title={file?.path ?? path}>{file?.name ?? 'File'}</strong>
       {file?.kind === 'markdown' && <button className={`${modal.secondary} ${styles.viewButton}`} onClick={() => setSource(!source)}>{source ? 'Preview' : 'Source'}</button>}
-      {file?.kind === 'image' && <button className={`${modal.secondary} ${styles.viewButton}`} onClick={() => setZoom(!zoom)}>{zoom ? 'Fit image' : 'Actual size'}</button>}
+      {file?.kind === 'image' && natural > 0 && <>
+        <button className={`${modal.secondary} ${styles.viewButton}`} onClick={() => zoomTo(currentScale() / 1.25)} aria-label="Zoom out">−</button>
+        <button className={`${modal.secondary} ${styles.viewButton}`} onClick={() => zoomTo(null)} title="Fit image">{scale === null ? 'Fit' : `${Math.round(scale * 100)}%`}</button>
+        <button className={`${modal.secondary} ${styles.viewButton}`} onClick={() => zoomTo(currentScale() * 1.25)} aria-label="Zoom in">+</button>
+      </>}
       <button className={modal.close} onClick={() => ref.current!.close()} aria-label="Close">×</button>
     </header>
     <div className={styles.content}>
       {q.error && <p role="alert">{q.error.message}</p>}
       {!file && !q.error && <p>Loading…</p>}
       {file && <>
-        {file.kind === 'image' && <>{imageError ? <p>Image preview unavailable. Use Finder or download the file.</p> : <div className={styles.image}><img style={zoom ? { maxWidth: 'none', maxHeight: 'none' } : undefined} src={url} alt={file.name} onError={() => setImageError(true)} /></div>}</>}
+        {file.kind === 'image' && <>{imageError ? <p>Image preview unavailable. Use Finder or download the file.</p> : <div className={styles.image}><img ref={imageRef} style={scale === null ? undefined : { width: natural * scale, maxWidth: 'none', maxHeight: 'none' }} src={url} alt={file.name} onLoad={(e) => setNatural(e.currentTarget.naturalWidth)} onDoubleClick={(e) => zoomTo(scale === null ? 1 : null, e.clientX, e.clientY)} onError={() => setImageError(true)} /></div>}</>}
         {file.kind === 'pdf' && <><object className={styles.pdf} data={url} type="application/pdf"><p>PDF preview is unavailable on this device.</p></object></>}
         {file.kind === 'audio' && <audio controls src={url} />}
         {file.kind === 'video' && <video className={styles.video} controls src={url} />}
