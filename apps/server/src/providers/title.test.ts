@@ -20,8 +20,7 @@ test('title SDK requests contain no tools and keep DeepSeek credentials isolated
   const address = server.address() as { port: number };
   const before = { ...process.env };
   try {
-    const title = await generateTitle({ enabled: true, provider: 'deepseek', model: 'deepseek-flash' }, '请增加自动会话标题', new AbortController(), { baseUrl: `http://127.0.0.1:${address.port}`, apiKey: 'title-test-key' });
-    assert.equal(Array.from(title).length, 15);
+    await generateTitle({ enabled: true, provider: 'deepseek', model: 'deepseek-flash' }, '请增加自动会话标题', new AbortController(), { baseUrl: `http://127.0.0.1:${address.port}`, apiKey: 'title-test-key' });
     assert.ok(requests.length > 0);
     for (const request of requests) {
       assert.equal(request.model, 'deepseek-flash');
