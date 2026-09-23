@@ -6,6 +6,7 @@ import { z } from 'zod';
 import type { AgentEvent } from '@agentdeck/shared';
 import { HubError, type createHub } from './hub';
 import type { Store } from './store/db';
+import type { Services } from './services';
 import type { AgentdeckMcp } from './providers/types';
 
 // 会话编排 MCP：只给 Hub 自己拉起的 Provider 会话用，调用方靠按会话注入的请求头识别（外部客户端不支持，没有会话可挂派生审批卡）。
@@ -18,22 +19,24 @@ const callerHeader = 'x-agentdeck-session';
 const toolTimeoutSec = 24 * 3600;
 const maxWaitSec = 600;
 const maxEntries = 40;
+const defaultLogLines = 100;
+const maxLogLines = 1000;
 
 /** Provider 侧免审批的工具：只读的，以及 create_session（它由 Hub 自己弹审批卡，不再让 Provider 先审一次） */
-const autoApprove = ['list_workspaces', 'list_sessions', 'get_session', 'create_session'];
+const autoApprove = ['list_workspaces', 'list_sessions', 'get_session', 'create_session', 'list_services', 'get_service_log'];
 
 export function agentdeckMcpFor(url: string, sessionId: string): AgentdeckMcp {
   return { url, headers: { [callerHeader]: sessionId }, timeoutSec: toolTimeoutSec, autoApprove };
 }
 
-export function registerMcpRoute(app: FastifyInstance, hub: Hub, store: Store) {
+export function registerMcpRoute(app: FastifyInstance, hub: Hub, store: Store, services: Services) {
   app.post('/mcp', async (req, reply) => {
     const callerId = req.headers[callerHeader];
     if (typeof callerId !== 'string' || !store.getSession(callerId)) return reply.code(403).send({ message: 'AgentDeck MCP is only available to AgentDeck sessions' });
     // 调用方断开（工具超时、轮被中断）时作废还在等的审批 / 等待
     const controller = new AbortController();
     reply.raw.on('close', () => controller.abort());
-    const server = createMcpServer(hub, store, callerId, controller.signal);
+    const server = createMcpServer(hub, store, services, callerId, controller.signal);
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
     reply.raw.on('close', () => void server.close());
     reply.hijack();
@@ -47,10 +50,16 @@ export function registerMcpRoute(app: FastifyInstance, hub: Hub, store: Store) {
 
 const json = (value: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(value, null, 2) }] });
 
-export function createMcpServer(hub: Hub, store: Store, callerId: string, signal: AbortSignal): McpServer {
+export function createMcpServer(hub: Hub, store: Store, services: Services, callerId: string, signal: AbortSignal): McpServer {
   const server = new McpServer({ name: 'agentdeck', version: '0.0.0' });
   const notSelf = (id: string) => {
     if (id === callerId) throw new HubError(400, 'This is your own session; target another session');
+  };
+  const project = (path?: string) => {
+    const cwd = path ?? hub.getSession(callerId).cwd;
+    const workspace = store.getWorkspaceByPath(cwd);
+    if (!workspace) throw new HubError(400, `${cwd} is not an AgentDeck project; see list_workspaces`);
+    return workspace;
   };
 
   server.registerTool('list_workspaces', {
@@ -147,6 +156,77 @@ export function createMcpServer(hub: Hub, store: Store, callerId: string, signal
     notSelf(id);
     await hub.interrupt(id);
     return json({ ok: true });
+  });
+
+  server.registerTool('list_services', {
+    description: 'List development services in an AgentDeck project, including their ids, commands, working subdirectories, links, and running state.',
+    inputSchema: { workspace: z.string().optional().describe('Project path from list_workspaces; defaults to your own project') },
+  }, ({ workspace }) => {
+    const { id } = project(workspace);
+    return json(services.list().filter((s) => s.workspaceId === id)
+      .map(({ id, name, command, subdir, url, running }) => ({ id, name, command, subdir, url, running })));
+  });
+
+  server.registerTool('create_service', {
+    description: 'Create a development service configuration without starting it. First call list_services; if a similar service exists, update it instead of creating a duplicate.',
+    inputSchema: {
+      name: z.string().min(1),
+      command: z.string().min(1),
+      subdir: z.string().optional().describe('Working directory relative to the project root; defaults to the root'),
+      url: z.string().optional().describe('Link to display in AgentDeck; defaults to empty'),
+      workspace: z.string().optional().describe('Project path from list_workspaces; defaults to your own project'),
+    },
+  }, ({ name, command, subdir = '', url = '', workspace }) => json(services.create({ workspaceId: project(workspace).id, name, command, subdir, url })));
+
+  server.registerTool('update_service', {
+    description: 'Update only the supplied fields of a service configuration. Changes to a running service take effect after restart_service.',
+    inputSchema: {
+      id: z.string(),
+      name: z.string().min(1).optional(),
+      command: z.string().min(1).optional(),
+      subdir: z.string().optional(),
+      url: z.string().optional(),
+    },
+  }, ({ id, name, command, subdir, url }) => {
+    const current = services.list().find((s) => s.id === id);
+    if (!current) throw new HubError(404, 'Service not found');
+    return json(services.update(id, {
+      name: name ?? current.name,
+      command: command ?? current.command,
+      subdir: subdir ?? current.subdir,
+      url: url ?? current.url,
+    }));
+  });
+
+  for (const action of ['start', 'stop', 'restart'] as const) {
+    server.registerTool(`${action}_service`, {
+      description: action === 'start'
+        ? 'Start a service and return immediately, without waiting for readiness. Use get_service_log to inspect its output.'
+        : `${action === 'stop' ? 'Stop' : 'Restart'} a service.`,
+      inputSchema: { id: z.string() },
+    }, async ({ id }) => {
+      await services[action](id);
+      return json({ ok: true });
+    });
+  }
+
+  server.registerTool('get_service_log', {
+    description: `Read a service log. Without cursor, return the last N lines (default ${defaultLogLines}, max ${maxLogLines}) and mark truncated when earlier output was omitted. Pass the returned cursor to read only new output; a restarted service resets the cursor and returns its latest lines.`,
+    inputSchema: {
+      id: z.string(),
+      cursor: z.string().optional().describe('Opaque cursor returned by the previous call'),
+      lines: z.number().int().min(1).max(maxLogLines).optional().describe('Number of tail lines on the first read; default 100, max 1000'),
+    },
+  }, ({ id, cursor, lines = defaultLogLines }) => {
+    const log = services.log(id, cursor);
+    if (cursor && !log.reset) return json({ ...log, truncated: false });
+    const parts = log.text ? log.text.split('\n') : [];
+    const trailingNewline = parts.at(-1) === '';
+    if (trailingNewline) parts.pop();
+    // services.log 首次只读末尾 64KB；即使不足 N 行，之前的字节也应标为截断。
+    const byteOffset = Number(log.cursor.slice(log.cursor.lastIndexOf(':') + 1));
+    const truncated = parts.length > lines || (log.reset && byteOffset > 64 * 1024);
+    return json({ ...log, text: parts.slice(-lines).join('\n') + (trailingNewline ? '\n' : ''), truncated });
   });
 
   return server;
