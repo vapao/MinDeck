@@ -1,6 +1,6 @@
 import { generateTitle } from './providers/title';
 import { randomUUID } from 'node:crypto';
-import { effortOptions, modelOptions, permissionModeOptions, type AgentEvent, type Attachment, type MessageDelta, type PendingRequest, type PendingRequestBody, type PermissionMode, type ProviderEvent, type ProviderOutput, type Resolution, type Session, type SessionStatus, type Settings, type UpdateSettingsBody, type UsageInfo } from '@agentdeck/shared';
+import { getEffortOptions, modelOptions, permissionModeOptions, type AgentEvent, type Attachment, type MessageDelta, type PendingRequest, type PendingRequestBody, type PermissionMode, type ProviderEvent, type ProviderOutput, type Resolution, type Session, type SessionStatus, type Settings, type UpdateSettingsBody, type UsageInfo } from '@agentdeck/shared';
 import type { Store } from './store/db';
 import type { AttachmentStore } from './store/attachments';
 import type { ProviderSession, StartOptions } from './providers/types';
@@ -59,7 +59,7 @@ export function createHub(store: Store, attachments: AttachmentStore) {
     emit(sessionId, { type: 'session.status', payload: { status } });
   }
 
-  const emptyDefaults: Settings = { titles: { enabled: false, provider: 'claude', model: 'haiku' }, claude: { model: '', effort: '', permissionMode: 'approval' }, codex: { model: '', effort: '', permissionMode: 'approval' }, deepseek: { model: 'deepseek-flash', effort: '', permissionMode: 'approval', baseUrl: 'https://api.deepseek.com/anthropic', apiKeyConfigured: false } };
+  const emptyDefaults: Settings = { titles: { enabled: false, provider: 'claude', model: 'claude-haiku-4-5' }, claude: { model: '', effort: '', permissionMode: 'approval' }, codex: { model: '', effort: '', permissionMode: 'approval' }, deepseek: { model: 'deepseek-flash', effort: '', permissionMode: 'approval', baseUrl: 'https://api.deepseek.com/anthropic', apiKeyConfigured: false } };
   function settings(): Settings {
     const stored = store.getSettings();
     // 补 permissionMode 这种后加的字段：旧库存的 JSON 里没有，兜底成安全默认值，不然老装置升级后直接 undefined
@@ -180,7 +180,7 @@ export function createHub(store: Store, attachments: AttachmentStore) {
       const effort = (override.effort ?? defaults.effort).trim() || null;
       const permissionMode = override.permissionMode ?? defaults.permissionMode;
       if (model && !modelOptions[provider].some((o) => o.value === model)) throw new HubError(400, `${provider} does not support model ${model}`);
-      if (effort && !effortOptions[provider].some((o) => o.value === effort)) throw new HubError(400, `${provider} does not support effort ${effort}`);
+      if (effort && !getEffortOptions(provider, model).some((o) => o.value === effort)) throw new HubError(400, `${provider} model ${model ?? 'Default'} does not support effort ${effort}`);
       if (!permissionModeOptions.some((o) => o.value === permissionMode)) throw new HubError(400, `Unsupported permission mode ${permissionMode}`);
       const now = new Date().toISOString();
       const session: Session = { id: randomUUID(), provider, cwd, providerSessionId: null, status: 'idle', title: null, model, effort, permissionMode, archivedAt: null, createdAt: now, updatedAt: now };
@@ -195,7 +195,7 @@ export function createHub(store: Store, attachments: AttachmentStore) {
         const effort = next[provider].effort.trim();
         const permissionMode = next[provider].permissionMode;
         if (model && !modelOptions[provider].some((o) => o.value === model)) throw new HubError(400, `${provider} does not support model ${model}`);
-        if (effort && !effortOptions[provider].some((o) => o.value === effort)) throw new HubError(400, `${provider} does not support effort ${effort}`);
+        if (effort && !getEffortOptions(provider, model).some((o) => o.value === effort)) throw new HubError(400, `${provider} model ${model ?? 'Default'} does not support effort ${effort}`);
         if (!permissionModeOptions.some((o) => o.value === permissionMode)) throw new HubError(400, `Unsupported permission mode ${permissionMode}`);
       }
       const titles = next.titles ?? settings().titles;

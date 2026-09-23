@@ -57,15 +57,17 @@ export const modelOptions: Record<ProviderId, readonly SelectOption[]> = {
     { value: 'deepseek-flash', label: 'DeepSeek Flash' },
     { value: 'deepseek-v4-pro', label: 'DeepSeek Pro' },
   ],
+  // 用具体 ID 而非 SDK 别名：别名指向随 SDK 升级静默变化，界面上分不清实际跑的是哪一代
   claude: [
-    { value: 'fable', label: 'Fable' },
-    { value: 'opus', label: 'Opus' },
-    { value: 'sonnet', label: 'Sonnet' },
-    { value: 'haiku', label: 'Haiku' },
+    { value: 'claude-fable-5-1', label: 'Fable 5.1' },
+    { value: 'claude-opus-5-5', label: 'Opus 5.5' },
+    { value: 'claude-sonnet-5', label: 'Sonnet 5' },
+    { value: 'claude-haiku-4-5', label: 'Haiku 4.5' },
   ],
   codex: [
     { value: 'gpt-6-astra', label: 'GPT-6 Astra' },
-    { value: 'gpt-5.6-sol', label: 'GPT-5.6 Sol' },
+    { value: 'gpt-6-sol', label: 'GPT-6 Sol' },
+    { value: 'gpt-6-luna', label: 'GPT-6 Luna' },
   ],
 };
 
@@ -80,13 +82,30 @@ export const effortOptions: Record<ProviderId, readonly SelectOption[]> = {
     { value: 'max', label: 'Max' },
   ],
   codex: [
-    { value: 'light', label: 'Light' },
+    { value: 'low', label: 'Low' },
     { value: 'medium', label: 'Medium' },
     { value: 'high', label: 'High' },
-    { value: 'extra-high', label: 'Extra High' },
+    { value: 'xhigh', label: 'Xhigh' },
+    { value: 'max', label: 'Max' },
     { value: 'ultra', label: 'Ultra' },
   ],
 };
+
+// 按本机 Codex 模型目录维护；ultra 是 Codex 级能力，不能用底层 Responses API 枚举代替。
+const codexModelEfforts: Record<string, readonly string[]> = {
+  'gpt-6-astra': ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
+  'gpt-6-sol': ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
+  'gpt-6-luna': ['low', 'medium', 'high', 'xhigh', 'max'],
+};
+
+export function getEffortOptions(provider: ProviderId, model: string | null): readonly SelectOption[] {
+  if (provider !== 'codex') return effortOptions[provider];
+  // 未指定模型时仅提供各模型共有的等级，避免继承到不支持 ultra 的默认模型。
+  const supported = codexModelEfforts[model ?? ''];
+  return effortOptions.codex.filter(({ value }) => supported
+    ? supported.includes(value)
+    : Object.values(codexModelEfforts).every((efforts) => efforts.includes(value)));
+}
 
 /** 账号级额度（Claude：§16.1 第 4 条；Codex：account/rateLimits/updated），按 rateLimitType 各存一份最新值 */
 export type UsageInfo = {

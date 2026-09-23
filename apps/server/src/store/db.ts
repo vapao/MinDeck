@@ -56,6 +56,22 @@ export function openStore(path: string) {
   const sessionCols = new Set((db.prepare(`PRAGMA table_info(sessions)`).all() as { name: string }[]).map((c) => c.name));
   for (const col of ['model', 'effort', 'permission_mode', 'archived_at', 'title']) if (!sessionCols.has(col)) db.exec(`ALTER TABLE sessions ADD COLUMN ${col} TEXT`);
 
+  // 修正旧版下拉框保存的 Codex effort 拼写，不改变模型、会话排序或其他 Provider。
+  for (const [oldEffort, effort] of [['light', 'low'], ['extra-high', 'xhigh']]) {
+    db.prepare(`UPDATE sessions SET effort = ? WHERE provider = 'codex' AND effort = ?`).run(effort!, oldEffort!);
+    db.prepare(`UPDATE settings SET value = json_set(value, '$.codex.effort', ?)
+      WHERE key = 'defaults' AND json_extract(value, '$.codex.effort') = ?`).run(effort!, oldEffort!);
+  }
+
+  // Claude 设置从 SDK 别名改为具体 ID（按 SDK 0.3.280 的别名指向换算），否则设置页选不中、保存会被校验拒绝。
+  // 已有会话的 model 不动：resume 时别名仍被 SDK 接受。
+  for (const [alias, model] of [['fable', 'claude-fable-5-1'], ['opus', 'claude-opus-5-5'], ['sonnet', 'claude-sonnet-5'], ['haiku', 'claude-haiku-4-5']]) {
+    db.prepare(`UPDATE settings SET value = json_set(value, '$.claude.model', ?)
+      WHERE key = 'defaults' AND json_extract(value, '$.claude.model') = ?`).run(model!, alias!);
+    db.prepare(`UPDATE settings SET value = json_set(value, '$.titles.model', ?)
+      WHERE key = 'defaults' AND json_extract(value, '$.titles.provider') = 'claude' AND json_extract(value, '$.titles.model') = ?`).run(model!, alias!);
+  }
+
   const insertSession = db.prepare(
     `INSERT INTO sessions (id, provider, cwd, provider_session_id, status, model, effort, permission_mode, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,

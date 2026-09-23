@@ -145,3 +145,9 @@
 ## AI 会话标题（2026-09-22）
 
 设置页在 Provider 设置之后增加 `AI session titles`，沿用现有 section / 两列字段布局，提供 `Automatic titles`（Off / On）、`Provider`、`Model`。切换标题 Provider 时模型重置为该 Provider 的首个选项；初始为关闭、Claude / Haiku。复用页尾 Save changes。说明首条文字会额外发送到所选 Provider、消耗额度，标题最多 15 字符、只生成一次、失败保留原文预览。会话页和侧栏沿用原有标题位置，不增加加载状态。
+
+## Codex 模型与思考等级（2026-09-23）
+
+- 设置页与新建会话页按所选模型展示 Reasoning effort：GPT-6 Astra / Sol 为 Low、Medium、High、Xhigh（`xhigh`）、Max、Ultra；GPT-6 Luna 无 Ultra。模型为 Default 时只提供这些模型共有的等级。
+- 切换模型保留仍受支持的等级，不兼容时重置为 Default；服务端按同一份模型配置校验。
+- 沿用手工维护的模型配置，依据本机 Codex 模型目录核对；Codex 的 Ultra 与底层 API effort 枚举不同。旧数据中的 `light` / `extra-high` 在 Hub 下次启动时分别迁移为 `low` / `xhigh`，其他等级不变。

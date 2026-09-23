@@ -1,6 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { openStore } from './db';
+import { DatabaseSync } from 'node:sqlite';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 // 规则：每个 session 的事件 seq 从 1 开始、严格 +1 单调；不同 session 互不影响；重放按 seq 有序。
 test('event seq is strictly monotonic per session', () => {
@@ -31,4 +35,42 @@ test('pending request resolves atomically exactly once', () => {
   assert.equal(store.resolvePending('p1', { kind: 'approval', decision: 'deny' }), false);
   assert.equal(store.getPending('p1')?.status, 'resolved');
   assert.deepEqual(store.pendingBySession('s'), []);
+});
+
+// 迁移仅修正 Codex 的旧拼写；重开库幂等，其他 Provider、合法等级及会话数据不变。
+test('legacy Codex efforts migrate without changing other session data', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'agentdeck-effort-'));
+  const path = join(dir, 'hub.sqlite');
+  try {
+    openStore(path).close();
+    const db = new DatabaseSync(path);
+    for (const [id, provider, effort] of [
+      ['a', 'codex', 'extra-high'], ['b', 'codex', 'light'],
+      ['c', 'claude', 'extra-high'], ['d', 'codex', 'ultra'],
+    ]) {
+      db.prepare(`INSERT INTO sessions (id, provider, cwd, status, model, effort, created_at, updated_at)
+        VALUES (?, ?, '/tmp', 'idle', 'gpt-6-sol', ?, 'before', 'before')`).run(id!, provider!, effort!);
+    }
+    db.prepare(`INSERT INTO settings VALUES ('defaults', ?)`).run(JSON.stringify({
+      codex: { model: 'gpt-6-sol', effort: 'extra-high', permissionMode: 'approval' },
+      claude: { effort: 'high' },
+    }));
+    db.close();
+    for (let i = 0; i < 2; i++) {
+      const store = openStore(path);
+      try {
+        assert.deepEqual(['a', 'b', 'c', 'd'].map((id) => store.getSession(id)?.effort), ['xhigh', 'low', 'extra-high', 'ultra']);
+        assert.equal(store.getSession('a')?.updatedAt, 'before');
+        assert.equal(store.getSession('a')?.model, 'gpt-6-sol');
+        assert.deepEqual(store.getSettings(), {
+          codex: { model: 'gpt-6-sol', effort: 'xhigh', permissionMode: 'approval' },
+          claude: { effort: 'high' },
+        });
+      } finally {
+        store.close();
+      }
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

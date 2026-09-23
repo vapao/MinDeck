@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronLeft, Eye, EyeOff } from 'lucide-react'
-import { effortOptions, modelOptions, permissionModeOptions, type ProviderId, type Settings } from '@agentdeck/shared'
+import { getEffortOptions, modelOptions, permissionModeOptions, type ProviderId, type Settings } from '@agentdeck/shared'
 import { api } from '../api'
 import { providerName } from '../format'
 import { navigate } from '../router'
@@ -38,7 +38,13 @@ export function SettingsPage() {
     },
   })
   const dirty = !!draft && (apiKey !== undefined || JSON.stringify(draft) !== JSON.stringify(saved.data))
-  const patch = (p: ProviderId, field: 'model' | 'effort' | 'permissionMode', value: string) => setDraft((d) => d && { ...d, [p]: { ...d[p], [field]: value } })
+  const patch = (p: ProviderId, field: 'model' | 'effort' | 'permissionMode', value: string) => setDraft((d) => d && {
+    ...d,
+    [p]: {
+      ...d[p], [field]: value,
+      ...(field === 'model' && !getEffortOptions(p, value).some((option) => option.value === d[p].effort) ? { effort: '' } : {}),
+    },
+  })
   // 只在从非 bypass 切到 bypass 时打断确认；已经是 bypass 时改别的字段不用每次都问
   const onSave = async () => {
     if (!draft) return
@@ -125,7 +131,7 @@ export function SettingsPage() {
               </label>
               {p !== 'deepseek' && <label className={`${styles.field} ${layout.field}`}>
                 <span>Reasoning effort</span>
-                <Select value={draft[p].effort} onChange={(v) => patch(p, 'effort', v)} options={[{ value: '', label: 'Default' }, ...effortOptions[p]]} />
+                <Select value={draft[p].effort} onChange={(v) => patch(p, 'effort', v)} options={[{ value: '', label: 'Default' }, ...getEffortOptions(p, draft[p].model)]} />
               </label>}
               <label className={`${styles.field} ${layout.field}`}>
                 <span>Permissions</span>

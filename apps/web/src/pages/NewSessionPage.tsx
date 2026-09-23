@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { X } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { effortOptions, modelOptions, permissionModeOptions, type PermissionMode, type ProviderId } from '@agentdeck/shared'
+import { getEffortOptions, modelOptions, permissionModeOptions, type PermissionMode, type ProviderId } from '@agentdeck/shared'
 import { api } from '../api'
 import { providerName } from '../format'
 import { navigate } from '../router'
@@ -34,7 +34,13 @@ export function NewSessionPage() {
   const model = override[provider]?.model ?? defaults?.model ?? ''
   const effort = override[provider]?.effort ?? defaults?.effort ?? ''
   const permissionMode = override[provider]?.permissionMode ?? defaults?.permissionMode ?? 'approval'
-  const patch = (field: 'model' | 'effort' | 'permissionMode', value: string) => setOverride((o) => ({ ...o, [provider]: { ...o[provider], [field]: value } }))
+  const patch = (field: 'model' | 'effort' | 'permissionMode', value: string) => setOverride((o) => ({
+    ...o,
+    [provider]: {
+      ...o[provider], [field]: value,
+      ...(field === 'model' && !getEffortOptions(provider, value).some((option) => option.value === effort) ? { effort: '' } : {}),
+    },
+  }))
 
   return (
     <div className={styles.page}>
@@ -65,7 +71,7 @@ export function NewSessionPage() {
           </label>
           {provider !== 'deepseek' && <label className={styles.field}>
             <span>Effort</span>
-            <Select value={effort} onChange={(v) => patch('effort', v)} options={[{ value: '', label: 'Default' }, ...effortOptions[provider]]} />
+            <Select value={effort} onChange={(v) => patch('effort', v)} options={[{ value: '', label: 'Default' }, ...getEffortOptions(provider, model)]} />
           </label>}
         </div>
         <label className={styles.field}>
