@@ -138,8 +138,8 @@
 - 界面新增文案使用英文。消息内本地文件链接打开原地预览弹层；图片链接显示限高缩略图。桌面宽弹层，手机适配视口；Escape / 关闭按钮 / 遮罩关闭。
 - 图片支持 Fit image / Actual size；文本带行号；Markdown 支持 Source / Preview；PDF 与音视频使用浏览器原生能力。无法预览的文件展示名称、路径、大小与操作。
 - 操作为 Show in Finder / Download to this device，点击任一操作后立即关闭预览弹层，不等待外部应用或下载完成。Finder 按当前浏览器的目录映射交给 Mac 本地辅助应用，路径不存在时由辅助应用提示。Changes 面板提供同一个预览入口。
-- Settings 增加 Finder on this Mac，独立保存，不改变 Provider 设置。详细使用说明见 `docs/file-preview.md`。
-- 桌面 Composer 底部在 Start fresh 左侧紧邻放置 SquareTerminal 图标（符号自带外框），tooltip / aria-label 为 Open in iTerm2；手机不显示。点击使用当前会话 cwd 打开 SSH 终端，未配置主机时使用统一提示弹窗。Settings 的 iTerm2 on this Mac 独立保存 SSH host，不应用 Finder 路径映射。
+- Settings 增加 Finder on this Mac，映射仍只存于当前浏览器，与 Provider 设置共用页尾 Save changes。详细使用说明见 `docs/file-preview.md`。
+- 桌面 Composer 底部在 Start fresh 左侧紧邻放置 SquareTerminal 图标（符号自带外框），tooltip / aria-label 为 Open in iTerm2；手机不显示。点击使用当前会话 cwd 打开 SSH 终端，未配置主机时使用统一提示弹窗。Settings 的 iTerm2 on this Mac 也通过页尾 Save changes 保存 SSH host 到当前浏览器，不应用 Finder 路径映射。
 - 终端图标左侧放置 FolderOpen 图标，aria-label 为 Open in Finder；同样仅桌面显示。点击将当前会话 cwd 按 Finder 映射交给辅助应用直接打开目录；无匹配映射时用统一弹窗提示配置 Settings → Finder on this Mac。
 
 ## AI 会话标题（2026-09-22）

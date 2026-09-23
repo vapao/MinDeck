@@ -7,7 +7,6 @@ import { dialog } from './Dialog'
 import { PreviewCode } from './PreviewCode'
 import styles from './FilePreview.module.css'
 import modal from './Dialog.module.css'
-import manage from '../pages/Manage.module.css'
 
 let selected: { sessionId: string; path: string; line?: number } | null = null
 const listeners = new Set<() => void>()
@@ -29,6 +28,12 @@ export function fileReference(href: string) {
 }
 const mappingKey = 'finder:mapping'
 function mapping() { return JSON.parse(localStorage.getItem(mappingKey) ?? '{"remote":"/Users/aka","local":""}') as { remote: string; local: string } }
+export type LocalSettings = { remote: string; local: string; sshHost: string }
+export function readLocalSettings(): LocalSettings { return { ...mapping(), sshHost: localStorage.getItem('terminal:sshHost') ?? '' } }
+export function saveLocalSettings(value: LocalSettings) {
+  localStorage.setItem(mappingKey, JSON.stringify({ remote: value.remote, local: value.local }))
+  localStorage.setItem('terminal:sshHost', value.sshHost)
+}
 export function mappedPath(path: string) {
   const { remote, local } = mapping()
   const prefix = remote.replace(/\/+$/, '')
@@ -50,34 +55,6 @@ export function openProjectTerminal(path: string) {
     return
   }
   window.location.href = `agentdeck-finder://terminal?host=${encodeURIComponent(host)}&path=${encodeURIComponent(path)}`
-}
-export function FinderSettings() {
-  const [value, setValue] = useState(mapping)
-  const [saved, setSaved] = useState(false)
-  const [sshHost, setSshHost] = useState(() => localStorage.getItem('terminal:sshHost') ?? '')
-  const [sshSaved, setSshSaved] = useState(false)
-  return <section className={styles.settings}>
-    <h2>Finder on this Mac</h2>
-    <p>Map a Mac Mini folder to its mounted path. Saved in this browser only. Install AgentDeck Finder on your MacBook first.</p>
-    <label className={manage.field}>Mac Mini folder<input className={manage.input} value={value.remote} onChange={(e) => { setValue({ ...value, remote: e.target.value }); setSaved(false) }} placeholder="/Users/aka" /></label>
-    <label className={manage.field}>Mounted folder on this Mac<input className={manage.input} value={value.local} onChange={(e) => { setValue({ ...value, local: e.target.value }); setSaved(false) }} placeholder="/Volumes/Your share" /></label>
-    <button className={manage.secondary} onClick={() => {
-      if (!value.remote.startsWith('/') || (value.local && !value.local.startsWith('/'))) { void dialog.alert({ title: 'Invalid mapping', message: 'Use absolute paths starting with /.' }); return }
-      localStorage.setItem(mappingKey, JSON.stringify({ remote: value.remote.trim(), local: value.local.trim() })); setSaved(true)
-    }}>Save Finder mapping</button>
-    {saved && <span> Saved</span>}
-    <p>Setup: <code>scripts/install-finder-helper.sh</code> — run on your MacBook. Clear the mounted folder to disable.</p>
-    <h2>iTerm2 on this Mac</h2>
-    <p>Connect to the project on Mac Mini over SSH. Uses your MacBook SSH config and keys, without Finder path mapping.</p>
-    <label className={manage.field}>SSH host<input className={manage.input} value={sshHost} placeholder="mac-mini" autoCapitalize="none" spellCheck={false} onChange={(e) => { setSshHost(e.target.value); setSshSaved(false) }} /></label>
-    <p>Use a host alias from ~/.ssh/config or user@hostname. Configure ports and keys in SSH config.</p>
-    <button className={manage.secondary} onClick={() => {
-      const host = sshHost.trim()
-      if (host && !/^[A-Za-z0-9][A-Za-z0-9._@-]*$/.test(host)) { void dialog.alert({ title: 'Invalid SSH host', message: 'Enter a host alias or user@hostname, without spaces or command options.' }); return }
-      localStorage.setItem('terminal:sshHost', host); setSshHost(host); setSshSaved(true)
-    }}>Save SSH host</button>
-    {sshSaved && <span> Saved</span>}
-  </section>
 }
 export function FilePreviewHost() {
   const current = useSyncExternalStore((l) => { listeners.add(l); return () => { listeners.delete(l) } }, () => selected)

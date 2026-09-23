@@ -51,34 +51,34 @@ export function NewSessionPage() {
             <X size={18} />
           </button>
         </div>
-        <label className={styles.field}>
+        <div className={styles.field}>
           <span className={styles.labelRow}>
             Workspace
             <button type="button" className={styles.link} onClick={() => navigate('/workspaces')}>
               Manage projects
             </button>
           </span>
-          <Select value={selected} onChange={setCwd} disabled={!workspaces.data} placeholder="No projects yet" options={(workspaces.data ?? []).map((w) => ({ value: w.path, label: w.alias, hint: w.path }))} />
-        </label>
-        <label className={styles.field}>
-          <span>Agent</span>
-          <Select value={provider} onChange={(v) => setProvider(v as ProviderId)} options={(Object.keys(providerName) as ProviderId[]).map((p) => ({ value: p, label: providerName[p] }))} />
-        </label>
-        <div className={styles.pair}>
-          <label className={styles.field}>
-            <span>Model</span>
-            <Select value={model} onChange={(v) => patch('model', v)} options={[{ value: '', label: 'Default' }, ...modelOptions[provider]]} />
-          </label>
-          {provider !== 'deepseek' && <label className={styles.field}>
-            <span>Effort</span>
-            <Select value={effort} onChange={(v) => patch('effort', v)} options={[{ value: '', label: 'Default' }, ...getEffortOptions(provider, model)]} />
-          </label>}
+          <Select ariaLabel="Workspace" value={selected} onChange={setCwd} disabled={!workspaces.data} placeholder="No projects yet" options={(workspaces.data ?? []).map((w) => ({ value: w.path, label: w.alias, hint: w.path }))} />
         </div>
-        <label className={styles.field}>
+        <div className={styles.field}>
+          <span>Agent</span>
+          <Select ariaLabel="Agent" value={provider} onChange={(v) => setProvider(v as ProviderId)} options={(Object.keys(providerName) as ProviderId[]).map((p) => ({ value: p, label: providerName[p] }))} />
+        </div>
+        <div className={styles.pair}>
+          <div className={styles.field}>
+            <span>Model</span>
+            <Select ariaLabel="Model" value={model} onChange={(v) => patch('model', v)} options={[{ value: '', label: 'Default' }, ...modelOptions[provider]]} />
+          </div>
+          {provider !== 'deepseek' && <div className={styles.field}>
+            <span>Effort</span>
+            <Select ariaLabel="Effort" value={effort} onChange={(v) => patch('effort', v)} options={[{ value: '', label: 'Default' }, ...getEffortOptions(provider, model)]} />
+          </div>}
+        </div>
+        <div className={styles.field}>
           <span>Permission mode</span>
-          <Select value={permissionMode} onChange={(v) => patch('permissionMode', v)} options={[...permissionModeOptions]} />
+          <Select ariaLabel="Permission mode" value={permissionMode} onChange={(v) => patch('permissionMode', v)} options={[...permissionModeOptions]} />
           {permissionMode === 'bypass' && <div className={styles.error}>Runs any command without approval. Use at your own risk.</div>}
-        </label>
+        </div>
         <button
           type="button"
           className={styles.primary}

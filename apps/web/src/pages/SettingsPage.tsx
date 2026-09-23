@@ -5,7 +5,7 @@ import { getEffortOptions, modelOptions, permissionModeOptions, type ProviderId,
 import { api } from '../api'
 import { providerName } from '../format'
 import { navigate } from '../router'
-import { FinderSettings } from '../components/FilePreview'
+import { readLocalSettings, saveLocalSettings } from '../components/FilePreview'
 import { Select } from '../components/Select'
 import { dialog } from '../components/Dialog'
 import styles from './Manage.module.css'
@@ -23,6 +23,10 @@ export function SettingsPage() {
   const [revealing, setRevealing] = useState(false)
   const [keyError, setKeyError] = useState('')
   const [draft, setDraft] = useState<Settings | null>(null)
+  const [localSettings, setLocalSettings] = useState(readLocalSettings)
+  const [savedLocalSettings, setSavedLocalSettings] = useState(localSettings)
+  const [localError, setLocalError] = useState('')
+  const [didSave, setDidSave] = useState(false)
   useEffect(() => {
     if (saved.data && !draft) setDraft(saved.data)
   }, [saved.data, draft])
@@ -37,7 +41,9 @@ export function SettingsPage() {
       testConnection.reset()
     },
   })
-  const dirty = !!draft && (apiKey !== undefined || JSON.stringify(draft) !== JSON.stringify(saved.data))
+  const serverDirty = !!draft && (apiKey !== undefined || JSON.stringify(draft) !== JSON.stringify(saved.data))
+  const localDirty = JSON.stringify(localSettings) !== JSON.stringify(savedLocalSettings)
+  const dirty = serverDirty || localDirty
   const patch = (p: ProviderId, field: 'model' | 'effort' | 'permissionMode', value: string) => setDraft((d) => d && {
     ...d,
     [p]: {
@@ -47,18 +53,49 @@ export function SettingsPage() {
   })
   // 只在从非 bypass 切到 bypass 时打断确认；已经是 bypass 时改别的字段不用每次都问
   const onSave = async () => {
-    if (!draft) return
-    for (const p of ['claude', 'codex', 'deepseek'] as const) {
-      if (draft[p].permissionMode !== 'bypass' || saved.data?.[p].permissionMode === 'bypass') continue
-      const ok = await dialog.confirm({
-        title: `Set the default permission mode for ${providerName[p]} to bypass approval?`,
-        message: 'New sessions will run any command without approval, and any device that can reach this Hub can trigger it. Use at your own risk.',
-        ok: 'Bypass approval',
-        danger: true,
-      })
-      if (!ok) return
+    if (!dirty) return
+    const nextLocal = { remote: localSettings.remote.trim(), local: localSettings.local.trim(), sshHost: localSettings.sshHost.trim() }
+    if (localDirty) {
+      if (!nextLocal.remote.startsWith('/') || (nextLocal.local && !nextLocal.local.startsWith('/'))) {
+        setLocalError('Use absolute paths starting with / for the Finder mapping.')
+        return
+      }
+      if (nextLocal.sshHost && !/^[A-Za-z0-9][A-Za-z0-9._@-]*$/.test(nextLocal.sshHost)) {
+        setLocalError('Enter an SSH host alias or user@hostname, without spaces or command options.')
+        return
+      }
     }
-    save.mutate({ ...draft, deepseek: { ...draft.deepseek, apiKey } })
+    setLocalError('')
+    if (serverDirty) {
+      if (!draft) return
+      for (const p of ['claude', 'codex', 'deepseek'] as const) {
+        if (draft[p].permissionMode !== 'bypass' || saved.data?.[p].permissionMode === 'bypass') continue
+        const ok = await dialog.confirm({
+          title: `Set the default permission mode for ${providerName[p]} to bypass approval?`,
+          message: 'New sessions will run any command without approval, and any device that can reach this Hub can trigger it. Use at your own risk.',
+          ok: 'Bypass approval',
+          danger: true,
+        })
+        if (!ok) return
+      }
+      try {
+        await save.mutateAsync({ ...draft, deepseek: { ...draft.deepseek, apiKey } })
+      } catch {
+        return
+      }
+    }
+    if (localDirty) {
+      if (!serverDirty) save.reset()
+      try {
+        saveLocalSettings(nextLocal)
+      } catch {
+        setLocalError('Could not save settings in this browser. Check browser storage permissions.')
+        return
+      }
+      setLocalSettings(nextLocal)
+      setSavedLocalSettings(nextLocal)
+    }
+    setDidSave(true)
   }
 
   const toggleKey = async () => {
@@ -96,7 +133,7 @@ export function SettingsPage() {
             <section key={p} className={layout.section} aria-labelledby={`${p}-heading`}>
               <div className={layout.sectionHead}>
                 <h2 id={`${p}-heading`}>{providerName[p]}</h2>
-                {p === 'deepseek' && !dirty && draft.deepseek.apiKeyConfigured && <button type="button" className={styles.secondary} disabled={save.isPending || testConnection.isPending} onClick={() => testConnection.mutate()}>
+                {p === 'deepseek' && !serverDirty && draft.deepseek.apiKeyConfigured && <button type="button" className={styles.secondary} disabled={save.isPending || testConnection.isPending} onClick={() => testConnection.mutate()}>
                   {testConnection.isPending ? 'Testing…' : 'Test connection'}
                 </button>}
               </div>
@@ -125,51 +162,70 @@ export function SettingsPage() {
                   {keyError && <div className={styles.error}>{keyError}</div>}
                 </div>
               </>}
-              <label className={`${styles.field} ${layout.field}`}>
+              <div className={`${styles.field} ${layout.field}`}>
                 <span>Model</span>
-                <Select value={draft[p].model} onChange={(v) => patch(p, 'model', v)} options={p === 'deepseek' ? [...modelOptions[p]] : [{ value: '', label: 'Default' }, ...modelOptions[p]]} />
-              </label>
-              {p !== 'deepseek' && <label className={`${styles.field} ${layout.field}`}>
+                <Select ariaLabel={`${providerName[p]} model`} value={draft[p].model} onChange={(v) => patch(p, 'model', v)} options={p === 'deepseek' ? [...modelOptions[p]] : [{ value: '', label: 'Default' }, ...modelOptions[p]]} />
+              </div>
+              {p !== 'deepseek' && <div className={`${styles.field} ${layout.field}`}>
                 <span>Reasoning effort</span>
-                <Select value={draft[p].effort} onChange={(v) => patch(p, 'effort', v)} options={[{ value: '', label: 'Default' }, ...getEffortOptions(p, draft[p].model)]} />
-              </label>}
-              <label className={`${styles.field} ${layout.field}`}>
+                <Select ariaLabel={`${providerName[p]} reasoning effort`} value={draft[p].effort} onChange={(v) => patch(p, 'effort', v)} options={[{ value: '', label: 'Default' }, ...getEffortOptions(p, draft[p].model)]} />
+              </div>}
+              <div className={`${styles.field} ${layout.field}`}>
                 <span>Permissions</span>
-                <Select value={draft[p].permissionMode} onChange={(v) => patch(p, 'permissionMode', v)} options={[...permissionModeOptions]} />
+                <Select ariaLabel={`${providerName[p]} permissions`} value={draft[p].permissionMode} onChange={(v) => patch(p, 'permissionMode', v)} options={[...permissionModeOptions]} />
                 {draft[p].permissionMode === 'bypass' && <div className={styles.error}>Runs any command without approval; any device that can reach this Hub can trigger it. Use at your own risk.</div>}
-              </label>
-              {p === 'deepseek' && (testConnection.error || (testConnection.data && !dirty)) && <div className={layout.connectionInfo}>
+              </div>
+              {p === 'deepseek' && (testConnection.error || (testConnection.data && !serverDirty)) && <div className={layout.connectionInfo}>
                 {testConnection.error && <div className={styles.error}>{testConnection.error.message}</div>}
-                {testConnection.data && !dirty && <div className={styles.ok}>Connected: {testConnection.data.baseUrl} · {testConnection.data.model}</div>}
+                {testConnection.data && !serverDirty && <div className={styles.ok}>Connected: {testConnection.data.baseUrl} · {testConnection.data.model}</div>}
               </div>}
             </section>
           ))}
         {draft?.titles && <section className={layout.section} aria-labelledby="titles-heading">
           <div className={layout.sectionHead}><h2 id="titles-heading">AI session titles</h2></div>
-          <label className={`${styles.field} ${layout.field}`}>
+          <div className={`${styles.field} ${layout.field}`}>
             <span>Automatic titles</span>
-            <Select value={String(draft.titles.enabled)} options={[{ value: 'false', label: 'Off' }, { value: 'true', label: 'On' }]} onChange={(v) => setDraft({ ...draft, titles: { ...draft.titles, enabled: v === 'true' } })} />
-          </label>
-          <label className={`${styles.field} ${layout.field}`}>
+            <Select ariaLabel="Automatic titles" value={String(draft.titles.enabled)} options={[{ value: 'false', label: 'Off' }, { value: 'true', label: 'On' }]} onChange={(v) => setDraft({ ...draft, titles: { ...draft.titles, enabled: v === 'true' } })} />
+          </div>
+          <div className={`${styles.field} ${layout.field}`}>
             <span>Provider</span>
-            <Select value={draft.titles.provider} options={(['claude', 'codex', 'deepseek'] as const).map((value) => ({ value, label: providerName[value] }))} onChange={(v) => {
+            <Select ariaLabel="Title provider" value={draft.titles.provider} options={(['claude', 'codex', 'deepseek'] as const).map((value) => ({ value, label: providerName[value] }))} onChange={(v) => {
               const provider = v as ProviderId
               setDraft({ ...draft, titles: { ...draft.titles, provider, model: modelOptions[provider][0]!.value } })
             }} />
-          </label>
-          <label className={`${styles.field} ${layout.field}`}>
+          </div>
+          <div className={`${styles.field} ${layout.field}`}>
             <span>Model</span>
-            <Select value={draft.titles.model} options={[...modelOptions[draft.titles.provider]]} onChange={(model) => setDraft({ ...draft, titles: { ...draft.titles, model } })} />
-          </label>
+            <Select ariaLabel="Title model" value={draft.titles.model} options={[...modelOptions[draft.titles.provider]]} onChange={(model) => setDraft({ ...draft, titles: { ...draft.titles, model } })} />
+          </div>
           <p className={layout.connectionInfo}>Generates a title of up to 15 characters once, after the first text message. Sends that text to the selected provider in an extra request using your existing sign-in or API key. Uses additional quota or API credits. Existing conversations are not renamed; failures keep the message preview.</p>
         </section>}
+        <section className={layout.section} aria-labelledby="finder-heading">
+          <div className={layout.sectionHead}><h2 id="finder-heading">Finder on this Mac</h2></div>
+          <label className={`${styles.field} ${layout.field}`}>
+            <span>Mac Mini folder</span>
+            <input className={styles.input} value={localSettings.remote} onChange={(e) => { setLocalSettings({ ...localSettings, remote: e.target.value }); setLocalError('') }} placeholder="/Users/aka" />
+          </label>
+          <label className={`${styles.field} ${layout.field}`}>
+            <span>Mounted folder on this Mac</span>
+            <input className={styles.input} value={localSettings.local} onChange={(e) => { setLocalSettings({ ...localSettings, local: e.target.value }); setLocalError('') }} placeholder="/Volumes/Your share" />
+          </label>
+          <p className={layout.connectionInfo}>Saved in this browser only. Map a Mac Mini folder to its mounted path; clear the mounted folder to disable. Install AgentDeck Finder on your MacBook with <code>scripts/install-finder-helper.sh</code>.</p>
+        </section>
+        <section className={layout.section} aria-labelledby="terminal-heading">
+          <div className={layout.sectionHead}><h2 id="terminal-heading">iTerm2 on this Mac</h2></div>
+          <label className={`${styles.field} ${layout.field}`}>
+            <span>SSH host</span>
+            <input className={styles.input} value={localSettings.sshHost} placeholder="mac-mini" autoCapitalize="none" spellCheck={false} onChange={(e) => { setLocalSettings({ ...localSettings, sshHost: e.target.value }); setLocalError('') }} />
+          </label>
+          <p className={layout.connectionInfo}>Use a host alias from ~/.ssh/config or user@hostname. Configure ports and keys in SSH config. Saved in this browser only; Finder mapping is not used.</p>
+        </section>
         <div className={layout.footer}>
           <button type="button" className={styles.primary} disabled={!dirty || save.isPending} onClick={onSave}>
             Save changes
           </button>
         </div>
-        {save.error ? <div className={styles.error}>{save.error.message}</div> : save.isSuccess && !dirty ? <div className={styles.ok}>Saved. Defaults apply to new sessions; API changes apply when DeepSeek next starts.</div> : null}
-        <FinderSettings />
+        {localError ? <div className={styles.error}>{localError}</div> : save.error ? <div className={styles.error}>{save.error.message}</div> : didSave && !dirty ? <div className={styles.ok}>Saved.</div> : null}
         {saved.error && <div className={styles.error}>{saved.error.message}</div>}
       </div>
     </div>

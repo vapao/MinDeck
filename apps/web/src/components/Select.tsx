@@ -9,12 +9,13 @@ type Props = {
   options: SelectOption[]
   onChange: (value: string) => void
   disabled?: boolean
+  ariaLabel?: string
   /** 当前值不在 options 里时显示 */
   placeholder?: string
 }
 
 // 原生 <select> 的弹层不跟随主题，这里用按钮 + 自绘列表替代；键盘：上下 / Enter / Escape，与 Composer 的 @ 弹层一致
-export function Select({ value, options, onChange, disabled, placeholder = 'Select' }: Props) {
+export function Select({ value, options, onChange, disabled, ariaLabel, placeholder = 'Select' }: Props) {
   const [open, setOpen] = useState(false)
   const [active, setActive] = useState(0)
   const root = useRef<HTMLDivElement>(null)
@@ -73,6 +74,7 @@ export function Select({ value, options, onChange, disabled, placeholder = 'Sele
         type="button"
         className={styles.trigger}
         disabled={disabled}
+        aria-label={ariaLabel}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={listId}

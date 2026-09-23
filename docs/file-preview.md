@@ -35,7 +35,7 @@ bash scripts/install-finder-helper.sh
 - Mac Mini folder：例如 `/Users/aka`
 - Mounted folder on this Mac：例如 `/Volumes/aka`
 
-设置只保存在当前浏览器。同一浏览器更换 Hub 地址会有独立设置。映射按完整目录前缀匹配，不将 `/Users/aka-other` 当成 `/Users/aka` 的子目录。
+点击设置页底部的 Save changes 后，映射只保存在当前浏览器。同一浏览器更换 Hub 地址会有独立设置。映射按完整目录前缀匹配，不将 `/Users/aka-other` 当成 `/Users/aka` 的子目录。
 
 点击 Show in Finder 后，浏览器可能首次要求允许启动辅助应用。文件在 Finder 中选中；目录直接打开。辅助应用只接收路径并调用系统 Finder API，不将参数传给 shell。路径不存在时提示检查挂载和映射。网页无法可靠判断辅助应用是否安装或操作是否成功。
 
@@ -45,7 +45,7 @@ bash scripts/install-finder-helper.sh
 
 ## 项目 SSH 终端
 
-桌面输入框底部的 Open in iTerm2 图标位于 Start fresh 左侧。Settings → iTerm2 on this Mac 中填写 MacBook `~/.ssh/config` 的主机别名（如 `mac-mini`），也可填写 `user@hostname`；端口、密钥等放在 SSH config 中。该设置只保存在当前浏览器，未配置时按钮提示设置。
+桌面输入框底部的 Open in iTerm2 图标位于 Start fresh 左侧。Settings → iTerm2 on this Mac 中填写 MacBook `~/.ssh/config` 的主机别名（如 `mac-mini`），也可填写 `user@hostname`；端口、密钥等放在 SSH config 中。点击页尾 Save changes 后，该设置只保存在当前浏览器；未配置时按钮提示设置。
 
 重新运行安装脚本更新辅助应用。首次调用可能要求允许 AgentDeck Finder 控制 iTerm2；可在 macOS「系统设置 → 隐私与安全性 → 自动化」管理。辅助应用会在已有 iTerm2 窗口新建标签页，没有窗口则新建窗口，执行 SSH 并进入会话原始 cwd，随后启动远端登录 Shell。新建 session 先启动 `/bin/zsh -l`，再输入 SSH 命令；SSH 失败或结束后保留本地提示符，便于查看错误和重试。不会使用 Finder 映射，不会向已有 session 写命令。SSH 密码和主机确认在终端中处理。
 
