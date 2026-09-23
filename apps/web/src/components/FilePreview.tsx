@@ -4,6 +4,7 @@ import Markdown, { defaultUrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { api } from '../api'
 import { dialog } from './Dialog'
+import { PreviewCode } from './PreviewCode'
 import styles from './FilePreview.module.css'
 import modal from './Dialog.module.css'
 import manage from '../pages/Manage.module.css'
@@ -97,29 +98,32 @@ function Preview({ sessionId, path, line }: { sessionId: string; path: string; l
   const url = api.outputUrl(sessionId, path)
   const relativeToFile = (target: string) => target.startsWith('/') || target.startsWith('~/') ? target : `${file!.path.slice(0, file!.path.lastIndexOf('/') + 1)}${target}`
   return <dialog ref={ref} className={`${modal.dialog} ${styles.preview}`} onClose={close} onClick={(e) => { if (e.target === ref.current) ref.current.close() }} aria-label="File preview">
-    <header className={modal.head}><strong className={modal.title}>{file?.name ?? 'File'}</strong><button className={modal.close} onClick={() => ref.current!.close()} aria-label="Close">×</button></header>
+    <header className={modal.head}>
+      <strong className={`${modal.title} ${styles.fileTitle}`} title={file?.path ?? path}>{file?.name ?? 'File'}</strong>
+      {file?.kind === 'markdown' && <button className={`${modal.secondary} ${styles.viewButton}`} onClick={() => setSource(!source)}>{source ? 'Preview' : 'Source'}</button>}
+      {file?.kind === 'image' && <button className={`${modal.secondary} ${styles.viewButton}`} onClick={() => setZoom(!zoom)}>{zoom ? 'Fit image' : 'Actual size'}</button>}
+      <button className={modal.close} onClick={() => ref.current!.close()} aria-label="Close">×</button>
+    </header>
     <div className={styles.content}>
-      <p className={styles.path}>{file?.path ?? path}</p>
       {q.error && <p role="alert">{q.error.message}</p>}
       {!file && !q.error && <p>Loading…</p>}
       {file && <>
-        <p>{file.kind === 'directory' ? 'Folder' : `${file.size.toLocaleString()} bytes · Current file on Mac Mini`}</p>
-        {file.kind === 'image' && <><button onClick={() => setZoom(!zoom)} className={modal.secondary}>{zoom ? 'Fit image' : 'Actual size'}</button>{imageError ? <p>Image preview unavailable. Use Finder or download the file.</p> : <div className={styles.image}><img style={zoom ? { maxWidth: 'none', maxHeight: 'none' } : undefined} src={url} alt={file.name} onError={() => setImageError(true)} /></div>}</>}
-        {file.kind === 'pdf' && <><p>If the PDF does not display, use Finder or download it.</p><object className={styles.pdf} data={url} type="application/pdf"><p>PDF preview is unavailable on this device.</p></object></>}
+        {file.kind === 'image' && <>{imageError ? <p>Image preview unavailable. Use Finder or download the file.</p> : <div className={styles.image}><img style={zoom ? { maxWidth: 'none', maxHeight: 'none' } : undefined} src={url} alt={file.name} onError={() => setImageError(true)} /></div>}</>}
+        {file.kind === 'pdf' && <><object className={styles.pdf} data={url} type="application/pdf"><p>PDF preview is unavailable on this device.</p></object></>}
         {file.kind === 'audio' && <audio controls src={url} />}
         {file.kind === 'video' && <video className={styles.video} controls src={url} />}
-        {file.kind === 'markdown' && <button className={modal.secondary} onClick={() => setSource(!source)}>{source ? 'Preview' : 'Source'}</button>}
         {file.content !== null && <>
-          {file.kind === 'markdown' && !source ? <div className={styles.markdown}><Markdown remarkPlugins={[remarkGfm]} urlTransform={(value) => fileReference(value) ? value : defaultUrlTransform(value)} components={{ img: ({ src, alt }) => { const f = fileReference(src ?? ''); return <img src={f ? api.outputUrl(sessionId, relativeToFile(f.path)) : src} alt={alt} loading="lazy" /> }, a: ({ href, children }) => <a href={href} onClick={(e) => { const f = fileReference(href ?? ''); if (f) { e.preventDefault(); showFile(sessionId, relativeToFile(f.path), f.line) } }} target="_blank" rel="noreferrer">{children}</a> }}>{file.content}</Markdown></div> : <pre className={styles.code}>{file.content.split('\n').map((text, i) => <div key={i} data-line={i + 1} data-selected={line === i + 1 || undefined}><span>{i + 1}</span>{text || ' '}</div>)}</pre>}
+          {file.kind === 'markdown' && !source ? <div className={styles.markdown}><Markdown remarkPlugins={[remarkGfm]} urlTransform={(value) => fileReference(value) ? value : defaultUrlTransform(value)} components={{ code: ({ className, children }) => {
+            const language = /language-([^\s]+)/.exec(className ?? '')?.[1]
+            return language ? <PreviewCode text={String(children)} language={language} /> : <code className={className}>{children}</code>
+          }, img: ({ src, alt }) => { const f = fileReference(src ?? ''); return <img src={f ? api.outputUrl(sessionId, relativeToFile(f.path)) : src} alt={alt} loading="lazy" /> }, a: ({ href, children }) => <a href={href} onClick={(e) => { const f = fileReference(href ?? ''); if (f) { e.preventDefault(); showFile(sessionId, relativeToFile(f.path), f.line) } }} target="_blank" rel="noreferrer">{children}</a> }}>{file.content}</Markdown></div> : <pre className={styles.code}><PreviewCode text={file.content} path={file.name} numbered line={line} /></pre>}
           {file.truncated && <p>Showing the first 512 KB. Download for the complete file.</p>}
-          <button className={modal.secondary} onClick={() => navigator.clipboard.writeText(file.content!)}>Copy text</button>
         </>}
         {file.kind === 'binary' && <p>No inline preview for this file. Open its location in Finder or download a copy.</p>}
-        {!local && <p>Configure Finder mapping in Settings to browse this file on your Mac.</p>}
-        {local && <p className={styles.path}>On this Mac: {local}</p>}
       </>}
     </div>
-    {file && <footer className={modal.actions}>
+    {file && <footer className={`${modal.actions} ${styles.footer}`}>
+      {file.content !== null && <button className={modal.secondary} onClick={() => navigator.clipboard.writeText(file.content!)}>Copy text</button>}
       {local && <a className={`${modal.primary} ${styles.action}`} onClick={() => ref.current!.close()} href={`agentdeck-finder://reveal?path=${encodeURIComponent(local)}`}>Show in Finder</a>}
       {file.kind !== 'directory' && <a className={`${modal.secondary} ${styles.action}`} onClick={() => ref.current!.close()} href={api.outputUrl(sessionId, path, true)} download={file.name}>Download to this device</a>}
     </footer>}

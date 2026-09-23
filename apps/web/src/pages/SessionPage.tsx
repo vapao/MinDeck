@@ -277,7 +277,7 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
         </button>
         <span className={styles.title} title={session?.cwd}>{title}</span>
         {desktop && (
-          <button type="button" className={styles.iconButton} data-active={showChanges || undefined} onClick={toggleChanges} aria-label="Changes panel" title="Show / hide the changes panel">
+          <button type="button" className={styles.iconButton} data-active={showChanges || undefined} onClick={toggleChanges} aria-label="Project panel" title="Show / hide changes and files">
             <GitBranch size={16} />
           </button>
         )}

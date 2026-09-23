@@ -6,6 +6,20 @@
 
 图片原地预览，文本最多读取 512 KiB，Markdown 可切源码，PDF 使用浏览器查看器，音视频使用原生播放器。其他文件展示操作弹窗。HTML 作为文本，SVG 以 img 展示；文件内容响应带 sandbox CSP 和 nosniff，未知类型强制下载，不作为 Hub 同源页面执行。下载使用流。
 
+预览弹窗标题栏显示文件名（悬停可看完整路径），Markdown 的 Preview / Source 和图片缩放放在标题栏。主体只显示文件内容及必要的错误 / 截断提示；Copy text、Show in Finder、下载统一放到底部，不展示文件大小、服务端路径和 MacBook 映射路径。
+
+代码预览使用按需加载的 lowlight / highlight.js，按扩展名识别 Python、JS / TS（含 JSX / TSX）、JSON、HTML / XML、CSS、Shell、SQL、YAML、Markdown。Markdown 渲染视图中的 fenced code 按语言标注高亮，源码视图保留行号。单段内容超过 100 KiB 或语言不支持时显示纯文本，不自动猜语言；复制始终使用原文。先解析全文再分行，保留多行注释 / 字符串的颜色。颜色仅作用于预览弹窗，不改变 Changes diff 和聊天消息。
+
+## 右侧项目文件浏览（2026-09-22）
+
+桌面右侧使用 Changes / Files 两个页签。Changes 保留改动列表与 diff；Files 以当前会话 cwd 为根，展开目录时才加载直接子项，目录在前，不依赖 Git，也不按 `.gitignore` 排除文件。点击文件复用预览弹窗，切换页签和清空搜索保留目录展开状态与滚动位置。
+
+Show hidden files 默认关闭，在当前浏览器 localStorage 记住；控制以 `.` 开头的文件和目录，目录树与搜索遵循同一个开关。搜索按文件名 / 相对路径不区分大小写匹配，输入后显示带相对路径的文件列表，不搜索文件内容。
+
+`GET /api/sessions/:id/files?path=&q=&hidden=false`：无 q 时列直接子项，有 q 时从项目根搜索；搜索最多返回 200 项，扫描预算 1.5 秒，达到上限返回 `truncated` 并在界面明确提示结果不完整、需要缩小关键词。目录路径解析后必须仍在 cwd 内；符号链接作为可预览条目，不递归跟随，避免循环或扫描项目之外。
+
+已通过桌面浏览器验收：未改动文件预览、展开状态保留、文件路径搜索、隐藏文件过滤及 Markdown 视图切换；新增目录边界测试覆盖相对 / 绝对越界与目录符号链接。
+
 ## MacBook 一次性安装
 
 在 **MacBook** 上取得本仓库的 `scripts/install-finder-helper.sh` 与 `scripts/finder-helper/main.swift`，保持相对目录不变，执行：

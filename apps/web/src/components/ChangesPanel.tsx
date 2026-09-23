@@ -3,11 +3,12 @@ import { useQuery } from '@tanstack/react-query'
 import { ChevronLeft, FileCode, FileDiff, Folder, RefreshCw } from 'lucide-react'
 import type { ChangedFile } from '@agentdeck/shared'
 import { showFile } from './FilePreview'
+import { FilesPanel } from './FilesPanel'
 import { api } from '../api'
 import { useResizable } from './Resizer'
 import styles from './ChangesPanel.module.css'
 
-// 改动侧栏（桌面端）：工作区相对 HEAD 改了哪些文件；点开看 diff，或直接看整个文件。只读。
+// 项目侧栏（桌面端）：改动 diff 与完整目录浏览。只读。
 // version 在一轮结束 / 工具完成时递增，面板据此节流刷新，不轮询。
 
 type Props = { sessionId: string; version: number }
@@ -71,6 +72,7 @@ function Tree({ node, depth, onSelect }: { node: TreeNode; depth: number; onSele
 
 export function ChangesPanel({ sessionId, version }: Props) {
   const changes = useQuery({ queryKey: ['changes', sessionId], queryFn: () => api.listChanges(sessionId) })
+  const [tab, setTab] = useState<'changes' | 'files'>('changes')
   const [selected, setSelected] = useState<string | null>(null)
   const [view, setView] = useState<'diff' | 'file'>('diff')
   // 事件密集时（一轮里连着几十次 Edit）合并成 1.5s 一次
@@ -82,10 +84,20 @@ export function ChangesPanel({ sessionId, version }: Props) {
   useEffect(() => setSelected(null), [sessionId])
   const { width, handle } = useResizable('changes', 380, 280, 720, 'right')
 
-  if (selected) {
-    return (
-      <aside className={styles.panel} style={{ width }}>
-        <div {...handle} />
+  const files = changes.data?.files ?? []
+  return (
+    <aside className={styles.panel} style={{ width }}>
+      <div {...handle} />
+      <header className={styles.head}>
+        <button type="button" className={styles.tab} aria-pressed={tab === 'changes'} onClick={() => setTab('changes')}><FileDiff size={14} />Changes{changes.data?.git && <code className={styles.count}>{files.length}</code>}</button>
+        <button type="button" className={styles.tab} aria-pressed={tab === 'files'} onClick={() => setTab('files')}><Folder size={14} />Files</button>
+        <span style={{ flex: 1 }} />
+        <button type="button" hidden={tab !== 'changes'} className={styles.iconButton} onClick={() => refetch()} disabled={changes.isFetching} aria-label="Refresh">
+          <RefreshCw size={14} className={changes.isFetching ? styles.spin : undefined} />
+        </button>
+      </header>
+      <section className={styles.filesPane} style={{ display: tab === 'changes' ? 'flex' : 'none' }}>
+      {selected ? <>
         <header className={styles.head}>
           <button type="button" className={styles.iconButton} onClick={() => setSelected(null)} aria-label="Back to list">
             <ChevronLeft size={16} />
@@ -100,23 +112,7 @@ export function ChangesPanel({ sessionId, version }: Props) {
           </button>
         </header>
         {view === 'diff' ? <DiffView key={`${sessionId}:${selected}:${version}`} sessionId={sessionId} path={selected} /> : <FileView key={`${sessionId}:${selected}:${version}`} sessionId={sessionId} path={selected} />}
-      </aside>
-    )
-  }
-
-  const files = changes.data?.files ?? []
-  return (
-    <aside className={styles.panel} style={{ width }}>
-      <div {...handle} />
-      <header className={styles.head}>
-        <span className={styles.title}>Changes</span>
-        {changes.data?.git && <code className={styles.count}>{files.length}</code>}
-        <span style={{ flex: 1 }} />
-        <button type="button" className={styles.iconButton} onClick={() => refetch()} disabled={changes.isFetching} aria-label="Refresh">
-          <RefreshCw size={14} className={changes.isFetching ? styles.spin : undefined} />
-        </button>
-      </header>
-      <div className={styles.body}>
+      </> : <div className={styles.body}>
         {changes.error ? (
           <div className={styles.empty}>{changes.error.message}</div>
         ) : changes.data && !changes.data.git ? (
@@ -126,7 +122,9 @@ export function ChangesPanel({ sessionId, version }: Props) {
         ) : (
           <Tree node={buildTree(files)} depth={0} onSelect={setSelected} />
         )}
-      </div>
+      </div>}
+      </section>
+      <FilesPanel key={sessionId} sessionId={sessionId} active={tab === 'files'} version={version} />
     </aside>
   )
 }

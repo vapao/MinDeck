@@ -105,3 +105,9 @@ cd apps/server && node scripts/p0-codex-harness.mjs    # Codex app-server 回归
 - `sessions.title` 单独持久化；无 AI 标题仍显示首条消息首行前 80 字符。标题更新不改变 `updated_at`，不会改变会话排序。各端沿用会话列表 5 秒轮询同步。
 - 标题使用独立请求，不进入聊天上下文或事件流。Claude 走 SDK（临时目录、不加载 user/project settings、禁止工具与 hooks、不保存会话）；DeepSeek 直接 `fetch` 配置的 Anthropic 兼容端点 `/v1/messages`（`x-api-key`、`max_tokens: 64`、`thinking: { type: 'disabled' }`，避免思考耗尽标题输出预算），不起 SDK 子进程，也不经过 Hub 的代理环境变量；Codex 复用唯一 app-server，临时只读 thread，关闭执行 / 外部工具相关功能与已配置 MCP，结束后 unsubscribe。
 - 已通过 Claude / Codex 真实短请求、DeepSeek 真实 SDK + 本地兼容端点验证、桌面设置保存恢复及标题替换验收。DeepSeek 真实服务未在本次验收调用。
+
+## 项目文件目录树（2026-09-22）
+
+桌面右侧新增 Changes / Files 页签：Files 按需展开完整项目目录，支持隐藏文件开关（浏览器记忆）和文件名 / 相对路径搜索，点击复用文件预览。搜索限制与符号链接边界见 `docs/file-preview.md`。预览主体只显示文件内容，复制移到底部，Markdown 视图切换与图片缩放移到标题栏。
+
+文件预览已支持常用代码语言、Markdown 代码块与源码高亮；高亮模块按需加载，超过 100 KiB / 不支持的语言保持纯文本，复制仍为原文。详见 `docs/file-preview.md`。

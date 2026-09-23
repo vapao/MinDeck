@@ -1,4 +1,5 @@
 import { outputFile } from './output-files';
+import { listProjectFiles } from './files';
 import { randomUUID } from 'node:crypto';
 import { createReadStream, existsSync, mkdirSync, readdirSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -188,6 +189,10 @@ app.get<{ Params: { id: string }; Querystring: { path: string; download?: string
 });
 
 app.get<{ Params: { id: string }; Querystring: { q?: string } }>('/api/sessions/:id/entries', (req) => listEntries(hub.getSession(req.params.id).cwd, req.query.q ?? ''));
+
+app.get<{ Params: { id: string }; Querystring: { path?: string; q?: string; hidden?: boolean } }>('/api/sessions/:id/files', {
+  schema: { querystring: { type: 'object', properties: { path: { type: 'string' }, q: { type: 'string' }, hidden: { type: 'boolean' } } } },
+}, (req) => listProjectFiles(hub.getSession(req.params.id).cwd, req.query.path ?? '', req.query.q ?? '', req.query.hidden ?? false));
 
 app.patch<{ Params: { id: string }; Body: UpdateSessionBody }>(
   '/api/sessions/:id',

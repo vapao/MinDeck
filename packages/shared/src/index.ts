@@ -258,6 +258,10 @@ export type FileResponse = { path: string; content: string | null; truncated: bo
 /** GET /api/sessions/:id/entries?q=：@ 引用补全。q 相对 cwd，`~` 开头相对家目录；目录 path 以 / 结尾 */
 export type EntriesResponse = { entries: { path: string; name: string; dir: boolean }[] };
 
+// 项目目录浏览 / 文件路径搜索；truncated 表示搜索未列完。
+export type ProjectFilesResponse = EntriesResponse & { truncated: boolean };
+
+
 /** GET / PUT /api/settings */
 export type SettingsResponse = Settings;
 export type UpdateSettingsBody = Omit<Settings, 'deepseek'> & {
