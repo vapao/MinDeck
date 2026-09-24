@@ -35,6 +35,10 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
   // 父会话在用户没插话的情况下被自动回调唤醒的次数：两个 Agent 可能互相派活、来回唤醒，bypass 下没人拦
   const autoWakes = new Map<string, number>();
   const maxAutoWakes = 5;
+  // 用户在派生审批卡上选了"本会话允许"的会话：之后 create_session 免审批，用于用户离开时让监督会话自主派活。只在内存，Hub 重启即丢
+  const spawnGrants = new Set<string>();
+  // 有派生授权的会话本来就是要无人值守地派活、收结果，5 次不够；仍留上限防两个 Agent 失控互相唤醒
+  const maxGrantedAutoWakes = 30;
   let closing = false;
 
   store.expireAllPending();
@@ -74,8 +78,9 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
     for (const [parentId, sinceSeq] of parents) {
       if (!store.getSession(parentId)) continue;
       const wakes = autoWakes.get(parentId) ?? 0;
-      if (wakes >= maxAutoWakes) {
-        emit(parentId, { type: 'error', payload: { message: `Skipped the result of session ${childId}: ${maxAutoWakes} automatic wake-ups in a row without your input. Send a message to continue.` } });
+      const limit = spawnGrants.has(parentId) ? maxGrantedAutoWakes : maxAutoWakes;
+      if (wakes >= limit) {
+        emit(parentId, { type: 'error', payload: { message: `Skipped the result of session ${childId}: ${limit} automatic wake-ups in a row without your input. Send a message to continue.` } });
         continue;
       }
       autoWakes.set(parentId, wakes + 1);
@@ -371,6 +376,7 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
       live.delete(sessionId);
       watchers.delete(sessionId);
       autoWakes.delete(sessionId);
+      spawnGrants.delete(sessionId);
       titleJobs.get(sessionId)?.abort();
       store.deleteSession(sessionId);
       // 表已一致，目录删失败也不回滚；残留会在下次删除同 id 时被 force 覆盖
@@ -387,6 +393,14 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
       let parents = watchers.get(childId);
       if (!parents) watchers.set(childId, (parents = new Map()));
       parents.set(parentId, store.lastSeq(childId));
+    },
+
+    grantSpawn(sessionId: string) {
+      spawnGrants.add(sessionId);
+    },
+
+    canSpawn(sessionId: string) {
+      return spawnGrants.has(sessionId);
     },
 
     async interrupt(sessionId: string) {

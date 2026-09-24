@@ -59,9 +59,9 @@ cwd 内只读 `git status` / `git diff -- <file>` / 读文件；`turn.completed`
 `POST /mcp` 无状态 Streamable HTTP（`src/mcp.ts`）：`list_workspaces` / `list_sessions` / `create_session(provider, prompt, workspace?)` / `get_session(id, afterSeq?, waitSec?)`（最多 40 条；`waitSec` ≤ 600）/ `send_message` / `interrupt`。
 
 - **只给 Hub 拉起的会话用**：按会话注入（Claude `mcpServers`、Codex thread `config.mcp_servers`），请求头 `x-agentdeck-session` 标识调用方，缺失或未知 403。请求头不是安全边界（REST 无鉴权）。
-- **派生必须审批**：`create_session` 由 Hub 在调用方会话弹审批卡（与权限模式无关，无"本会话允许"），批准后按设置默认值建会话并发首条消息。`send_message` / `interrupt` 按调用方权限模式走 Provider 审批（Codex 为 elicitation，见方案 §16.3）；只读工具与 `create_session` 在 Provider 侧免审。不能对自己的会话 send / interrupt / 等待。
+- **派生必须审批**：`create_session` 由 Hub 在调用方会话弹审批卡（与权限模式无关），批准后按设置默认值建会话并发首条消息。卡上可选"本会话允许"：该会话之后派生免审批（供用户离开时让监督会话自主派活），授权只在内存、只给该会话、子会话不继承，Hub 重启或会话删除即失效；子会话仍按设置默认权限模式跑，无人值守需先把默认改成 bypass。`send_message` / `interrupt` 按调用方权限模式走 Provider 审批（Codex 为 elicitation，见方案 §16.3）；只读工具与 `create_session` 在 Provider 侧免审。不能对自己的会话 send / interrupt / 等待。
 - **定位**：把对话里已定的需求整理成交接单派给新会话，用户之后接管；prompt 取材于对话，不为写 prompt 查仓库、不转述项目规则、不加活。
-- **结果回调**：`notify` 默认 false，仅父会话需要结果才能继续时开启；不等待 / 轮询。子会话本轮处理完（idle / error）时 Hub 发 `[AgentDeck] Session … finished`（含最后回复）给父会话；回调只在内存，Hub 重启即丢。同一父会话在用户未发消息时最多被自动唤醒 5 次，超出改记 error，用户发消息后清零。
+- **结果回调**：`notify` 默认 false，仅父会话需要结果才能继续时开启；不等待 / 轮询。子会话本轮处理完（idle / error）时 Hub 发 `[AgentDeck] Session … finished`（含最后回复）给父会话；回调只在内存，Hub 重启即丢。同一父会话在用户未发消息时最多被自动唤醒 5 次（有派生授权时 30 次），超出改记 error，用户发消息后清零。
 - **不暴露**：resolve 审批、设置与 Key、删除、项目增删。
 
 ## 切片 16：项目服务 MCP

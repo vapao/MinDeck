@@ -79,7 +79,7 @@ export function createMcpServer(hub: Hub, store: Store, services: Services, call
     .map((s) => ({ id: s.id, provider: s.provider, workspace: s.cwd, title: s.title, status: s.status, archived: !!s.archivedAt, updatedAt: s.updatedAt, ...(s.id === callerId ? { self: true } : {}) }))));
 
   server.registerTool('create_session', {
-    description: 'Delegate a task to a new AgentDeck session. Write the prompt as a handoff brief built from this conversation: the goal, the plan and decisions already agreed, scope boundaries, and open questions. Do not investigate the repository to write the prompt; the new session explores on its own. Do not restate project rules from AGENTS.md / CLAUDE.md; the new session loads them. Do not add work the user did not ask for. The user must approve in AgentDeck; the call blocks until they do. Model, effort and permission mode come from AgentDeck settings. Returns the new session id.',
+    description: 'Delegate a task to a new AgentDeck session. Write the prompt as a handoff brief built from this conversation: the goal, the plan and decisions already agreed, scope boundaries, and open questions. Do not investigate the repository to write the prompt; the new session explores on its own. Do not restate project rules from AGENTS.md / CLAUDE.md; the new session loads them. Do not add work the user did not ask for. The user must approve in AgentDeck (unless they already allowed it for this session); the call blocks until they do. Model, effort and permission mode come from AgentDeck settings. Returns the new session id.',
     inputSchema: {
       provider: z.enum(['claude', 'codex', 'deepseek']),
       prompt: z.string().min(1).describe('First message for the new session'),
@@ -91,13 +91,16 @@ export function createMcpServer(hub: Hub, store: Store, services: Services, call
     // 先校验再弹卡，不让人批一张注定失败的请求
     if (!store.getWorkspaceByPath(cwd)) throw new HubError(400, `${cwd} is not an AgentDeck project; see list_workspaces`);
     if (provider === 'deepseek' && !hub.settings().deepseek.apiKeyConfigured) throw new HubError(400, 'DeepSeek API Key is not configured in AgentDeck settings');
-    const resolution = await hub.createPending(callerId, {
-      kind: 'approval', toolName: 'AgentDeck: create session', toolUseId: randomUUID(), input: { provider, workspace: cwd, prompt },
-      description: 'Start a new session with the default model and permission mode from Settings',
-      sessionAllowPatterns: [], suggestions: [],
-    }, signal);
-    if (resolution?.kind !== 'approval' || resolution.decision === 'deny') throw new HubError(403, 'The user did not approve creating the session');
-    signal.throwIfAborted();
+    if (!hub.canSpawn(callerId)) {
+      const resolution = await hub.createPending(callerId, {
+        kind: 'approval', toolName: 'AgentDeck: create session', toolUseId: randomUUID(), input: { provider, workspace: cwd, prompt },
+        description: 'Start a new session with the default model and permission mode from Settings',
+        sessionAllowPatterns: ['create_session'], suggestions: [],
+      }, signal);
+      if (resolution?.kind !== 'approval' || resolution.decision === 'deny') throw new HubError(403, 'The user did not approve creating the session');
+      if (resolution.decision === 'allow_session') hub.grantSpawn(callerId);
+      signal.throwIfAborted();
+    }
     const session = hub.createSession(provider, cwd);
     try {
       hub.sendMessage(session.id, prompt, [], 'agent');
