@@ -150,6 +150,7 @@ export function startCodexSession({ cwd, resume, model, effort, permissionMode, 
   const bypass = permissionMode === 'bypass';
   const policy = {
     cwd,
+    model,
     approvalPolicy: (bypass ? 'never' : 'on-request') as 'never' | 'on-request',
     sandbox: (bypass ? 'danger-full-access' : 'workspace-write') as 'danger-full-access' | 'workspace-write',
     approvalsReviewer: 'user' as const,
@@ -167,6 +168,9 @@ export function startCodexSession({ cwd, resume, model, effort, permissionMode, 
     const res = (resume ? await rpc.request('thread/resume', { threadId: resume, ...policy }) : await rpc.request('thread/start', policy)) as ThreadStartResponse;
     if (res.approvalPolicy !== policy.approvalPolicy || res.sandbox.type !== expectedSandboxType) {
       throw new Error(`Codex did not accept the Hub approval policy (approvalPolicy=${JSON.stringify(res.approvalPolicy)}, sandbox=${res.sandbox.type}); refusing to start`);
+    }
+    if (model !== undefined && res.model !== model) {
+      throw new Error(`Codex did not accept the selected model (requested=${model}, actual=${res.model}); refusing to start`);
     }
     threadId = res.thread.id;
     threads.set(threadId, handler);
