@@ -220,9 +220,11 @@ button.provider:hover {
   cursor: default;
 }
 @media (max-width: 1023px) {
-  .provider,
-  button.provider {
+  span.provider {
     display: none;
+  }
+  button.provider {
+    height: 40px;
   }
   .meta::before {
     content: none;
@@ -293,12 +295,32 @@ button.provider:hover {
   color: var(--text-4);
 }
 
-.providerSelect {
-  flex: none;
-  width: 112px;
-}
-/* 输入框在页面底部，Agent 菜单向上展开。 */
-.providerSelect [role='listbox'] {
-  top: auto;
+/* 空会话的 Agent / 模型 / 思考等级浮层：和 @ 补全一样贴在输入框上方 */
+.switcher {
+  position: absolute;
+  left: 0;
   bottom: calc(100% + 6px);
+  width: 280px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border-3);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-menu);
+  z-index: 5;
+}
+.switchField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-3);
+}
+@media (max-width: 1023px) {
+  .switcher {
+    right: 0;
+    width: auto;
+  }
 }

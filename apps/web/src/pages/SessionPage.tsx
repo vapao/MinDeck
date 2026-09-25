@@ -231,8 +231,7 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
         ? `${provider} will continue once you handle the request above`
         : ''
   // 状态区 Provider 名字后面：模型 · 思考等级 · 上下文用量；init 前模型取创建时指定的；没指定 effort（用 Provider 默认）就不显示
-  // 可切换时模型和思考等级已经是下拉，不再重复显示
-  const meta = [!canSwitchProvider && formatModel(provider, model ?? info?.model), !canSwitchProvider && formatEffort(provider, info?.effort), context !== null && formatTokens(context)].filter(Boolean).join(' · ')
+  const meta = [formatModel(provider, model ?? info?.model), formatEffort(provider, info?.effort), context !== null && formatTokens(context)].filter(Boolean).join(' · ')
 
   const renderItem = (it: StreamItem) => {
     switch (it.kind) {

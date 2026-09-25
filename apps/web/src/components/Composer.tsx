@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowUp, File, Folder, FolderOpen, ImagePlus, MessageSquarePlus, Square, SquareTerminal, X } from 'lucide-react'
+import { ArrowUp, ChevronUp, File, Folder, FolderOpen, ImagePlus, MessageSquarePlus, Square, SquareTerminal, X } from 'lucide-react'
 import { getEffortOptions, modelOptions, type Attachment, type EntriesResponse, type ProviderId } from '@agentdeck/shared'
 import { Select } from './Select'
 import { providerName } from '../format'
@@ -60,6 +60,26 @@ export function Composer({ draftKey, disabled, running, interrupting, onInterrup
   const [dragging, setDragging] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
   const textarea = useRef<HTMLTextAreaElement>(null)
+
+  // 空会话的 Agent / 模型 / 思考等级平时只显示成一段文字，点开才在输入框上方弹出下拉，不占输入区
+  const switchable = onSwitchProvider !== undefined && drafts.length === 0
+  const [switching, setSwitching] = useState(false)
+  const switcher = useRef<HTMLDivElement>(null)
+  const switchButton = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    if (!switching) return
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Node
+      if (!switcher.current?.contains(t) && !switchButton.current?.contains(t)) setSwitching(false)
+    }
+    const onKey = (e: globalThis.KeyboardEvent) => e.key === 'Escape' && setSwitching(false)
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [switching])
 
   // @ 补全：光标位置变化时重新判定；选中目录后保持打开继续往里敲
   const [mention, setMention] = useState<{ start: number; query: string } | null>(null)
@@ -187,6 +207,28 @@ export function Composer({ draftKey, disabled, running, interrupting, onInterrup
         </div>
       )}
       <div className={styles.boxWrap}>
+        {switchable && switching && (
+          <div ref={switcher} className={styles.switcher}>
+            <div className={styles.switchField}>
+              Agent
+              <Select ariaLabel="Agent" value={provider} onChange={(p) => onSwitchProvider(p as ProviderId)} options={(Object.keys(providerName) as ProviderId[]).map((p) => ({ value: p, label: providerName[p] }))} />
+            </div>
+            {modelSelect && (
+              <>
+                <div className={styles.switchField}>
+                  Model
+                  <Select ariaLabel="Model" value={modelSelect.model} onChange={(m) => modelSelect.onChange(m, modelSelect.effort)} options={[{ value: '', label: 'Default' }, ...modelOptions[provider]]} />
+                </div>
+                {provider !== 'deepseek' && (
+                  <div className={styles.switchField}>
+                    Effort
+                    <Select ariaLabel="Effort" value={modelSelect.effort} onChange={(e) => modelSelect.onChange(modelSelect.model, e)} options={[{ value: '', label: 'Default' }, ...getEffortOptions(provider, modelSelect.model || null)]} />
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
         {mention && (
           <div className={styles.mentions}>
             {options.length === 0 ? (
@@ -253,26 +295,17 @@ export function Composer({ draftKey, disabled, running, interrupting, onInterrup
             <button type="button" className={styles.attach} onClick={() => fileInput.current?.click()} disabled={!imagesAllowed || drafts.length >= maxPerMessage} aria-label="Add image" title={imagesAllowed ? "Add image" : "DeepSeek Pro 不支持图片"}>
               <ImagePlus size={16} />
             </button>
-            {onSwitchProvider && drafts.length === 0 ? (
-              <div className={styles.providerSelect}>
-                <Select value={provider} onChange={(p) => onSwitchProvider(p as ProviderId)} options={(Object.keys(providerName) as ProviderId[]).map((p) => ({ value: p, label: providerName[p] }))} />
-              </div>
+            {switchable ? (
+              <button ref={switchButton} type="button" className={styles.provider} onClick={() => setSwitching((v) => !v)} aria-expanded={switching} title="Change agent, model or effort">
+                {[providerName[provider], meta].filter(Boolean).join(' · ')}
+                <ChevronUp size={14} />
+              </button>
             ) : (
-              <span className={styles.provider}>{providerName[provider]}</span>
-            )}
-            {modelSelect && drafts.length === 0 && (
               <>
-                <div className={styles.providerSelect}>
-                  <Select ariaLabel="Model" value={modelSelect.model} onChange={(m) => modelSelect.onChange(m, modelSelect.effort)} options={[{ value: '', label: 'Default' }, ...modelOptions[provider]]} />
-                </div>
-                {provider !== 'deepseek' && (
-                  <div className={styles.providerSelect}>
-                    <Select ariaLabel="Effort" value={modelSelect.effort} onChange={(e) => modelSelect.onChange(modelSelect.model, e)} options={[{ value: '', label: 'Default' }, ...getEffortOptions(provider, modelSelect.model || null)]} />
-                  </div>
-                )}
+                <span className={styles.provider}>{providerName[provider]}</span>
+                <span className={styles.meta}>{meta}</span>
               </>
             )}
-            <span className={styles.meta}>{meta}</span>
             {(failed || uploading || hint || queued) && (
               <span className={styles.hint} data-error={(failed || hintError) || undefined} data-queue={(!failed && !uploading && !hint && queued) || undefined}>
                 {failed ? failed.message : uploading ? 'Uploading images…' : hint || 'A turn is running; your message will be delivered at its next step'}
