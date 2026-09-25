@@ -5,6 +5,7 @@ import { navigate } from '../router'
 import { useSessions } from '../session/useSessions'
 import { SessionTabs } from '../components/SessionList'
 import { Loading } from '../components/Loading'
+import { RateMeter } from '../components/RateMeter'
 import styles from './SessionListPage.module.css'
 
 // 移动端会话列表（UI 规范 §4 移动）
@@ -42,6 +43,9 @@ export function SessionListPage() {
       <main ref={list} className={styles.list}>
         {sessions.isPending ? <Loading label="Loading sessions…" /> : sessions.error ? <div className={styles.error}>{sessions.error.message}</div> : <SessionTabs sessions={sessions.data ?? []} />}
       </main>
+      <footer className={styles.usage}>
+        <RateMeter />
+      </footer>
     </div>
   )
 }

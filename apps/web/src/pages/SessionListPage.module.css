@@ -68,7 +68,11 @@
   overflow-y: auto;
   overscroll-behavior-y: contain;
   padding: 12px 8px;
-  padding-bottom: max(12px, env(safe-area-inset-bottom));
+}
+/* 额度固定在列表底部，与桌面侧栏同位；安全区留给它 */
+.usage {
+  flex: none;
+  padding: 0 8px env(safe-area-inset-bottom);
 }
 .error {
   padding: 16px;
