@@ -72,6 +72,12 @@
   white-space: pre-wrap;
   word-break: break-word;
 }
+/* 与助手消息里的行内 code 同字号 */
+.skill,
+.file {
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
 .skill {
   padding: 0 4px;
   border-radius: 4px;

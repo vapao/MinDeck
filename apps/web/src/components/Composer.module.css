@@ -177,6 +177,7 @@ button.provider:hover {
   outline: none;
   resize: none;
   field-sizing: content;
+  font-family: var(--font-mono);
   font-size: 14px;
   line-height: 1.65;
 }
@@ -190,6 +191,8 @@ button.provider:hover {
   pointer-events: none;
   white-space: pre-wrap;
   overflow-wrap: break-word;
+  /* 字体必须与 textarea 完全一致，否则光标和背景层文字错位 */
+  font-family: var(--font-mono);
   font-size: 14px;
   line-height: 1.65;
 }
