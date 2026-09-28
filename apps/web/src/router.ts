@@ -10,7 +10,9 @@ export function usePathname() {
   return useSyncExternalStore(subscribe, () => location.pathname)
 }
 
-export function navigate(path: string) {
-  history.pushState(null, '', path)
+// replace：当前页已失效（会话被删 / 被归档离开）时替换掉这条历史，否则返回键会回到死页面再被弹走
+export function navigate(path: string, { replace = false } = {}) {
+  if (replace) history.replaceState(null, '', path)
+  else history.pushState(null, '', path)
   dispatchEvent(new PopStateEvent('popstate'))
 }

@@ -12,5 +12,5 @@ export function leaveSession(sessions: Session[] | undefined, id: string) {
   const cwd = sessions?.find((s) => s.id === id)?.cwd
   const rest = (sessions ?? []).filter((s) => s.id !== id && !s.archivedAt)
   const next = rest.find((s) => s.cwd === cwd) ?? rest[0]
-  navigate(next ? `/s/${next.id}` : '/')
+  navigate(next ? `/s/${next.id}` : '/', { replace: true })
 }

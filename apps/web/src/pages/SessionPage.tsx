@@ -46,7 +46,7 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
   const fresh = useMutation({
     mutationFn: async (discard: boolean) => {
       const s = await api.createSession({ provider: info!.provider, cwd: info!.cwd })
-      navigate(`/s/${s.id}`)
+      navigate(`/s/${s.id}`, { replace: discard })
       if (discard) await api.deleteSession(sessionId).catch((err: Error) => dialog.alert({ title: 'New session created, but the old one was not deleted', message: err.message }))
     },
     onSettled: () => queryClient.invalidateQueries({ queryKey: ['sessions'] }),
@@ -57,7 +57,7 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
     mutationFn: async ({ seq, text, inPlace }: { seq: number; text: string; inPlace: boolean }) => {
       const s = await api.forkSession(sessionId, { beforeSeq: seq, rewind: inPlace })
       saveDraft(s.id, text)
-      navigate(`/s/${s.id}`)
+      navigate(`/s/${s.id}`, { replace: inPlace })
       if (inPlace) await api.deleteSession(sessionId).catch((err: Error) => dialog.alert({ title: 'Rewound into a new session, but the old one was not deleted', message: err.message }))
     },
     onError: (err) => dialog.alert({ title: 'Rewind failed', message: err.message }),
