@@ -38,6 +38,7 @@
 | `--accent-bg` / `--accent-bg-2` | 琥珀 7.5% / 12% | 琥珀卡片底、聚焦光晕 / 芯片底、选中选项底 |
 | `--accent-border` / `--accent-ring` | 琥珀 28% / 42% | 琥珀卡片与次级按钮描边 / 聚焦描边 |
 | `--running` / `--running-border` | `#7FA8D9` / 蓝 28% | 运行中（状态点、工具转圈） |
+| `--ref` / `--ref-bg` | `#7FA8D9` / 蓝 12% | 输入框与用户消息里的 `@` 文件引用（`$skill` 用 `--accent` / `--accent-bg-2`） |
 | `--ok` / `--ok-bg` | `#8DBB9D` / 绿 10% | 完成、成功、diff 新增 |
 | `--danger` / `--danger-bg` / `--danger-border` | `#D98D84` / 红 12% / 红 25% | 出错、失败、diff 删除、中断与危险按钮 |
 

@@ -2,9 +2,11 @@ import type { Attachment } from '@agentdeck/shared'
 import { GitBranch } from 'lucide-react'
 import { api } from '../api'
 import { formatTime } from '../format'
+import { splitRefs } from '../refs'
 import styles from './UserMessage.module.css'
 
-export function UserMessage({ text, attachments, at, onRewind }: { text: string; attachments: Attachment[]; at: string; onRewind?: () => void }) {
+/** skill：开头 $name 已确认是 skill 时传入，渲染成标签 */
+export function UserMessage({ text, attachments, at, skill, onRewind }: { text: string; attachments: Attachment[]; at: string; skill?: string; onRewind?: () => void }) {
   return (
     <div className={styles.row}>
       <div className={styles.meta}>
@@ -25,7 +27,11 @@ export function UserMessage({ text, attachments, at, onRewind }: { text: string;
             ))}
           </div>
         )}
-        {text && <div className={styles.text}>{text}</div>}
+        {text && (
+          <div className={styles.text}>
+            {splitRefs(text, skill).map((s, i) => (s.kind === 'text' ? s.text : <span key={i} className={s.kind === 'skill' ? styles.skill : styles.file}>{s.text}</span>))}
+          </div>
+        )}
       </div>
     </div>
   )

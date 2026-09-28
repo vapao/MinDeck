@@ -165,6 +165,7 @@ button.provider:hover {
   margin-left: 0;
 }
 .input {
+  position: relative;
   width: 100%;
   /* 默认一行，随内容长到五行后滚动 */
   min-height: 1.65em;
@@ -178,6 +179,35 @@ button.provider:hover {
   field-sizing: content;
   font-size: 14px;
   line-height: 1.65;
+}
+.field {
+  position: relative;
+}
+.backdrop {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  font-size: 14px;
+  line-height: 1.65;
+}
+/* 有 skill / @ 引用时文字改由背景层画，textarea 只留光标和选区 */
+.input[data-highlight] {
+  color: transparent;
+  caret-color: var(--text);
+}
+/* 配色与消息气泡里的标签一致；不加左右 padding：两层排版必须对齐，外扩的底色又会盖住后面的空格 */
+.skillMark {
+  border-radius: 3px;
+  background: var(--accent-bg-2);
+  color: var(--accent);
+}
+.fileMark {
+  border-radius: 3px;
+  background: var(--ref-bg);
+  color: var(--ref);
 }
 .input::placeholder {
   color: var(--text-4);
@@ -229,7 +259,8 @@ button.provider:hover {
   .meta::before {
     content: none;
   }
-  .input {
+  .input,
+  .backdrop {
     font-size: 16px;
   }
   .send,
@@ -278,6 +309,9 @@ button.provider:hover {
   text-align: left;
   cursor: pointer;
 }
+.mention > svg {
+  flex-shrink: 0;
+}
 .mention[data-active] {
   background: var(--selected);
   color: var(--text);
@@ -288,6 +322,18 @@ button.provider:hover {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 12px;
+}
+.mentionName {
+  flex-shrink: 0;
+  font-size: 12px;
+}
+.mentionDesc {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--text-4);
 }
 .mentionEmpty {
   padding: 8px 10px;

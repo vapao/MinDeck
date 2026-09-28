@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import type { ApprovalDecision, ProviderOutput, QuestionSpec, Resolution } from '@agentdeck/shared';
+import { skillToken, type ApprovalDecision, type ProviderOutput, type QuestionSpec, type Resolution } from '@agentdeck/shared';
 import type { ProviderSession, StartOptions } from '../types';
 import { RpcError, spawnAppServer, type AppServerRpc } from './rpc';
 import { createNormalizer, stripShellWrapper } from './normalize';
 import type { ServerNotification, ServerRequest } from './schema';
-import type { ConfigReadResponse, ThreadForkResponse, ThreadStartResponse, TurnStartResponse, UserInput } from './schema/v2';
+import type { ConfigReadResponse, SkillsListResponse, ThreadForkResponse, ThreadStartResponse, TurnStartResponse, UserInput } from './schema/v2';
 
 // 一个 Hub 进程只维持一个 app-server（方案 §5.1），多个 thread 共用；通知与服务端请求按 threadId 分发到各会话。
 
@@ -46,6 +46,14 @@ function appServer() {
     .then(() => rpc.notify('initialized', {}));
   shared = { rpc, ready, threads };
   return shared;
+}
+
+/** cwd 下已启用的 skill，供 $ 补全和发送时解析 */
+export async function listCodexSkills(cwd: string) {
+  const { rpc, ready } = appServer();
+  await ready;
+  const res = (await rpc.request('skills/list', { cwds: [cwd] })) as SkillsListResponse;
+  return res.data.flatMap((e) => e.skills).filter((s) => s.enabled);
 }
 
 /** Hub 关闭时结束共享的 app-server；没启动过就什么都不做 */
@@ -191,6 +199,10 @@ export function startCodexSession({ cwd, resume, model, effort, permissionMode, 
         .then(() => opened)
         .then(
           async () => {
+            // $skill 只认消息开头；文本保留 $name，steer 时模型靠它才会照 skill 执行（只带 skill 项会被忽略）
+            const skill = skillToken(text);
+            const found = skill && (await listCodexSkills(cwd)).find((s) => s.name === skill);
+            if (found) input.push({ type: 'skill', name: found.name, path: found.path });
             if (epoch !== sentAt) return;
             if (turnId) {
               try {

@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowUp, ChevronUp, File, Folder, FolderOpen, ImagePlus, MessageSquarePlus, Square, SquareTerminal, X } from 'lucide-react'
-import { getEffortOptions, modelOptions, type Attachment, type EntriesResponse, type ProviderId } from '@agentdeck/shared'
+import { ArrowUp, ChevronUp, File, Folder, FolderOpen, ImagePlus, MessageSquarePlus, Sparkles, Square, SquareTerminal, X } from 'lucide-react'
+import { getEffortOptions, modelOptions, type Attachment, skillToken, type EntriesResponse, type ProviderId, type SkillsResponse } from '@agentdeck/shared'
 import { Select } from './Select'
 import { providerName } from '../format'
 import { readDraft, saveDraft } from '../session/drafts'
+import { splitRefs } from '../refs'
 import styles from './Composer.module.css'
 
 type Props = {
@@ -34,16 +35,21 @@ type Props = {
   upload: (file: File) => Promise<Attachment>
   /** @ 引用补全：q 是 @ 后面敲的内容 */
   search: (q: string) => Promise<EntriesResponse>
+  /** $ 补全：当前会话 Provider 可用的 skill */
+  listSkills: () => Promise<SkillsResponse>
   onSend: (text: string, attachmentIds: string[]) => void
 }
 
-// 光标前最近的一个 @（前面是行首或空白、到光标之间没有空白）就是正在敲的引用
-function mentionAt(text: string, caret: number): { start: number; query: string } | null {
+type Mention = { kind: '@' | '$'; start: number; query: string }
+
+// $ 只在消息开头触发 skill（Claude 的 slash 命令只认开头）；否则光标前最近的一个 @（前面是行首或空白、到光标之间没有空白）就是正在敲的引用
+function mentionAt(text: string, caret: number): Mention | null {
   const before = text.slice(0, caret)
+  if (/^\$\S*$/.test(before)) return { kind: '$', start: 0, query: before.slice(1) }
   const at = before.lastIndexOf('@')
   if (at === -1 || (at > 0 && !/\s/.test(before[at - 1]))) return null
   const query = before.slice(at + 1)
-  return /\s/.test(query) ? null : { start: at, query }
+  return /\s/.test(query) ? null : { kind: '@', start: at, query }
 }
 
 // 选中即上传，发送时只引用服务端返回的 attachmentId（方案 §9.1）
@@ -51,7 +57,7 @@ type Draft = { key: string; file: File; previewUrl: string } & ({ status: 'uploa
 
 const maxPerMessage = 5
 
-export function Composer({ draftKey, disabled, running, interrupting, onInterrupt, onFresh, onTerminal, onFinder, provider, imagesAllowed = true, onSwitchProvider, modelSelect, meta, hint, hintError, placeholder, upload, search, onSend }: Props) {
+export function Composer({ draftKey, disabled, running, interrupting, onInterrupt, onFresh, onTerminal, onFinder, provider, imagesAllowed = true, onSwitchProvider, modelSelect, meta, hint, hintError, placeholder, upload, search, listSkills, onSend }: Props) {
   const [text, setText] = useState(() => readDraft(draftKey))
   useEffect(() => {
     saveDraft(draftKey, text)
@@ -82,15 +88,29 @@ export function Composer({ draftKey, disabled, running, interrupting, onInterrup
   }, [switching])
 
   // @ 补全：光标位置变化时重新判定；选中目录后保持打开继续往里敲
-  const [mention, setMention] = useState<{ start: number; query: string } | null>(null)
+  const [mention, setMention] = useState<Mention | null>(null)
   const [cursor, setCursor] = useState(0)
+  const mentionList = useRef<HTMLDivElement>(null)
+  // 键盘上下选项时把选中项滚进可视区
+  useEffect(() => {
+    mentionList.current?.querySelector('[data-active]')?.scrollIntoView({ block: 'nearest' })
+  }, [cursor])
   const entries = useQuery({
     queryKey: ['entries', draftKey, mention?.query ?? ''],
     queryFn: () => search(mention!.query),
-    enabled: mention !== null,
+    enabled: mention?.kind === '@',
     placeholderData: (prev) => prev,
   })
-  const options = mention ? (entries.data?.entries ?? []) : []
+  // 列表要起进程扫描（Claude 约 2 秒），按会话 + Provider 缓存；空会话换 Provider 后重新拉
+  const token = skillToken(text)
+  const skills = useQuery({ queryKey: ['skills', draftKey, provider], queryFn: listSkills, enabled: mention?.kind === '$' || token !== undefined, staleTime: 60_000 })
+  const skillName = token !== undefined && skills.data?.skills.some((s) => s.name === token) ? token : null
+  const segments = splitRefs(text, skillName)
+  const highlighted = segments.some((s) => s.kind !== 'text')
+  const backdrop = useRef<HTMLDivElement>(null)
+  const options = mention?.kind === '@' ? (entries.data?.entries ?? []) : []
+  const skillOptions = mention?.kind === '$' ? (skills.data?.skills ?? []).filter((s) => s.name.toLowerCase().includes(mention.query.toLowerCase())) : []
+  const optionCount = mention?.kind === '$' ? skillOptions.length : options.length
   const syncMention = () => {
     const el = textarea.current
     if (!el) return
@@ -108,8 +128,19 @@ export function Composer({ draftKey, disabled, running, interrupting, onInterrup
     requestAnimationFrame(() => {
       el.focus()
       el.setSelectionRange(caret, caret)
-      setMention(opt.dir ? { start: mention.start, query: opt.path } : null)
+      setMention(opt.dir ? { kind: '@', start: mention.start, query: opt.path } : null)
       setCursor(0)
+    })
+  }
+  const pickSkill = (skill: SkillsResponse['skills'][number]) => {
+    const el = textarea.current
+    if (!el) return
+    const insert = `$${skill.name} `
+    setText(insert + text.slice(el.selectionStart))
+    requestAnimationFrame(() => {
+      el.focus()
+      el.setSelectionRange(insert.length, insert.length)
+      setMention(null)
     })
   }
   // 卸载时释放所有预览 URL
@@ -158,15 +189,16 @@ export function Composer({ draftKey, disabled, running, interrupting, onInterrup
   }
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.nativeEvent.isComposing) return
-    if (mention && options.length > 0) {
+    if (mention && optionCount > 0) {
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         e.preventDefault()
-        setCursor((c) => (c + (e.key === 'ArrowDown' ? 1 : options.length - 1)) % options.length)
+        setCursor((c) => (c + (e.key === 'ArrowDown' ? 1 : optionCount - 1)) % optionCount)
         return
       }
       if (e.key === 'Enter' || e.key === 'Tab') {
         e.preventDefault()
-        pick(options[cursor])
+        if (mention.kind === '$') pickSkill(skillOptions[cursor])
+        else pick(options[cursor])
         return
       }
     }
@@ -229,8 +261,32 @@ export function Composer({ draftKey, disabled, running, interrupting, onInterrup
             )}
           </div>
         )}
-        {mention && (
-          <div className={styles.mentions}>
+        {mention?.kind === '$' && (
+          <div ref={mentionList} className={styles.mentions}>
+            {skillOptions.length === 0 ? (
+              <div className={styles.mentionEmpty}>{skills.isFetching ? '…' : skills.isError ? skills.error.message : 'No matching skills'}</div>
+            ) : (
+              skillOptions.map((skill, i) => (
+                <button
+                  key={skill.name}
+                  type="button"
+                  className={styles.mention}
+                  data-active={i === cursor || undefined}
+                  title={skill.description}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => pickSkill(skill)}
+                  onMouseEnter={() => setCursor(i)}
+                >
+                  <Sparkles size={14} />
+                  <code className={styles.mentionName}>{skill.name}</code>
+                  <span className={styles.mentionDesc}>{skill.description}</span>
+                </button>
+              ))
+            )}
+          </div>
+        )}
+        {mention?.kind === '@' && (
+          <div ref={mentionList} className={styles.mentions}>
             {options.length === 0 ? (
               <div className={styles.mentionEmpty}>{entries.isFetching ? '…' : 'No matches'}</div>
             ) : (
@@ -261,25 +317,35 @@ export function Composer({ draftKey, disabled, running, interrupting, onInterrup
           onDragLeave={() => setDragging(false)}
           onDrop={onDrop}
         >
-          <textarea
-            ref={textarea}
-            className={styles.input}
-            rows={1}
-            value={text}
-            placeholder={placeholder}
-            onChange={(e) => {
-              setText(e.target.value)
-              syncMention()
-            }}
-            onKeyDown={onKeyDown}
-            onKeyUp={(e) => {
-              // 上下键在弹层里选项，不动光标；左右 / Home / End 会移动光标，重新判定 @ 位置
-              if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Home' || e.key === 'End') syncMention()
-            }}
-            onClick={syncMention}
-            onBlur={() => setMention(null)}
-            onPaste={onPaste}
-          />
+          <div className={styles.field}>
+            {/* textarea 没法给部分文字上色：背后垫一层同排版的文字代为显示，$skill 和 @ 引用单独着色 */}
+            {highlighted && (
+              <div ref={backdrop} className={styles.backdrop} aria-hidden>
+                {segments.map((s, i) => (s.kind === 'text' ? s.text : <mark key={i} className={s.kind === 'skill' ? styles.skillMark : styles.fileMark}>{s.text}</mark>))}
+              </div>
+            )}
+            <textarea
+              ref={textarea}
+              className={styles.input}
+              data-highlight={highlighted || undefined}
+              rows={1}
+              value={text}
+              placeholder={placeholder}
+              onChange={(e) => {
+                setText(e.target.value)
+                syncMention()
+              }}
+              onKeyDown={onKeyDown}
+              onKeyUp={(e) => {
+                // 上下键在弹层里选项，不动光标；左右 / Home / End 会移动光标，重新判定 @ / $ 位置
+                if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Home' || e.key === 'End') syncMention()
+              }}
+              onClick={syncMention}
+              onScroll={(e) => backdrop.current && (backdrop.current.scrollTop = e.currentTarget.scrollTop)}
+              onBlur={() => setMention(null)}
+              onPaste={onPaste}
+            />
+          </div>
           <div className={styles.bar}>
             <input
               ref={fileInput}

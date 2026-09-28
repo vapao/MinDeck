@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { forkSession, query, type CanUseTool, type EffortLevel, type PermissionResult, type PermissionUpdate, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
-import type { QuestionSpec } from '@agentdeck/shared';
+import { skillToken, type QuestionSpec } from '@agentdeck/shared';
 import type { ProviderSession, StartOptions } from '../types';
 import { createNormalizer } from './normalize';
 
@@ -80,19 +80,31 @@ export function startClaudeSession({ cwd, resume, model, effort, permissionMode,
     }
   })();
 
+  // 开头是 $skill 的消息要先异步查 skill 列表，之后的消息排在它后面保持顺序；interrupt 让还没推进去的作废
+  let sending = Promise.resolve();
+  let epoch = 0;
+
   return {
     send({ text, images }) {
       // 原生 image block（方案 §9.1）；图片放在文字前面是 Anthropic 视觉文档的建议顺序
-      const content: SDKUserMessage['message']['content'] = [
-        ...images.map((img) => ({ type: 'image' as const, source: { type: 'base64' as const, media_type: img.mimeType, data: readFileSync(img.path).toString('base64') } })),
-        ...(text ? [{ type: 'text' as const, text }] : []),
-      ];
-      // 一轮进行中 push 的消息由 SDK 在下一个工具边界并入当前轮；带 uuid 才能被 interrupt 的 cancelQueued 撤回
-      inbox.push({ type: 'user', message: { role: 'user', content }, parent_tool_use_id: null, uuid: randomUUID() });
+      const imageBlocks = images.map((img) => ({ type: 'image' as const, source: { type: 'base64' as const, media_type: img.mimeType, data: readFileSync(img.path).toString('base64') } }));
+      const skill = skillToken(text);
+      const sentAt = epoch;
+      sending = sending
+        .then(async () => {
+          // 界面统一用 $ 触发 skill，SDK 只认消息开头的 /name；不是已知 skill 的 $xxx 原样发
+          const body = skill && (await q.reloadSkills()).skills.some((s) => s.name === skill) ? `/${text.slice(1)}` : text;
+          if (epoch !== sentAt) return;
+          const content: SDKUserMessage['message']['content'] = [...imageBlocks, ...(body ? [{ type: 'text' as const, text: body }] : [])];
+          // 一轮进行中 push 的消息由 SDK 在下一个工具边界并入当前轮；带 uuid 才能被 interrupt 的 cancelQueued 撤回
+          inbox.push({ type: 'user', message: { role: 'user', content }, parent_tool_use_id: null, uuid: randomUUID() });
+        })
+        .catch((err: Error) => onEvent({ type: 'error', payload: { message: `Failed to resolve skill: ${err.message}` } }));
     },
     // SDK 随后以 error_during_execution 结束该轮，normalizer 映射为 reason: 'interrupted'。
     // cancelQueued 让还没并入的插入消息一起作废，否则中断后它们会自成一轮继续跑；运行时支持，但 SDK 类型没声明这个参数
     async interrupt() {
+      epoch++;
       markInterrupting();
       await (q.interrupt as (options: { cancelQueued: boolean }) => ReturnType<typeof q.interrupt>)({ cancelQueued: true });
     },
@@ -100,6 +112,16 @@ export function startClaudeSession({ cwd, resume, model, effort, permissionMode,
       inbox.close();
     },
   };
+}
+
+/** 列出 cwd 下的 skill（不含内置命令）：起一个空的 Streaming Input 会话只发控制请求，不调模型；DeepSeek 同用 */
+export async function listClaudeSkills(cwd: string) {
+  const q = query({ prompt: createInbox(), options: { cwd, env: childEnv(), settingSources: ['user', 'project'], systemPrompt: { type: 'preset', preset: 'claude_code' }, persistSession: false } });
+  try {
+    return (await q.reloadSkills()).skills;
+  } finally {
+    q.close();
+  }
 }
 
 /** 复制出一份截到 anchor（含）的新会话记录，返回新 session id；原记录不动（DeepSeek 同用） */

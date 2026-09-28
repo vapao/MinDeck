@@ -8,11 +8,12 @@ import Fastify from 'fastify';
 import websocket from '@fastify/websocket';
 import multipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
-import type { ClientMessage, CreateServiceBody, CreateSessionBody, CreateWorkspaceBody, ForkSessionBody, ForkSessionResponse, ListDirsResponse, ResolvePendingBody, SendMessageBody, ServerMessage, UpdateServiceBody, UpdateSessionBody, UpdateSettingsBody, UpdateWorkspaceBody, UsageResponse, Workspace } from '@agentdeck/shared';
+import type { ClientMessage, CreateServiceBody, CreateSessionBody, CreateWorkspaceBody, ForkSessionBody, ForkSessionResponse, ListDirsResponse, ResolvePendingBody, SendMessageBody, ServerMessage, SkillsResponse, UpdateServiceBody, UpdateSessionBody, UpdateSettingsBody, UpdateWorkspaceBody, UsageResponse, Workspace } from '@agentdeck/shared';
 import { openStore } from './store/db';
 import { createAttachmentStore, isImageMime, maxAttachmentBytes, maxAttachmentsPerMessage } from './store/attachments';
 import { createHub, HubError } from './hub';
-import { verifyDeepseekConnection } from './providers/claude';
+import { listClaudeSkills, verifyDeepseekConnection } from './providers/claude';
+import { listCodexSkills } from './providers/codex';
 import { fileDiff, listChanges, listEntries, readWorkspaceFile } from './changes';
 import { createServices } from './services';
 import { agentdeckMcpFor, registerMcpRoute } from './mcp';
@@ -218,6 +219,12 @@ app.get<{ Params: { id: string }; Querystring: { path: string; download?: string
 });
 
 app.get<{ Params: { id: string }; Querystring: { q?: string } }>('/api/sessions/:id/entries', (req) => listEntries(hub.getSession(req.params.id).cwd, req.query.q ?? ''));
+
+app.get<{ Params: { id: string } }>('/api/sessions/:id/skills', async (req): Promise<SkillsResponse> => {
+  const { provider, cwd } = hub.getSession(req.params.id);
+  const skills = provider === 'codex' ? await listCodexSkills(cwd) : await listClaudeSkills(cwd);
+  return { skills: skills.map(({ name, description }) => ({ name, description })) };
+});
 
 app.get<{ Params: { id: string }; Querystring: { path?: string; q?: string; hidden?: boolean } }>('/api/sessions/:id/files', {
   schema: { querystring: { type: 'object', properties: { path: { type: 'string' }, q: { type: 'string' }, hidden: { type: 'boolean' } } } },

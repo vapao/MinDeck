@@ -303,6 +303,12 @@ export type FileResponse = { path: string; content: string | null; truncated: bo
 /** GET /api/sessions/:id/entries?q=：@ 引用补全。q 相对 cwd，`~` 开头相对家目录；目录 path 以 / 结尾 */
 export type EntriesResponse = { entries: { path: string; name: string; dir: boolean }[] };
 
+/** GET /api/sessions/:id/skills：$ 补全，只含 skill，不含内置命令 */
+export type SkillsResponse = { skills: { name: string; description: string }[] };
+
+/** 消息开头的 $name（界面统一的 skill 触发写法，只认开头）；是否真是 skill 由调用方对照列表判断 */
+export const skillToken = (text: string): string | undefined => text.match(/^\$(\S+)/)?.[1];
+
 // 项目目录浏览 / 文件路径搜索；truncated 表示搜索未列完。
 export type ProjectFilesResponse = EntriesResponse & { truncated: boolean };
 

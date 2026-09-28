@@ -1,8 +1,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type UIEvent } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronLeft, GitBranch, Trash2 } from 'lucide-react'
 import { Loading } from '../components/Loading'
-import type { ProviderId, Resolution } from '@agentdeck/shared'
+import { skillToken, type ProviderId, type Resolution } from '@agentdeck/shared'
 import { api } from '../api'
 import { formatEffort, formatModel, formatTokens, providerName } from '../format'
 import { navigate } from '../router'
@@ -221,6 +221,13 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
   const running = status === 'running' || status === 'waiting_user'
   // snapshot 到达前先按 claude 渲染，随后被真实 provider 覆盖
   const provider = info?.provider ?? 'claude'
+  // 与输入框 $ 补全共用缓存；只有出现 $ 开头的消息才去拉列表（Claude 要起进程扫描）
+  const hasSkillMessage = items.some((it) => it.kind === 'user' && skillToken(it.text) !== undefined)
+  const skills = useQuery({ queryKey: ['skills', sessionId, provider], queryFn: () => api.listSkills(sessionId), enabled: hasSkillMessage, staleTime: 60_000 })
+  const skillOf = (text: string) => {
+    const token = skillToken(text)
+    return token !== undefined && skills.data?.skills.some((s) => s.name === token) ? token : undefined
+  }
   const canSwitchProvider = !!info && items.length === 0 && !info.providerSessionId && status === 'idle' && !send.isPending && !switchProvider.isPending && !switchModel.isPending
   const mutationError = send.error ?? fresh.error ?? interrupt.error ?? switchProvider.error ?? switchModel.error
   const hint = mutationError
@@ -236,7 +243,7 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
   const renderItem = (it: StreamItem) => {
     switch (it.kind) {
       case 'user':
-        return <UserMessage key={it.key} text={it.text} attachments={it.attachments} at={it.at} onRewind={it.forkable && !running && !rewind.isPending ? () => onRewind(it) : undefined} />
+        return <UserMessage key={it.key} text={it.text} attachments={it.attachments} at={it.at} skill={skillOf(it.text)} onRewind={it.forkable && !running && !rewind.isPending ? () => onRewind(it) : undefined} />
       case 'assistant':
         return <AssistantMessage sessionId={sessionId} key={it.key} text={it.text} streaming={it.streaming} />
       case 'error':
@@ -351,6 +358,7 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
                 placeholder={desktop ? `Message ${providerName[provider]} · Enter to send · Shift+Enter for a new line` : `Message ${providerName[provider]}`}
                 upload={(file) => api.uploadAttachment(sessionId, file)}
                 search={(q) => api.listEntries(sessionId, q)}
+                listSkills={() => api.listSkills(sessionId)}
                 onSend={(text, attachmentIds) => {
                   // 发消息后总是回到底部看回复，哪怕之前翻上去了
                   follow.current = true

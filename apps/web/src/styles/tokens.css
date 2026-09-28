@@ -29,6 +29,9 @@
   --accent-ring: rgba(224, 162, 95, 0.42);
 
   --running: #7fa8d9;
+  /* @ 文件引用着色，与琥珀色的 $skill 区分 */
+  --ref: #7fa8d9;
+  --ref-bg: rgba(127, 168, 217, 0.12);
   --running-border: rgba(127, 168, 217, 0.28);
   --ok: #8dbb9d;
   --ok-bg: rgba(141, 187, 157, 0.1);

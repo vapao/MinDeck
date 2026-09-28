@@ -72,3 +72,15 @@
   white-space: pre-wrap;
   word-break: break-word;
 }
+.skill {
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--accent-bg-2);
+  color: var(--accent);
+}
+.file {
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--ref-bg);
+  color: var(--ref);
+}
