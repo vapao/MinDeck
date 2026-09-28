@@ -32,6 +32,11 @@ export function createNormalizer(resumed: boolean) {
           event.payload.anchor = lastChainUuid;
           return [event];
         }
+        // 压缩那一轮没有 assistant 消息，不从这里取的话上下文数字要等下一轮才降下来
+        if (m.subtype === 'compact_boundary' && m.compact_metadata.post_tokens !== undefined) {
+          lastContext = m.compact_metadata.post_tokens;
+          return [{ type: 'context.updated', payload: { tokens: lastContext } }];
+        }
         return [];
 
       case 'rate_limit_event': {

@@ -309,6 +309,9 @@ export type SkillsResponse = { skills: { name: string; description: string }[] }
 /** 消息开头的 $name（界面统一的 skill 触发写法，只认开头）；是否真是 skill 由调用方对照列表判断 */
 export const skillToken = (text: string): string | undefined => text.match(/^\$(\S+)/)?.[1];
 
+/** 开头是 /compact 的消息：手动压缩上下文，唯一放行的内置命令；Claude / DeepSeek 允许后接压缩指示 */
+export const isCompactCommand = (text: string): boolean => /^\/compact(\s|$)/.test(text);
+
 // 项目目录浏览 / 文件路径搜索；truncated 表示搜索未列完。
 export type ProjectFilesResponse = EntriesResponse & { truncated: boolean };
 

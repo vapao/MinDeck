@@ -53,7 +53,8 @@ export function createNormalizer() {
       case 'thread/tokenUsage/updated': {
         // inputTokens 已含 cachedInputTokens，就是最近一次调用的 prompt 大小
         const context = n.params.tokenUsage.last.inputTokens;
-        if (context === lastContext) return [];
+        // 压缩那一轮报 0，不是压缩后的真实大小；保留旧值等下一轮更新
+        if (context === 0 || context === lastContext) return [];
         lastContext = context;
         return [{ type: 'context.updated', payload: { tokens: context } }];
       }

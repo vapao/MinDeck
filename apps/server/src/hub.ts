@@ -1,6 +1,6 @@
 import { generateTitle } from './providers/title';
 import { randomUUID } from 'node:crypto';
-import { getEffortOptions, modelOptions, permissionModeOptions, type AgentEvent, type Attachment, type MessageDelta, type PendingRequest, type PendingRequestBody, type PermissionMode, type ProviderEvent, type ProviderOutput, type Resolution, type Session, type SessionStatus, type Settings, type UpdateSettingsBody, type UsageInfo } from '@agentdeck/shared';
+import { getEffortOptions, isCompactCommand, modelOptions, permissionModeOptions, type AgentEvent, type Attachment, type MessageDelta, type PendingRequest, type PendingRequestBody, type PermissionMode, type ProviderEvent, type ProviderOutput, type Resolution, type Session, type SessionStatus, type Settings, type UpdateSettingsBody, type UsageInfo } from '@agentdeck/shared';
 import type { Store } from './store/db';
 import type { AttachmentStore } from './store/attachments';
 import type { AgentdeckMcp, ProviderSession, StartOptions } from './providers/types';
@@ -225,6 +225,13 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
       throw new HubError(400, (err as Error).message);
     }
     if (files.length && session.provider === 'deepseek' && session.model === 'deepseek-v4-pro') throw new HubError(400, 'DeepSeek Pro 不支持图片，请新建 Flash 会话');
+    if (isCompactCommand(text)) {
+      // 压缩是独占的一轮：插进进行中的轮次在两边都没有明确语义
+      if (session.status === 'running' || session.status === 'waiting_user') throw new HubError(409, "Can't compact while a turn is running");
+      if (isEmptySession(session)) throw new HubError(409, 'Nothing to compact yet');
+      if (files.length) throw new HubError(400, "/compact doesn't take attachments");
+      if (session.provider === 'codex' && text.trim() !== '/compact') throw new HubError(400, "Codex's /compact doesn't take instructions");
+    }
     const provider = ensureProvider(session);
     // 从归档里点进来继续聊：一旦又活起来就得回到侧栏，否则会在看不见的地方跑
     if (session.archivedAt) store.setSessionArchivedAt(sessionId, null);

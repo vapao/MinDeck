@@ -15,7 +15,7 @@ Mac Mini 上自托管的 Claude / Codex / DeepSeek 多端控制台：Agent 在 M
 
 ## 待办
 
-- 浏览器验收：切片 12、13、14、15（审批卡）、17、`$` 调用 skill。
+- 浏览器验收：切片 12、13、14、15（审批卡）、17、`$` 调用 skill、`/compact`。
 - 真机 iPhone 走 Tailscale 完整跑一遍（添加到主屏幕、相册选图、审批、切后台重连），需开发者手持设备。
 - DeepSeek 真实服务验证（需填 Key）。
 

@@ -106,3 +106,10 @@ cwd 内只读 `git status` / `git diff -- <file>` / 读文件；`turn.completed`
 - 发送时服务端再解析一次，开头 `$name` 不是已知 skill 就原样发：Claude / DeepSeek 改写成 `/name 其余文本` 推入 Streaming Input；Codex 保留文本并追加 `{ type: 'skill', name, path }`（path 由服务端查，不信任客户端）。实测 Codex steer 只带 skill 项、文本不含 `$name` 时模型会忽略该 skill。
 - 开头 `$name` 在当前会话的 skill 列表里时着琥珀色，`@` 引用（前面是开头或空白）着蓝色：输入框由 textarea 背后同排版的背景层代为显示文字，消息气泡渲染为标签；列表与补全共用缓存，只有出现 `$` 开头的消息才拉取。
 - 事件流存用户原文 `$name …`。一轮进行中插入：Claude 在当前轮结束后接着执行 skill，`idle` 等它执行完才到；Codex steer 进当前轮。
+
+## `/compact` 手动压缩
+
+- 消息开头是 `/compact` 时触发，是唯一放行的内置命令（不改会话身份、模型、权限）。事件流照常存用户原文，显示为一轮普通的"运行 → 完成"，不新增事件类型。
+- Hub 前置校验：运行中 / 等待中 409（压缩独占一轮，不插入）；空会话 409；不能带附件；Codex 不接受附带指示（`/compact 其余文本` 400），Claude / DeepSeek 原样透传给 SDK 作为压缩指示。
+- Claude / DeepSeek：原文推入 Streaming Input，SDK 依次发 `status: compacting` → `compact_boundary` → `result: success` → `idle`；`compact_boundary.compact_metadata.post_tokens` 映射为 `context.updated`（自动压缩同样生效）。
+- Codex：改调 `thread/compact/start`（回包为空），随后 `turn/started` → `contextCompaction` item → `turn/completed`；turnId 从 `turn/started` 取，压缩中可中断。压缩那轮 `tokenUsage.last.inputTokens` 为 0，忽略，上下文数字等下一轮更新。

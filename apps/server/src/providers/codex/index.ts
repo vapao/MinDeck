@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { skillToken, type ApprovalDecision, type ProviderOutput, type QuestionSpec, type Resolution } from '@agentdeck/shared';
+import { isCompactCommand, skillToken, type ApprovalDecision, type ProviderOutput, type QuestionSpec, type Resolution } from '@agentdeck/shared';
 import type { ProviderSession, StartOptions } from '../types';
 import { RpcError, spawnAppServer, type AppServerRpc } from './rpc';
 import { createNormalizer, stripShellWrapper } from './normalize';
@@ -81,6 +81,8 @@ export function startCodexSession({ cwd, resume, model, effort, permissionMode, 
 
   const handler: ThreadHandler = {
     onNotification(n) {
+      // thread/compact/start 的回包不带 turn，只能从通知拿 id，否则压缩中无法 interrupt
+      if (n.method === 'turn/started' && n.params.turn.id !== lastCompletedTurnId) turnId = n.params.turn.id;
       if (n.method === 'turn/completed') {
         turnId = null;
         lastCompletedTurnId = n.params.turn.id;
@@ -199,6 +201,13 @@ export function startCodexSession({ cwd, resume, model, effort, permissionMode, 
         .then(() => opened)
         .then(
           async () => {
+            // Hub 已保证压缩只在空闲时发出，自成一轮，走和普通轮次一样的 turn/started → turn/completed
+            if (isCompactCommand(text)) {
+              if (epoch !== sentAt) return;
+              abort = new AbortController();
+              await rpc.request('thread/compact/start', { threadId: threadId! });
+              return;
+            }
             // $skill 只认消息开头；文本保留 $name，steer 时模型靠它才会照 skill 执行（只带 skill 项会被忽略）
             const skill = skillToken(text);
             const found = skill && (await listCodexSkills(cwd)).find((s) => s.name === skill);
