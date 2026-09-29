@@ -76,9 +76,9 @@ export function openStore(path: string) {
       WHERE key = 'defaults' AND json_extract(value, '$.codex.effort') = ?`).run(effort!, oldEffort!);
   }
 
-  // Claude 设置从 SDK 别名改为具体 ID（按 SDK 0.3.280 的别名指向换算），否则设置页选不中、保存会被校验拒绝。
+  // Claude 设置从 SDK 别名改为具体 ID（换算到当前下拉框里的对应 ID），否则设置页选不中、保存会被校验拒绝。
   // 已有会话的 model 不动：resume 时别名仍被 SDK 接受。
-  for (const [alias, model] of [['fable', 'claude-fable-5-1'], ['opus', 'claude-opus-5-5'], ['sonnet', 'claude-sonnet-5'], ['haiku', 'claude-haiku-4-5']]) {
+  for (const [alias, model] of [['fable', 'claude-fable-5-1'], ['opus', 'claude-opus-5-5'], ['sonnet', 'claude-sonnet-5-5'], ['haiku', 'claude-haiku-4-5']]) {
     db.prepare(`UPDATE settings SET value = json_set(value, '$.claude.model', ?)
       WHERE key = 'defaults' AND json_extract(value, '$.claude.model') = ?`).run(model!, alias!);
     db.prepare(`UPDATE settings SET value = json_set(value, '$.titles.model', ?)
