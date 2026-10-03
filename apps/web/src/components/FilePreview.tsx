@@ -1,18 +1,25 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { flushSync } from 'react-dom'
 import { useQuery } from '@tanstack/react-query'
+import { Check, Copy } from 'lucide-react'
 import Markdown, { defaultUrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { api } from '../api'
+import { api, type OutputFile } from '../api'
 import { dialog } from './Dialog'
 import { PreviewCode } from './PreviewCode'
 import styles from './FilePreview.module.css'
 import modal from './Dialog.module.css'
 
-let selected: { sessionId: string; path: string; line?: number } | null = null
+type Selected = { sessionId: string; path: string; line?: number; image?: { url: string; name: string } }
+let selected: Selected | null = null
 const listeners = new Set<() => void>()
 export function showFile(sessionId: string, path: string, line?: number) {
   selected = { sessionId, path, line }
+  listeners.forEach((l) => l())
+}
+// 不属于会话输出目录的图片（聊天附件、待发送草稿）：直接给 URL，不走 output 接口
+export function showImage(url: string, name: string) {
+  selected = { sessionId: '', path: url, image: { url, name } }
   listeners.forEach((l) => l())
 }
 export function fileReference(href: string) {
@@ -62,16 +69,22 @@ export function FilePreviewHost() {
   if (!current) return null
   return <Preview key={`${current.sessionId}:${current.path}:${current.line}`} {...current} />
 }
-function Preview({ sessionId, path, line }: { sessionId: string; path: string; line?: number }) {
+function Preview({ sessionId, path, line, image }: Selected) {
   const ref = useRef<HTMLDialogElement>(null)
   const [source, setSource] = useState(false)
   // null = fit to the preview; otherwise a multiple of the image's natural size
   const [scale, setScale] = useState<number | null>(null)
   const [natural, setNatural] = useState(0)
   const [imageError, setImageError] = useState(false)
+  const [copied, setCopied] = useState(false)
   const imageRef = useRef<HTMLImageElement>(null)
-  const q = useQuery({ queryKey: ['output', sessionId, path], queryFn: () => api.outputFile(sessionId, path), staleTime: 0, retry: false })
+  const q = useQuery({ queryKey: ['output', sessionId, path], queryFn: () => api.outputFile(sessionId, path), staleTime: 0, retry: false, enabled: !image })
   useEffect(() => { ref.current!.showModal() }, [])
+  useEffect(() => {
+    if (!copied) return
+    const timer = setTimeout(() => setCopied(false), 2000)
+    return () => clearTimeout(timer)
+  }, [copied])
   useEffect(() => { if (q.data && line) ref.current?.querySelector(`[data-line="${line}"]`)?.scrollIntoView({ block: 'center' }) }, [q.data, line])
   // Keeps the point under (x, y) in place; flushSync so the next pinch event measures the new size
   const zoomTo = (next: number | null, x?: number, y?: number) => {
@@ -113,9 +126,9 @@ function Preview({ sessionId, path, line }: { sessionId: string; path: string; l
     }
   }, [natural])
   const close = () => { selected = null; listeners.forEach((l) => l()) }
-  const file = q.data
-  const local = file && mappedPath(file.path)
-  const url = api.outputUrl(sessionId, path)
+  const file: OutputFile | undefined = image ? { path: image.name, name: image.name, size: 0, mime: '', kind: 'image', content: null, truncated: false } : q.data
+  const local = file && !image && mappedPath(file.path)
+  const url = image?.url ?? api.outputUrl(sessionId, path)
   const relativeToFile = (target: string) => target.startsWith('/') || target.startsWith('~/') ? target : `${file!.path.slice(0, file!.path.lastIndexOf('/') + 1)}${target}`
   return <dialog ref={ref} className={`${modal.dialog} ${styles.preview}`} onClose={close} onClick={(e) => { if (e.target === ref.current) ref.current.close() }} aria-label="File preview">
     <header className={modal.head}>
@@ -147,9 +160,9 @@ function Preview({ sessionId, path, line }: { sessionId: string; path: string; l
       </>}
     </div>
     {file && <footer className={`${modal.actions} ${styles.footer}`}>
-      {file.content !== null && <button className={modal.secondary} onClick={() => navigator.clipboard.writeText(file.content!)}>Copy text</button>}
+      {file.content !== null && <button className={`${modal.secondary} ${styles.copyButton}`} onClick={() => { void navigator.clipboard.writeText(file.content!).then(() => setCopied(true)) }}>{copied ? <Check size={14} /> : <Copy size={14} />}{copied ? 'Copied' : 'Copy text'}</button>}
       {local && <a className={`${modal.primary} ${styles.action}`} onClick={() => ref.current!.close()} href={`agentdeck-finder://reveal?path=${encodeURIComponent(local)}`}>Show in Finder</a>}
-      {file.kind !== 'directory' && <a className={`${modal.secondary} ${styles.action}`} onClick={() => ref.current!.close()} href={api.outputUrl(sessionId, path, true)} download={file.name}>Download to this device</a>}
+      {file.kind !== 'directory' && <a className={`${modal.secondary} ${styles.action}`} onClick={() => ref.current!.close()} href={image?.url ?? api.outputUrl(sessionId, path, true)} download={file.name}>Download to this device</a>}
     </footer>}
   </dialog>
 }

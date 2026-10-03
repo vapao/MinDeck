@@ -98,6 +98,17 @@ button.provider:hover {
 .chip[data-status='error'] {
   border-color: var(--danger-border);
 }
+.chipOpen {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  cursor: zoom-in;
+}
 .chipThumb {
   flex: none;
   width: 22px;

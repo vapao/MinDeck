@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { ArrowUp, ChevronUp, File, Folder, FolderOpen, ImagePlus, MessageSquarePlus, Sparkles, Square, SquareTerminal, X } from 'lucide-react'
 import { getEffortOptions, modelOptions, type Attachment, skillToken, type EntriesResponse, type ProviderId, type SkillsResponse } from '@agentdeck/shared'
 import { Select } from './Select'
+import { showImage } from './FilePreview'
 import { providerName } from '../format'
 import { readDraft, saveDraft } from '../session/drafts'
 import { splitRefs } from '../refs'
@@ -228,8 +229,10 @@ export function Composer({ draftKey, disabled, running, interrupting, onInterrup
         <div className={styles.chips}>
           {drafts.map((d) => (
             <div key={d.key} className={styles.chip} data-status={d.status} title={d.status === 'error' ? d.message : d.file.name}>
-              <img className={styles.chipThumb} src={d.previewUrl} alt="" />
-              <code className={styles.chipName}>{d.file.name}</code>
+              <button type="button" className={styles.chipOpen} onClick={() => showImage(d.previewUrl, d.file.name)} aria-label={`Preview ${d.file.name}`}>
+                <img className={styles.chipThumb} src={d.previewUrl} alt="" />
+                <code className={styles.chipName}>{d.file.name}</code>
+              </button>
               <span className={styles.chipMeta}>{d.status === 'uploading' ? 'Uploading…' : d.status === 'error' ? 'Upload failed' : formatSize(d.file.size)}</span>
               <button type="button" className={styles.chipRemove} onClick={() => remove(d.key)} aria-label="Remove">
                 <X size={14} />
