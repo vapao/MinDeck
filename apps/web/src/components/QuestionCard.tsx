@@ -48,6 +48,11 @@ export function QuestionCard({ request, provider, state, answers, response, reso
                     type={q.multiSelect ? 'checkbox' : 'radio'}
                     name={q.question}
                     checked={picked[q.question]?.includes(o.label) ?? false}
+                    onClick={() => {
+                      if (!q.multiSelect && picked[q.question]?.includes(o.label)) {
+                        setPicked((p) => ({ ...p, [q.question]: [] }))
+                      }
+                    }}
                     onChange={() => toggle(q.question, o.label, q.multiSelect)}
                   />
                   <span className={styles.optionText}>
