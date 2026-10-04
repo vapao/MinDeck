@@ -15,6 +15,7 @@ export default defineConfig({
         description: 'Multi-device console for Claude / Codex',
         lang: 'zh-CN',
         display: 'standalone',
+        display_override: ['window-controls-overlay'],
         background_color: '#111214',
         theme_color: '#141518',
         icons: [

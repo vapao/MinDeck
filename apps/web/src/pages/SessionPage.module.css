@@ -143,3 +143,19 @@
     margin-left: 0;
   }
 }
+@media (display-mode: window-controls-overlay) and (min-width: 1024px) {
+  .topbar {
+    padding-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 16px);
+    -webkit-app-region: drag;
+    user-select: none;
+  }
+  .topbar button {
+    -webkit-app-region: no-drag;
+  }
+}
+@media (display-mode: window-controls-overlay) and (max-width: 1023px) {
+  .page {
+    top: calc(var(--viewport-top, 0px) + env(titlebar-area-height, 0px));
+    height: calc(var(--viewport-height, 100dvh) - env(titlebar-area-height, 0px));
+  }
+}

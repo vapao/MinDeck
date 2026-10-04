@@ -141,3 +141,46 @@
   background: var(--surface-2);
   color: var(--text-strong);
 }
+
+@media (display-mode: window-controls-overlay) and (min-width: 1024px) {
+  .shell {
+    --topbar-h: max(44px, env(titlebar-area-height, 0px));
+  }
+  .brand {
+    padding-left: calc(env(titlebar-area-x, 0px) + 12px);
+    gap: 8px;
+    font-size: 14px;
+    -webkit-app-region: drag;
+    user-select: none;
+  }
+  .brandName {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .mark,
+  .bellLabel {
+    display: none;
+  }
+  .bell {
+    flex: none;
+    -webkit-app-region: no-drag;
+  }
+  .main:not([data-session]) {
+    position: relative;
+    padding-top: var(--topbar-h);
+  }
+  .main:not([data-session])::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: var(--topbar-h);
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    -webkit-app-region: drag;
+  }
+}

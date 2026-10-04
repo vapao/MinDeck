@@ -78,3 +78,9 @@
   padding: 16px;
   color: var(--danger);
 }
+@media (display-mode: window-controls-overlay) {
+  .page {
+    top: env(titlebar-area-height, 0px);
+    height: calc(100dvh - env(titlebar-area-height, 0px));
+  }
+}

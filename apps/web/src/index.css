@@ -20,6 +20,23 @@ body {
   height: 100dvh;
 }
 
+/* 窄桌面 PWA 使用手机布局，但仍需给浏览器的窗口控件留出空间。 */
+@media (display-mode: window-controls-overlay) and (max-width: 1023px) {
+  #root {
+    padding-top: env(titlebar-area-height, 0px);
+  }
+  #root::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: env(titlebar-area-height, 0px);
+    background: var(--panel);
+    -webkit-app-region: drag;
+  }
+}
+
 body {
   background: var(--bg);
   color: var(--text);

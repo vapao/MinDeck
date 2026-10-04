@@ -35,7 +35,7 @@ export default function App() {
   return (
     <div className={styles.shell}>
       <Sidebar activeId={sessionId} />
-      <main className={styles.main}>{page ?? (pathname === '/new' ? <NewSessionPage /> : <EmptyState />)}</main>
+      <main className={styles.main} data-session={sessionId ? '' : undefined}>{page ?? (pathname === '/new' ? <NewSessionPage /> : <EmptyState />)}</main>
     </div>
   )
 }
@@ -69,9 +69,9 @@ function Sidebar({ activeId }: { activeId?: string }) {
           AgentDeck
         </span>
         {notificationsSupported && notify.permission === 'default' && (
-          <button type="button" className={styles.bell} onClick={notify.request} title="System notification when a session needs approval or finishes">
+          <button type="button" className={styles.bell} onClick={notify.request} aria-label="Enable notifications" title="System notification when a session needs approval or finishes">
             <Bell size={14} />
-            Enable notifications
+            <span className={styles.bellLabel}>Enable notifications</span>
           </button>
         )}
       </div>

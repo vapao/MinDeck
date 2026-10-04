@@ -11,6 +11,8 @@
 5. Codex Provider：app-server stdio adapter 映射到同一套事件；审批 / requestUserInput / localImage。
 6. Tailscale Serve、launchd、PWA manifest、移动端、断线重连。
 
+桌面安装的 PWA 支持 Window Controls Overlay：会话栏并入系统标题栏，避开窗口控件与 Chrome 菜单，空白处可拖动，按钮可点击。非会话页保留拖动区域；窄窗口预留系统标题栏。普通浏览器、手机与关闭覆盖模式时保持原布局。
+
 ## 切片 7：易用性
 
 输入框草稿（localStorage 按会话）；「新开一轮」（同 cwd / provider 新建会话，等价 `/clear`，弹窗可选删除旧会话）；浏览器 `Notification`（靠会话列表轮询比对状态，不改服务端）；头部显示当前模型。
