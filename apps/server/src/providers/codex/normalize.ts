@@ -86,7 +86,7 @@ function itemStarted(item: ThreadItem): ProviderEvent[] {
     case 'commandExecution':
       return [{ type: 'tool.started', payload: { toolUseId: item.id, name: 'shell', summary: stripShellWrapper(item.command) } }];
     case 'fileChange':
-      return [{ type: 'tool.started', payload: { toolUseId: item.id, name: 'apply_patch', summary: item.changes.map((c) => `${c.kind} ${c.path}`).join(', ') } }];
+      return [{ type: 'tool.started', payload: { toolUseId: item.id, name: 'apply_patch', summary: item.changes.map((c) => `${c.kind.type} ${c.path}`).join(', ') } }];
     case 'mcpToolCall':
       return [{ type: 'tool.started', payload: { toolUseId: item.id, name: `${item.server}/${item.tool}`, summary: summarizeToolInput(item.arguments) } }];
     default:
