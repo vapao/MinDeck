@@ -109,7 +109,7 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
     busy: resolve.isPending && resolve.variables?.id === id,
     error: resolve.error && resolve.variables?.id === id ? resolve.error.message : null,
   })
-  // 删除：运行中的服务端会 409，消息原样给用户看；成功后跳到邻居会话。移到 Inactive / 移回在侧栏行上操作
+  // 删除：运行中的服务端会 409，消息原样给用户看；成功后手机回列表，桌面跳到邻居会话。移到 Inactive / 移回在侧栏行上操作
   const remove = useMutation({
     mutationFn: () => api.deleteSession(sessionId),
     onSuccess: () => {
@@ -229,7 +229,7 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
     return token !== undefined && skills.data?.skills.some((s) => s.name === token) ? token : undefined
   }
   const canSwitchProvider = !!info && items.length === 0 && !info.providerSessionId && status === 'idle' && !send.isPending && !switchProvider.isPending && !switchModel.isPending
-  const mutationError = send.error ?? fresh.error ?? interrupt.error ?? switchProvider.error ?? switchModel.error
+  const mutationError = fresh.error ?? interrupt.error ?? switchProvider.error ?? switchModel.error
   const hint = mutationError
     ? mutationError.message
     : connection !== 'open'
@@ -338,10 +338,12 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
 
           <footer className={styles.footer}>
             <div className={styles.column}>
+              {send.error && <ErrorCard message={`Send failed. Your message is still in the input box. You can try again.\n${send.error.message}`} />}
               <Composer
                 key={sessionId}
                 draftKey={sessionId}
                 disabled={status === 'waiting_user' || connection !== 'open'}
+                sending={send.isPending}
                 running={running}
                 interrupting={interrupt.isPending}
                 onInterrupt={() => interrupt.mutate()}
@@ -362,7 +364,7 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
                 onSend={(text, attachmentIds) => {
                   // 发消息后总是回到底部看回复，哪怕之前翻上去了
                   follow.current = true
-                  send.mutate({ text, attachmentIds })
+                  return send.mutateAsync({ text, attachmentIds }).then(() => true, () => false)
                 }}
               />
             </div>

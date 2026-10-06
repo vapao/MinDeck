@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowUp, ChevronUp, File, Folder, FolderOpen, ImagePlus, MessageSquare, MessageSquarePlus, Sparkles, Square, SquareTerminal, X } from 'lucide-react'
+import { ArrowUp, ChevronUp, File, Folder, FolderOpen, ImagePlus, LoaderCircle, MessageSquare, MessageSquarePlus, Sparkles, Square, SquareTerminal, X } from 'lucide-react'
 import { getEffortOptions, modelOptions, type Attachment, skillToken, type EntriesResponse, type ProviderId, type Session, type SkillsResponse } from '@agentdeck/shared'
 import { api } from '../api'
 import { Select } from './Select'
@@ -14,6 +14,7 @@ type Props = {
   /** 草稿按此 key 存 localStorage，切走再切回来输入内容还在 */
   draftKey: string
   disabled: boolean
+  sending: boolean
   /** 一轮进行中：发送按钮换成中断；Enter 仍可发送，作为追加指令排队 */
   running: boolean
   interrupting: boolean
@@ -39,7 +40,8 @@ type Props = {
   search: (q: string) => Promise<EntriesResponse>
   /** $ 补全：当前会话 Provider 可用的 skill */
   listSkills: () => Promise<SkillsResponse>
-  onSend: (text: string, attachmentIds: string[]) => void
+  /** true 表示已收到发送成功回执，此时才清空草稿和附件 */
+  onSend: (text: string, attachmentIds: string[]) => Promise<boolean>
 }
 
 type Mention = { kind: '@' | '$' | '#'; start: number; query: string }
@@ -57,7 +59,7 @@ type Draft = { key: string; file: File; previewUrl: string } & ({ status: 'uploa
 
 const maxPerMessage = 5
 
-export function Composer({ draftKey, disabled, running, interrupting, onInterrupt, onFresh, onTerminal, onFinder, provider, imagesAllowed = true, onSwitchProvider, modelSelect, meta, hint, hintError, placeholder, upload, search, listSkills, onSend }: Props) {
+export function Composer({ draftKey, disabled, sending, running, interrupting, onInterrupt, onFresh, onTerminal, onFinder, provider, imagesAllowed = true, onSwitchProvider, modelSelect, meta, hint, hintError, placeholder, upload, search, listSkills, onSend }: Props) {
   const [text, setText] = useState(() => readDraft(draftKey))
   useEffect(() => {
     saveDraft(draftKey, text)
@@ -121,7 +123,7 @@ export function Composer({ draftKey, disabled, running, interrupting, onInterrup
   const selectedIndex = Math.min(cursor, Math.max(0, optionCount - 1))
   const syncMention = () => {
     const el = textarea.current
-    if (!el) return
+    if (!el || sending) return
     setMention(mentionAt(el.value, el.selectionStart))
     setCursor(0)
   }
@@ -174,7 +176,7 @@ export function Composer({ draftKey, disabled, running, interrupting, onInterrup
   const patch = (key: string, next: Partial<Draft>) => setDrafts((ds) => ds.map((d) => (d.key === key ? ({ ...d, ...next } as Draft) : d)))
 
   const addFiles = (files: Iterable<File>) => {
-    if (!imagesAllowed) return
+    if (!imagesAllowed || sending) return
     const images = [...files].filter((f) => f.type.startsWith('image/')).slice(0, Math.max(0, maxPerMessage - drafts.length))
     if (images.length === 0) return
     const added: Draft[] = images.map((file) => ({ key: crypto.randomUUID(), file, previewUrl: URL.createObjectURL(file), status: 'uploading' }))
@@ -197,18 +199,21 @@ export function Composer({ draftKey, disabled, running, interrupting, onInterrup
   const uploading = drafts.some((d) => d.status === 'uploading')
   const failed = drafts.find((d) => d.status === 'error')
   const ids = drafts.flatMap((d) => (d.status === 'done' ? [d.id] : []))
-  const canSend = !disabled && !uploading && !failed && (imagesAllowed || drafts.length === 0) && (text.trim() !== '' || ids.length > 0)
+  const canSend = !disabled && !sending && !uploading && !failed && (imagesAllowed || drafts.length === 0) && (text.trim() !== '' || ids.length > 0)
   // 轮次进行中才提示"会排队"，且只在真的写了东西时——空输入框没必要一直挂着
   const queued = running && (text.trim() !== '' || ids.length > 0)
 
-  const submit = () => {
+  const submit = async () => {
     if (!canSend) return
-    onSend(text.trim(), ids)
+    setMention(null)
+    // 收到成功回执才清空，网络失败时原文、草稿和已上传附件都还在。
+    if (!await onSend(text.trim(), ids)) return
     drafts.forEach((d) => URL.revokeObjectURL(d.previewUrl))
     setText('')
     setDrafts([])
   }
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (sending) return
     if (e.nativeEvent.isComposing) return
     if (mention && optionCount > 0) {
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
@@ -255,7 +260,7 @@ export function Composer({ draftKey, disabled, running, interrupting, onInterrup
                 <code className={styles.chipName}>{d.file.name}</code>
               </button>
               <span className={styles.chipMeta}>{d.status === 'uploading' ? 'Uploading…' : d.status === 'error' ? 'Upload failed' : formatSize(d.file.size)}</span>
-              <button type="button" className={styles.chipRemove} onClick={() => remove(d.key)} aria-label="Remove">
+              <button type="button" className={styles.chipRemove} onClick={() => remove(d.key)} disabled={sending} aria-label="Remove">
                 <X size={14} />
               </button>
             </div>
@@ -375,6 +380,8 @@ export function Composer({ draftKey, disabled, running, interrupting, onInterrup
               className={styles.input}
               data-highlight={highlighted || undefined}
               rows={1}
+              readOnly={sending}
+              aria-busy={sending}
               value={text}
               placeholder={placeholder}
               onChange={(e) => {
@@ -386,7 +393,7 @@ export function Composer({ draftKey, disabled, running, interrupting, onInterrup
                 // 上下键在弹层里选项，不动光标；左右 / Home / End 会移动光标，重新判定 @ / $ 位置
                 if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Home' || e.key === 'End') syncMention()
               }}
-              onClick={syncMention}
+              onClick={() => !sending && syncMention()}
               onScroll={(e) => backdrop.current && (backdrop.current.scrollTop = e.currentTarget.scrollTop)}
               onBlur={() => setMention(null)}
               onPaste={onPaste}
@@ -404,7 +411,7 @@ export function Composer({ draftKey, disabled, running, interrupting, onInterrup
                 e.target.value = ''
               }}
             />
-            <button type="button" className={styles.attach} onClick={() => fileInput.current?.click()} disabled={!imagesAllowed || drafts.length >= maxPerMessage} aria-label="Add image" title={imagesAllowed ? "Add image" : "DeepSeek Pro 不支持图片"}>
+            <button type="button" className={styles.attach} onClick={() => fileInput.current?.click()} disabled={sending || !imagesAllowed || drafts.length >= maxPerMessage} aria-label="Add image" title={imagesAllowed ? "Add image" : "DeepSeek Pro 不支持图片"}>
               <ImagePlus size={16} />
             </button>
             {switchable ? (
@@ -418,23 +425,23 @@ export function Composer({ draftKey, disabled, running, interrupting, onInterrup
                 <span className={styles.meta}>{meta}</span>
               </>
             )}
-            {(failed || uploading || hint || queued) && (
+            {(failed || uploading || sending || hint || queued) && (
               <span className={styles.hint} data-error={(failed || hintError) || undefined} data-queue={(!failed && !uploading && !hint && queued) || undefined}>
-                {failed ? failed.message : uploading ? 'Uploading images…' : hint || 'A turn is running; your message will be delivered at its next step'}
+                {failed ? failed.message : uploading ? 'Uploading images…' : sending ? 'Sending…' : hint || 'A turn is running; your message will be delivered at its next step'}
               </span>
             )}
             {onFinder && <button type="button" className={styles.fresh} onClick={onFinder} aria-label="Open in Finder" title="Open this project folder in Finder"><FolderOpen size={16} /></button>}
             {onTerminal && <button type="button" className={styles.fresh} onClick={onTerminal} aria-label="Open in iTerm2" title="Connect to this project over SSH in iTerm2"><SquareTerminal size={16} /></button>}
-            <button type="button" className={styles.fresh} onClick={onFresh} disabled={!onFresh} aria-label="Start fresh" title="Start a new session in the same workspace with a fresh context">
+            <button type="button" className={styles.fresh} onClick={onFresh} disabled={sending || !onFresh} aria-label="Start fresh" title="Start a new session in the same workspace with a fresh context">
               <MessageSquarePlus size={16} />
             </button>
-            {running ? (
+            {running && !sending ? (
               <button type="button" className={styles.stop} onClick={onInterrupt} disabled={interrupting} aria-label="Stop" title="Stop the current turn">
                 <Square size={12} />
               </button>
             ) : (
-              <button type="button" className={styles.send} onClick={submit} disabled={!canSend} aria-label="Send">
-                <ArrowUp size={16} />
+              <button type="button" className={styles.send} onClick={submit} disabled={!canSend} aria-label={sending ? 'Sending' : 'Send'} aria-busy={sending}>
+                {sending ? <LoaderCircle size={16} className={styles.spinner} /> : <ArrowUp size={16} />}
               </button>
             )}
           </div>

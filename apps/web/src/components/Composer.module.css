@@ -176,6 +176,7 @@ button.provider:hover {
   margin-left: 0;
 }
 .input {
+  display: block;
   position: relative;
   width: 100%;
   /* 默认一行，随内容长到五行后滚动 */
@@ -195,6 +196,11 @@ button.provider:hover {
 .field {
   position: relative;
 }
+.input,
+.backdrop {
+  /* 两层预留相同的滚动条宽度，长引用换行位置才一致。 */
+  scrollbar-gutter: stable;
+}
 .backdrop {
   position: absolute;
   inset: 0;
@@ -206,6 +212,10 @@ button.provider:hover {
   font-family: var(--font-mono);
   font-size: 14px;
   line-height: 1.65;
+}
+.backdrop::after {
+  /* 保留末尾换行产生的空行，使背景层能滚到 textarea 的光标位置。 */
+  content: '\200b';
 }
 /* 有 skill / @ 引用时文字改由背景层画，textarea 只留光标和选区 */
 .input[data-highlight] {
@@ -250,6 +260,20 @@ button.provider:hover {
   background: rgba(255, 255, 255, 0.06);
   color: var(--text-4);
   cursor: default;
+}
+.send[aria-busy='true'] {
+  color: var(--accent);
+}
+.spinner {
+  animation: spin 1s linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+  }
 }
 .stop {
   border: 1px solid var(--danger-border);
