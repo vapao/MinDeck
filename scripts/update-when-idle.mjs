@@ -92,7 +92,8 @@ if (process.argv[2] !== '--worker') {
   const waitUntilIdle = async () => {
     while (Date.now() < deadline) {
       const sessions = await readHub('/api/sessions', Math.min(deadline, Date.now() + 60_000));
-      if (sessions.every((session) => session.status === 'idle' || session.status === 'error')) return;
+      // 后台任务跑在 Provider 子进程里，重启会把它连同之后的自动唤醒一起杀掉
+      if (sessions.every((session) => (session.status === 'idle' || session.status === 'error') && !session.backgroundTasks)) return;
       await setTimeout(2000);
     }
     throw new Error('Timed out waiting for idle sessions (10 minutes); Hub was not restarted');
@@ -106,7 +107,7 @@ if (process.argv[2] !== '--worker') {
   try {
     save('waiting');
     process.send?.({ ok: true, message: `已安排空闲后更新，PID ${process.pid}；取消等待：kill ${process.pid}` });
-    report('等待所有会话空闲；running / waiting_user 均阻止更新');
+    report('等待所有会话空闲；running / waiting_user 及后台任务均阻止更新');
     await waitUntilIdle();
     save('building');
     report('开始构建前端');

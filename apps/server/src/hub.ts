@@ -37,6 +37,8 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
   const maxAutoWakes = 5;
   // 用户在派生审批卡上选了"本会话允许"的会话：之后 create_session 免审批，用于用户离开时让监督会话自主派活。只在内存，Hub 重启即丢
   const spawnGrants = new Set<string>();
+  // 各会话 Agent 自己起的后台任务数：Hub 重启时子进程连同后台任务一起没了，所以只放内存
+  const background = new Map<string, number>();
   // 有派生授权的会话本来就是要无人值守地派活、收结果，5 次不够；仍留上限防两个 Agent 失控互相唤醒
   const maxGrantedAutoWakes = 30;
   let closing = false;
@@ -58,7 +60,7 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
   }
 
   // 流式片段只广播不落库：message.completed 会带全文，存 delta 只会把库和回放撑大
-  function broadcast(sessionId: string, output: ProviderOutput) {
+  function broadcast(sessionId: string, output: ProviderEvent | MessageDelta) {
     if (output.type !== 'message.delta') return emit(sessionId, output);
     for (const fn of listeners.get(sessionId) ?? []) fn(output);
   }
@@ -114,6 +116,8 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
     if (!session) throw new HubError(404, 'Session not found');
     return session;
   }
+
+  const withBackground = (session: Session): Session => ({ ...session, backgroundTasks: background.get(session.id) ?? 0 });
 
   function requestedEvent(request: PendingRequest): ProviderEvent {
     return request.kind === 'approval'
@@ -181,6 +185,19 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
         if (!store.getSession(session.id)) return;
         if (event.type === 'session.started') store.setProviderSessionId(session.id, event.payload.providerSessionId);
         if (event.type === 'usage.updated') usage[event.payload.rateLimitType] = event.payload;
+        if (event.type === 'background.changed') {
+          if (event.count) background.set(session.id, event.count);
+          else background.delete(session.id);
+          return;
+        }
+        // Provider 自己续上的一轮（后台任务结束后唤醒）要补回 running；Hub 发起的轮次 dispatch 时已记过，不重复
+        if (event.type === 'turn.started') {
+          const status = getSession(session.id).status;
+          if (status === 'running' || status === 'waiting_user') return;
+          broadcast(session.id, event);
+          setStatus(session.id, 'running');
+          return;
+        }
         broadcast(session.id, event);
         if (event.type === 'turn.completed') setStatus(session.id, 'idle');
         if (event.type === 'turn.failed') setStatus(session.id, 'error');
@@ -188,6 +205,7 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
       },
       onExit(error) {
         live.delete(session.id);
+        background.delete(session.id);
         if (error && !closing && store.getSession(session.id)) {
           emit(session.id, { type: 'error', payload: { message: `${session.provider} process exited: ${error instanceof Error ? error.message : String(error)}` } });
           setStatus(session.id, 'error');
@@ -294,8 +312,8 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
       store.setSettings({ titles, claude: next.claude, codex: next.codex, deepseek: { ...deepseek, baseUrl, model: deepseek.model.trim() || 'deepseek-flash', apiKeyConfigured: !!store.getDeepseekApiKey() } });
     },
 
-    getSession,
-    listSessions: store.listSessions,
+    getSession: (id: string) => withBackground(getSession(id)),
+    listSessions: () => store.listSessions().map(withBackground),
     usage,
 
     /** 归档只是隐藏：跟删除一样只允许 idle / error，避免运行中的会话从侧栏消失后没人盯；取消归档没有限制 */

@@ -32,6 +32,10 @@ export function createNormalizer(resumed: boolean) {
           event.payload.anchor = lastChainUuid;
           return [event];
         }
+        // 后台 Bash 不拦 idle：它结束时 SDK 会自己唤醒 Agent 接着干。Hub 发起的轮次此时已是 running，会把这条丢掉
+        if (m.subtype === 'session_state_changed' && m.state === 'running') return [{ type: 'turn.started', payload: {} }];
+        // 全量列表，按替换语义取数；ambient 是常驻监听，不算在干活
+        if (m.subtype === 'background_tasks_changed') return [{ type: 'background.changed', count: m.tasks.filter((t) => !t.ambient).length }];
         // 压缩那一轮没有 assistant 消息，不从这里取的话上下文数字要等下一轮才降下来
         if (m.subtype === 'compact_boundary' && m.compact_metadata.post_tokens !== undefined) {
           lastContext = m.compact_metadata.post_tokens;

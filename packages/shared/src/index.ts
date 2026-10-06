@@ -22,6 +22,8 @@ export type Session = {
   archivedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Agent 自己起的后台任务（如后台 Bash）还剩几个，不含常驻监听；不落库，随 Provider 进程消失，只有 Hub 返回的会话带 */
+  backgroundTasks?: number;
 };
 
 // ---- 工作区与设置 ----
@@ -226,7 +228,9 @@ export type ProviderEvent<T extends EventType = EventType> = {
 
 /** 流式文本片段：不落库、不占 seq，只实时广播；掉线期间丢的片段由 message.completed 的全文补齐 */
 export type MessageDelta = { type: 'message.delta'; messageId: string; text: string };
-export type ProviderOutput = ProviderEvent | MessageDelta;
+/** 后台任务数变化：Hub 只记在内存里，随会话列表返回，不落库也不广播 */
+export type BackgroundChanged = { type: 'background.changed'; count: number };
+export type ProviderOutput = ProviderEvent | MessageDelta | BackgroundChanged;
 
 // ---- REST ----
 

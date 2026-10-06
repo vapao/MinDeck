@@ -95,7 +95,7 @@ function SessionList({ sessions, activeId, onSelect, actions, empty }: Props) {
   const collapsed = new Set<string>(JSON.parse(useSyncExternalStore(subscribeCollapsed, readCollapsed)))
   const seen = useSeen()
   const drafts = useDraftSessions(sessions)
-  const needsAttention = (s: Session) => s.status === 'running' || s.status === 'waiting_user' || isUnread(s, seen) || drafts.has(s.id)
+  const needsAttention = (s: Session) => s.status === 'running' || s.status === 'waiting_user' || !!s.backgroundTasks || isUnread(s, seen) || drafts.has(s.id)
   const groups = new Map<string, Session[]>()
   // sessions 已按 updatedAt 倒序，首次出现的顺序就是分组顺序
   for (const s of sessions) groups.set(s.cwd, [...(groups.get(s.cwd) ?? []), s])
@@ -130,7 +130,9 @@ function SessionList({ sessions, activeId, onSelect, actions, empty }: Props) {
                     </span>
                     <span className={styles.metaRow}>
                       <code className={styles.chip}>{s.provider}</code>
-                      {s.status === 'idle' ? (
+                      {s.status === 'idle' && s.backgroundTasks ? (
+                        <span className={styles.status} data-status="running">Background</span>
+                      ) : s.status === 'idle' ? (
                         isUnread(s, seen) && <span className={styles.status} data-status="done">Done</span>
                       ) : (
                         <span className={styles.status} data-status={s.status}>{statusText[s.status]}</span>

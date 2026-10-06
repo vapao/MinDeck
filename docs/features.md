@@ -73,7 +73,7 @@ cwd 内只读 `git status` / `git diff -- <file>` / 读文件；`turn.completed`
 ## 空闲后更新 Hub
 
 - `scripts/launchd.sh update-when-idle`：先确认 launchd 服务已加载，再启动独立的一次性后台进程，立即返回 PID 和日志路径，不占用 Agent 会话等待。日志追加到 `data/logs/update-when-idle.log`，等待期间可用 `kill <PID>` 取消。
-- 每 2 秒读取本机 `/api/sessions`（端口沿用 `AGENTDECK_PORT`，默认 8004），只有所有会话均为 idle / error 才构建；running / waiting_user 都阻止更新。构建后再次等空闲，再调用现有 `restart`。
+- 每 2 秒读取本机 `/api/sessions`（端口沿用 `AGENTDECK_PORT`，默认 8004），只有所有会话均为 idle / error 且没有后台任务才构建；running / waiting_user 和后台任务都阻止更新。构建后再次等空闲，再调用现有 `restart`。
 - 空闲检查共用从进程启动起的 10 分钟期限；连接拒绝、连接重置、套接字断开或请求超时会在阶段期限内限时重试（最多 60 秒）；HTTP / 数据错误、重连超时或构建失败会记录具体阶段、接口和原因并退出，不重启。构建命令自身不受该期限强制终止。同一时间只允许一个后台更新任务，重复调用不会再次安排；不是常驻任务，机器重启后不恢复。
 - 后台任务原子写入 `data/update-status.json`，`GET /api/update-status` 返回最近一次更新及本次 Hub 的实例 ID；重启后最多等待 60 秒，确认新实例可访问才记成功。失败、取消或后台进程意外停止都会显示失败。
 - 顶部独立更新通知每 5 秒查询更新状态，显示等待 / 构建 / 重启 / 成功 / 失败和时间；不会自动消失，关闭只针对本次更新的当前阶段，后续结果仍会出现。关闭浏览器后重开仍可查看未关闭的最近结果；成功提供 Refresh 按钮，不主动刷新页面。状态文件与 SQLite 位于同目录，日志仍在项目 `data/logs/`。
@@ -132,6 +132,13 @@ cwd 内只读 `git status` / `git diff -- <file>` / 读文件；`turn.completed`
 - 发送时服务端再解析一次，开头 `$name` 不是已知 skill 就原样发：Claude / DeepSeek 改写成 `/name 其余文本` 推入 Streaming Input；Codex 保留文本并追加 `{ type: 'skill', name, path }`（path 由服务端查，不信任客户端）。实测 Codex steer 只带 skill 项、文本不含 `$name` 时模型会忽略该 skill。
 - 开头 `$name` 在当前会话的 skill 列表里时着琥珀色，`@` 引用（前面是开头或空白）着蓝色：输入框由 textarea 背后同排版的背景层代为显示文字，消息气泡渲染为标签；列表与补全共用缓存，只有出现 `$` 开头的消息才拉取。
 - 事件流存用户原文 `$name …`。一轮进行中插入：Claude 在当前轮结束后接着执行 skill，`idle` 等它执行完才到；Codex steer 进当前轮。
+
+## Claude 后台任务
+
+- 后台 Bash（`run_in_background`）不拦 `session_state_changed: idle`：Agent 先结束本轮（记 Completed、置 idle），任务结束后 SDK 自动唤醒它继续。唤醒时的 `session_state_changed: running` 映射为 `turn.started`，Hub 若仍是 idle 就落库并置 running；Hub 自己发起的轮次已是 running，丢弃这条。
+- `background_tasks_changed`（全量列表、替换语义）去掉 `ambient` 后的数量只记在 Hub 内存，随 `/api/sessions` 以 `backgroundTasks` 返回；Provider 进程退出或 Hub 重启即清零。
+- 后台任务未结束时：会话仍是 idle（照常 Finished 通知、可发消息 / 删除 / 归档），列表显示 Background，输入框上方提示会自动继续。只有 update-when-idle 会等它：重启会杀掉后台任务，Agent 不会再被唤醒。常驻后台进程（如 dev server）会让更新一直等到 10 分钟超时。
+- 未覆盖：MCP 子会话回调（`notify`）和 `get_session` 的 `waitSec` 仍只看 status，子会话起后台任务时会提前回报。
 
 ## `/compact` 手动压缩
 
