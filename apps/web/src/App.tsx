@@ -6,6 +6,7 @@ import { useMediaQuery } from './session/useMediaQuery'
 import { useSessions } from './session/useSessions'
 import { notificationsSupported, useNotificationPermission, useNotifications } from './session/useNotifications'
 import { SessionTabs } from './components/SessionList'
+import { SessionNotifications } from './components/SessionNotifications'
 import { Loading } from './components/Loading'
 import { useMarkSeen } from './session/seen'
 import { RateMeter } from './components/RateMeter'
@@ -23,20 +24,21 @@ export default function App() {
   const desktop = useMediaQuery('(min-width: 1024px)')
   const sessionId = pathname.match(/^\/s\/([^/]+)$/)?.[1]
   const sessions = useSessions()
-  useNotifications(sessions.data, sessionId)
+  const notifications = useNotifications(sessions.data, sessionId)
   useMarkSeen(sessions.data, sessionId)
 
   const page = sessionId ? <SessionPage sessionId={sessionId} /> : pathname === '/workspaces' ? <WorkspacesPage /> : pathname === '/settings' ? <SettingsPage /> : null
 
-  if (!desktop) {
-    if (page) return page
-    return pathname === '/new' ? <NewSessionPage /> : <SessionListPage />
-  }
   return (
-    <div className={styles.shell}>
-      <Sidebar activeId={sessionId} />
-      <main className={styles.main} data-session={sessionId ? '' : undefined}>{page ?? (pathname === '/new' ? <NewSessionPage /> : <EmptyState />)}</main>
-    </div>
+    <>
+      {desktop ? (
+        <div className={styles.shell}>
+          <Sidebar activeId={sessionId} />
+          <main className={styles.main} data-session={sessionId ? '' : undefined}>{page ?? (pathname === '/new' ? <NewSessionPage /> : <EmptyState />)}</main>
+        </div>
+      ) : page ?? (pathname === '/new' ? <NewSessionPage /> : <SessionListPage />)}
+      <SessionNotifications {...notifications} />
+    </>
   )
 }
 
