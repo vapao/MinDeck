@@ -355,7 +355,7 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
                 meta={meta}
                 hint={hint}
                 hintError={mutationError !== null}
-                placeholder={desktop ? `Message ${providerName[provider]} · Enter to send · Shift+Enter for a new line` : `Message ${providerName[provider]}`}
+                placeholder={desktop ? `Message ${providerName[provider]} · # sessions · Enter to send · Shift+Enter for a new line` : `Message ${providerName[provider]}`}
                 upload={(file) => api.uploadAttachment(sessionId, file)}
                 search={(q) => api.listEntries(sessionId, q)}
                 listSkills={() => api.listSkills(sessionId)}

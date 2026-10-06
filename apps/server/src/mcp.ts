@@ -114,7 +114,7 @@ export function createMcpServer(hub: Hub, store: Store, services: Services, call
   });
 
   server.registerTool('get_session', {
-    description: `Read a session: status, open approvals / questions, and conversation entries (user and assistant messages, one-line tool summaries) after afterSeq, at most ${maxEntries} latest. Pass nextSeq from the previous call as afterSeq to read only new entries. With waitSec, first waits until the session stops running (idle, error, or waiting for the user) or the time runs out; prefer the notify option of create_session / send_message over waiting.`,
+    description: `Read a session: status, open approvals / questions, and conversation entries (user and assistant messages, errors, and interruptions; no tool calls) after afterSeq, at most ${maxEntries} latest. A reference like #[title](session:ID) identifies a session; use that ID directly without looking it up by title. Pass nextSeq from the previous call as afterSeq to read only new entries. With waitSec, first waits until the session stops running (idle, error, or waiting for the user) or the time runs out; prefer the notify option of create_session / send_message over waiting.`,
     inputSchema: {
       id: z.string(),
       afterSeq: z.number().int().min(0).optional(),
@@ -240,7 +240,6 @@ function toEntry(e: AgentEvent): Record<string, unknown>[] {
   switch (e.type) {
     case 'message.user': return [{ seq: e.seq, role: 'user', text: e.payload.text }];
     case 'message.completed': return [{ seq: e.seq, role: 'assistant', text: e.payload.text }];
-    case 'tool.started': return [{ seq: e.seq, tool: e.payload.name, summary: e.payload.summary }];
     case 'turn.completed': return e.payload.reason === 'interrupted' ? [{ seq: e.seq, turn: 'interrupted' }] : [];
     case 'turn.failed':
     case 'error': return [{ seq: e.seq, error: e.payload.message }];

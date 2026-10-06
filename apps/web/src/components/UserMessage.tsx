@@ -4,6 +4,7 @@ import { api } from '../api'
 import { showImage } from './FilePreview'
 import { formatTime } from '../format'
 import { splitRefs } from '../refs'
+import { navigate } from '../router'
 import styles from './UserMessage.module.css'
 
 /** skill：开头 $name 已确认是 skill 时传入，渲染成标签 */
@@ -30,7 +31,23 @@ export function UserMessage({ text, attachments, at, skill, onRewind }: { text: 
         )}
         {text && (
           <div className={styles.text}>
-            {splitRefs(text, skill).map((s, i) => (s.kind === 'text' ? s.text : <span key={i} className={s.kind === 'skill' ? styles.skill : styles.file}>{s.text}</span>))}
+            {splitRefs(text, skill).map((s, i) => {
+              if (s.kind === 'text') return s.text
+              if (s.kind === 'session') return (
+                <a
+                  key={i}
+                  className={styles.file}
+                  href={`/s/${s.id}`}
+                  title={`Session ${s.id}`}
+                  onClick={(e) => {
+                    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+                    e.preventDefault()
+                    navigate(`/s/${s.id}`)
+                  }}
+                >#{s.title}</a>
+              )
+              return <span key={i} className={s.kind === 'skill' ? styles.skill : styles.file}>{s.text}</span>
+            })}
           </div>
         )}
       </div>

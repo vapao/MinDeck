@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowUp, ChevronUp, File, Folder, FolderOpen, ImagePlus, MessageSquarePlus, Sparkles, Square, SquareTerminal, X } from 'lucide-react'
-import { getEffortOptions, modelOptions, type Attachment, skillToken, type EntriesResponse, type ProviderId, type SkillsResponse } from '@agentdeck/shared'
+import { ArrowUp, ChevronUp, File, Folder, FolderOpen, ImagePlus, MessageSquare, MessageSquarePlus, Sparkles, Square, SquareTerminal, X } from 'lucide-react'
+import { getEffortOptions, modelOptions, type Attachment, skillToken, type EntriesResponse, type ProviderId, type Session, type SkillsResponse } from '@agentdeck/shared'
+import { api } from '../api'
 import { Select } from './Select'
 import { showImage } from './FilePreview'
 import { providerName } from '../format'
@@ -41,16 +42,14 @@ type Props = {
   onSend: (text: string, attachmentIds: string[]) => void
 }
 
-type Mention = { kind: '@' | '$'; start: number; query: string }
+type Mention = { kind: '@' | '$' | '#'; start: number; query: string }
 
-// $ 只在消息开头触发 skill（Claude 的 slash 命令只认开头）；否则光标前最近的一个 @（前面是行首或空白、到光标之间没有空白）就是正在敲的引用
+// $ 只在消息开头触发 skill；@ 文件和 # 会话引用从行首或空白后开始，遇到空白结束补全
 function mentionAt(text: string, caret: number): Mention | null {
   const before = text.slice(0, caret)
   if (/^\$\S*$/.test(before)) return { kind: '$', start: 0, query: before.slice(1) }
-  const at = before.lastIndexOf('@')
-  if (at === -1 || (at > 0 && !/\s/.test(before[at - 1]))) return null
-  const query = before.slice(at + 1)
-  return /\s/.test(query) ? null : { kind: '@', start: at, query }
+  const match = before.match(/(?:^|\s)([@#])(\S*)$/)
+  return match ? { kind: match[1] as '@' | '#', start: before.length - match[2].length - 1, query: match[2] } : null
 }
 
 // 选中即上传，发送时只引用服务端返回的 attachmentId（方案 §9.1）
@@ -105,13 +104,21 @@ export function Composer({ draftKey, disabled, running, interrupting, onInterrup
   // 列表要起进程扫描（Claude 约 2 秒），按会话 + Provider 缓存；空会话换 Provider 后重新拉
   const token = skillToken(text)
   const skills = useQuery({ queryKey: ['skills', draftKey, provider], queryFn: listSkills, enabled: mention?.kind === '$' || token !== undefined, staleTime: 60_000 })
+  const sessions = useQuery({ queryKey: ['sessions'], queryFn: api.listSessions, enabled: mention?.kind === '#' })
+  const workspaces = useQuery({ queryKey: ['workspaces'], queryFn: api.listWorkspaces, enabled: mention?.kind === '#' })
+  const workspaceName = (cwd: string) => workspaces.data?.find((w) => w.path === cwd)?.alias ?? cwd.split('/').pop() ?? cwd
+  const currentCwd = sessions.data?.find((s) => s.id === draftKey)?.cwd
+  const sessionOptions = mention?.kind === '#' ? (sessions.data ?? [])
+    .filter((s) => s.id !== draftKey && `${s.title ?? 'New session'} ${workspaceName(s.cwd)} ${s.cwd} ${s.id} ${providerName[s.provider]}`.toLowerCase().includes(mention.query.toLowerCase()))
+    .sort((a, b) => Number(b.cwd === currentCwd) - Number(a.cwd === currentCwd)) : []
   const skillName = token !== undefined && skills.data?.skills.some((s) => s.name === token) ? token : null
   const segments = splitRefs(text, skillName)
   const highlighted = segments.some((s) => s.kind !== 'text')
   const backdrop = useRef<HTMLDivElement>(null)
   const options = mention?.kind === '@' ? (entries.data?.entries ?? []) : []
   const skillOptions = mention?.kind === '$' ? (skills.data?.skills ?? []).filter((s) => s.name.toLowerCase().includes(mention.query.toLowerCase())) : []
-  const optionCount = mention?.kind === '$' ? skillOptions.length : options.length
+  const optionCount = mention?.kind === '$' ? skillOptions.length : mention?.kind === '#' ? sessionOptions.length : options.length
+  const selectedIndex = Math.min(cursor, Math.max(0, optionCount - 1))
   const syncMention = () => {
     const el = textarea.current
     if (!el) return
@@ -141,6 +148,19 @@ export function Composer({ draftKey, disabled, running, interrupting, onInterrup
     requestAnimationFrame(() => {
       el.focus()
       el.setSelectionRange(insert.length, insert.length)
+      setMention(null)
+    })
+  }
+  const pickSession = (session: Session) => {
+    const el = textarea.current
+    if (!el || !mention) return
+    const title = (session.title ?? 'New session').replace(/[[\]\r\n]/g, ' ')
+    const insert = `#[${title}](session:${session.id}) `
+    setText(text.slice(0, mention.start) + insert + text.slice(el.selectionStart))
+    const caret = mention.start + insert.length
+    requestAnimationFrame(() => {
+      el.focus()
+      el.setSelectionRange(caret, caret)
       setMention(null)
     })
   }
@@ -198,8 +218,9 @@ export function Composer({ draftKey, disabled, running, interrupting, onInterrup
       }
       if (e.key === 'Enter' || e.key === 'Tab') {
         e.preventDefault()
-        if (mention.kind === '$') pickSkill(skillOptions[cursor])
-        else pick(options[cursor])
+        if (mention.kind === '$') pickSkill(skillOptions[selectedIndex])
+        else if (mention.kind === '#') pickSession(sessionOptions[selectedIndex])
+        else pick(options[selectedIndex])
         return
       }
     }
@@ -274,7 +295,7 @@ export function Composer({ draftKey, disabled, running, interrupting, onInterrup
                   key={skill.name}
                   type="button"
                   className={styles.mention}
-                  data-active={i === cursor || undefined}
+                  data-active={i === selectedIndex || undefined}
                   title={skill.description}
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => pickSkill(skill)}
@@ -288,6 +309,28 @@ export function Composer({ draftKey, disabled, running, interrupting, onInterrup
             )}
           </div>
         )}
+        {mention?.kind === '#' && (
+          <div ref={mentionList} className={styles.mentions}>
+            {sessionOptions.length === 0 ? (
+              <div className={styles.mentionEmpty}>{sessions.isFetching ? '…' : sessions.isError ? sessions.error.message : 'No matching sessions'}</div>
+            ) : sessionOptions.map((session, i) => (
+              <button
+                key={session.id}
+                type="button"
+                className={`${styles.mention} ${styles.sessionMention}`}
+                data-active={i === selectedIndex || undefined}
+                title={`${session.title ?? 'New session'} · ${session.cwd} · ${session.id}`}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => pickSession(session)}
+                onMouseEnter={() => setCursor(i)}
+              >
+                <MessageSquare size={14} />
+                <span className={styles.mentionPath}>{session.title ?? 'New session'}</span>
+                <span className={styles.mentionDesc}>{workspaceName(session.cwd)} · {providerName[session.provider]} · {session.id.slice(0, 8)}{session.archivedAt ? ' · Inactive' : ''}</span>
+              </button>
+            ))}
+          </div>
+        )}
         {mention?.kind === '@' && (
           <div ref={mentionList} className={styles.mentions}>
             {options.length === 0 ? (
@@ -298,7 +341,7 @@ export function Composer({ draftKey, disabled, running, interrupting, onInterrup
                   key={opt.path}
                   type="button"
                   className={styles.mention}
-                  data-active={i === cursor || undefined}
+                  data-active={i === selectedIndex || undefined}
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => pick(opt)}
                   onMouseEnter={() => setCursor(i)}
@@ -321,7 +364,7 @@ export function Composer({ draftKey, disabled, running, interrupting, onInterrup
           onDrop={onDrop}
         >
           <div className={styles.field}>
-            {/* textarea 没法给部分文字上色：背后垫一层同排版的文字代为显示，$skill 和 @ 引用单独着色 */}
+            {/* textarea 没法给部分文字上色：背后垫一层同排版的文字代为显示，$skill、@ 文件和 # 会话引用单独着色 */}
             {highlighted && (
               <div ref={backdrop} className={styles.backdrop} aria-hidden>
                 {segments.map((s, i) => (s.kind === 'text' ? s.text : <mark key={i} className={s.kind === 'skill' ? styles.skillMark : styles.fileMark}>{s.text}</mark>))}

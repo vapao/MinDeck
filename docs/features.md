@@ -39,6 +39,12 @@ cwd 内只读 `git status` / `git diff -- <file>` / 读文件；`turn.completed`
 
 **未做**：会话中切模型（Codex 按轮传 model / effort 简单；Claude 只有 `setModel()`，effort 需 resume 重开）。
 
+## `#` 会话引用
+
+- 输入框在行首或空白后输入 `#` 补全其他会话，支持按标题、项目、Provider 或 ID 搜索；当前项目优先，组内沿用最近更新排序，包含 Inactive 会话。候选显示标题、项目、Provider 和短 ID。
+- 上下键选择，Enter / Tab 插入，Escape 关闭；`@` 仍只补全文件，`$` 仍只补全 skill。
+- 插入 `#[标题](session:ID)` 纯文本引用，草稿与消息保留完整 ID；消息气泡显示可点击的 `#标题`。仅传引用，不自动注入历史，Agent 按需调用 `get_session` 读取；标题变化不影响 ID 定位。
+
 ## 切片 12：Active / Inactive
 
 `sessions.archived_at`、`PATCH /api/sessions/:id { archived }`（running / waiting_user 409；给归档会话发消息自动取消归档）。侧栏两个页签共用分组列表：分组按组内最近活动排、可折叠（localStorage），折叠后仍露出 running / waiting_user 会话。Active 行 hover 可移到 Inactive；Inactive 行 hover 可移回 / 永久删除。会话页头部固定为「删除」；「新开一轮」在发送按钮左侧。图标 `EyeOff` / `Eye`。
@@ -64,6 +70,7 @@ cwd 内只读 `git status` / `git diff -- <file>` / 读文件；`turn.completed`
 
 `POST /mcp` 无状态 Streamable HTTP（`src/mcp.ts`）：`list_workspaces` / `list_sessions` / `create_session(provider, prompt, workspace?)` / `get_session(id, afterSeq?, waitSec?)`（最多 40 条；`waitSec` ≤ 600）/ `send_message` / `interrupt`。
 
+- **读取范围**：`get_session` 的记录只含用户消息、助手回复、错误和中断，不含工具调用；筛选后取最近 40 条，超过时标记 `truncated`。另外返回当前状态和待处理的审批 / 问题；`nextSeq` 用于后续增量读取。
 - **只给 Hub 拉起的会话用**：按会话注入（Claude `mcpServers`、Codex thread `config.mcp_servers`），请求头 `x-agentdeck-session` 标识调用方，缺失或未知 403。请求头不是安全边界（REST 无鉴权）。
 - **派生必须审批**：`create_session` 由 Hub 在调用方会话弹审批卡（与权限模式无关），批准后按设置默认值建会话并发首条消息。卡上可选"本会话允许"：该会话之后派生免审批（供用户离开时让监督会话自主派活），授权只在内存、只给该会话、子会话不继承，Hub 重启或会话删除即失效；子会话仍按设置默认权限模式跑，无人值守需先把默认改成 bypass。`send_message` / `interrupt` 按调用方权限模式走 Provider 审批（Codex 为 elicitation，见方案 §16.3）；只读工具与 `create_session` 在 Provider 侧免审。不能对自己的会话 send / interrupt / 等待。
 - **定位**：把对话里已定的需求整理成交接单派给新会话，用户之后接管；prompt 取材于对话，不为写 prompt 查仓库、不转述项目规则、不加活。

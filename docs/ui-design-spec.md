@@ -39,7 +39,7 @@
 | `--accent-bg` / `--accent-bg-2` | 琥珀 7.5% / 12% | 琥珀卡片底、聚焦光晕 / 芯片底、选中选项底 |
 | `--accent-border` / `--accent-ring` | 琥珀 28% / 42% | 琥珀卡片与次级按钮描边 / 聚焦描边 |
 | `--running` / `--running-border` | `#7FA8D9` / 蓝 28% | 运行中（状态点、工具转圈） |
-| `--ref` / `--ref-bg` | `#7FA8D9` / 蓝 12% | 输入框与用户消息里的 `@` 文件引用（`$skill` 用 `--accent` / `--accent-bg-2`） |
+| `--ref` / `--ref-bg` | `#7FA8D9` / 蓝 12% | 输入框与用户消息里的 `@` 文件引用与 `#` 会话引用（`$skill` 用 `--accent` / `--accent-bg-2`） |
 | `--ok` / `--ok-bg` | `#8DBB9D` / 绿 10% | 完成、成功、diff 新增 |
 | `--danger` / `--danger-bg` / `--danger-border` | `#D98D84` / 红 12% / 红 25% | 出错、失败、diff 删除、中断与危险按钮 |
 
@@ -155,3 +155,8 @@
 - 设置页与新建会话页按所选模型展示 Reasoning effort：GPT-6 Astra / Sol 为 Low、Medium、High、Xhigh（`xhigh`）、Max、Ultra；GPT-6 Luna 无 Ultra。模型为 Default 时只提供这些模型共有的等级。
 - 切换模型保留仍受支持的等级，不兼容时重置为 Default；服务端按同一份模型配置校验。
 - 沿用手工维护的模型配置，依据本机 Codex 模型目录核对；Codex 的 Ultra 与底层 API effort 枚举不同。旧数据中的 `light` / `extra-high` 在 Hub 下次启动时分别迁移为 `low` / `xhigh`，其他等级不变。
+
+## `#` 会话补全
+
+- 复用输入框上方补全弹层，`#` 只列会话，`@` 只列文件；会话项显示 MessageSquare 图标、标题、项目、Provider、短 ID，Inactive 会话另标注状态。
+- 当前项目优先，支持上下键 / Enter / Tab / Escape；引用沿用蓝色 `--ref` 配色。输入框保留 `#[标题](session:ID)` 可编辑文本，消息气泡显示可点击的 `#标题`。
