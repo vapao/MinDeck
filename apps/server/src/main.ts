@@ -17,6 +17,7 @@ import { listCodexSkills } from './providers/codex';
 import { fileDiff, listChanges, listEntries, readWorkspaceFile } from './changes';
 import { createServices } from './services';
 import { agentdeckMcpFor, registerMcpRoute } from './mcp';
+import { readUpdateStatus } from './update-status';
 
 const repoRoot = resolve(import.meta.dirname, '../../..');
 // 端口分配见 ~/Workspace/mac-mini-tailscale-web-ports.md：8004 只监听本机；开发时由 vite dev server 代理，生产由 Tailscale Serve 8450 映射到这里
@@ -37,6 +38,7 @@ const services = createServices(store, resolve(repoRoot, 'data/logs/services'));
 if (store.listWorkspaces().length === 0) store.createWorkspace({ id: randomUUID(), path: repoRoot, alias: basename(repoRoot), createdAt: new Date().toISOString() });
 
 const app = Fastify({ logger: true });
+const instanceId = randomUUID();
 await app.register(websocket);
 await app.register(multipart, { limits: { files: 1, fileSize: maxAttachmentBytes } });
 
@@ -60,6 +62,10 @@ if (existsSync(webDist)) {
 }
 
 const insideHome = (p: string) => p === home || p.startsWith(`${home}/`);
+
+app.get('/api/update-status', (_req, reply) => reply.header('cache-control', 'no-store').send({
+  instanceId, update: readUpdateStatus(resolve(dirname(dbPath), 'update-status.json')),
+}));
 
 app.get('/api/workspaces', () => store.listWorkspaces());
 

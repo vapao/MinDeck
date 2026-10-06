@@ -66,6 +66,15 @@ cwd 内只读 `git status` / `git diff -- <file>` / 读文件；`turn.completed`
 - **风险**：能连 Hub 的设备都能执行任意命令，等同 bypass。
 - **未做**：自动 `tailscale serve` 映射、健康检查 / 自动重启、环境变量编辑、启动顺序。
 
+## 空闲后更新 Hub
+
+- `scripts/launchd.sh update-when-idle`：先确认 launchd 服务已加载，再启动独立的一次性后台进程，立即返回 PID 和日志路径，不占用 Agent 会话等待。日志追加到 `data/logs/update-when-idle.log`，等待期间可用 `kill <PID>` 取消。
+- 每 2 秒读取本机 `/api/sessions`（端口沿用 `AGENTDECK_PORT`，默认 8004），只有所有会话均为 idle / error 才构建；running / waiting_user 都阻止更新。构建后再次等空闲，再调用现有 `restart`。
+- 空闲检查共用从进程启动起的 10 分钟期限；连接拒绝、连接重置、套接字断开或请求超时会在阶段期限内限时重试（最多 60 秒）；HTTP / 数据错误、重连超时或构建失败会记录具体阶段、接口和原因并退出，不重启。构建命令自身不受该期限强制终止。同一时间只允许一个后台更新任务，重复调用不会再次安排；不是常驻任务，机器重启后不恢复。
+- 后台任务原子写入 `data/update-status.json`，`GET /api/update-status` 返回最近一次更新及本次 Hub 的实例 ID；重启后最多等待 60 秒，确认新实例可访问才记成功。失败、取消或后台进程意外停止都会显示失败。
+- 顶部独立更新通知每 5 秒查询更新状态，显示等待 / 构建 / 重启 / 成功 / 失败和时间；不会自动消失，关闭只针对本次更新的当前阶段，后续结果仍会出现。关闭浏览器后重开仍可查看未关闭的最近结果；成功提供 Refresh 按钮，不主动刷新页面。状态文件与 SQLite 位于同目录，日志仍在项目 `data/logs/`。
+- 保留 `update` 的立即构建并重启行为（不生成上述通知）。空闲轮询不锁住新消息，最终检查与重启之间仍有短暂竞争窗口，不提供严格的无中断升级保证。
+
 ## 切片 15：会话编排 MCP
 
 `POST /mcp` 无状态 Streamable HTTP（`src/mcp.ts`）：`list_workspaces` / `list_sessions` / `create_session(provider, prompt, workspace?)` / `get_session(id, afterSeq?, waitSec?)`（最多 40 条；`waitSec` ≤ 600）/ `send_message` / `interrupt`。

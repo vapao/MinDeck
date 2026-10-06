@@ -1,4 +1,5 @@
 import type { ProjectFilesResponse, CreateServiceBody, ListServicesResponse, Service, ServiceLogResponse, UpdateServiceBody, CreateSessionBody, CreateSessionResponse, CreateWorkspaceBody, DeleteSessionResponse, DiffResponse, EntriesResponse, ForkSessionBody, ForkSessionResponse, FileResponse, InterruptResponse, ListChangesResponse, ListDirsResponse, ListSessionsResponse, ListWorkspacesResponse, ResolvePendingBody, ResolvePendingResponse, SendMessageBody, SendMessageResponse, SettingsResponse, SkillsResponse, UpdateSessionBody, UpdateSessionResponse, UpdateSettingsBody, UpdateWorkspaceBody, UploadAttachmentResponse, UsageResponse, Workspace } from '@agentdeck/shared'
+import type { UpdateStatusResponse } from '@agentdeck/shared'
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   // 只有 JSON body 才声明 content-type：FormData 由浏览器自己设 multipart boundary；无 body 的 DELETE 带上会被 Fastify 按空 JSON 拒绝
@@ -13,6 +14,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export type OutputFile = { path: string; name: string; size: number; mime: string; kind: string; content: string | null; truncated: boolean }
 export const api = {
+  updateStatus: () => request<UpdateStatusResponse>('/api/update-status'),
   outputFile: (id: string, path: string) => request<OutputFile>(`/api/sessions/${id}/output?path=${encodeURIComponent(path)}`),
   outputUrl: (id: string, path: string, download = false) => `/api/sessions/${id}/output/content?path=${encodeURIComponent(path)}${download ? '&download=1' : ''}`,
   listWorkspaces: () => request<ListWorkspacesResponse>('/api/workspaces'),

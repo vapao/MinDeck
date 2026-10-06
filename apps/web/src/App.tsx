@@ -7,6 +7,7 @@ import { useSessions } from './session/useSessions'
 import { notificationsSupported, useNotificationPermission, useNotifications } from './session/useNotifications'
 import { SessionTabs } from './components/SessionList'
 import { SessionNotifications } from './components/SessionNotifications'
+import { UpdateNotice } from './components/UpdateNotice'
 import { Loading } from './components/Loading'
 import { useMarkSeen } from './session/seen'
 import { RateMeter } from './components/RateMeter'
@@ -37,6 +38,7 @@ export default function App() {
           <main className={styles.main} data-session={sessionId ? '' : undefined}>{page ?? (pathname === '/new' ? <NewSessionPage /> : <EmptyState />)}</main>
         </div>
       ) : page ?? (pathname === '/new' ? <NewSessionPage /> : <SessionListPage />)}
+      <UpdateNotice />
       <SessionNotifications {...notifications} />
     </>
   )

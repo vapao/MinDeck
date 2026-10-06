@@ -1,0 +1,107 @@
+.notice {
+  --update-color: var(--accent);
+  --update-bg: var(--accent-bg-2);
+  position: fixed;
+  top: calc(var(--topbar-h, 60px) + env(safe-area-inset-top, 0px) + 12px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 15;
+  display: flex;
+  align-items: flex-start;
+  width: min(560px, calc(100vw - 32px));
+  background: var(--surface);
+  border: 1px solid var(--update-color);
+  border-left-width: 4px;
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-menu);
+}
+.notice[data-phase='completed'] {
+  --update-color: var(--ok);
+  --update-bg: var(--ok-bg);
+}
+.notice[data-phase='failed'] {
+  --update-color: var(--danger);
+  --update-bg: var(--danger-bg);
+}
+.summary {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  gap: 12px;
+  padding: 16px;
+}
+.icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-control);
+  color: var(--update-color);
+  background: var(--update-bg);
+}
+.content {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.label {
+  color: var(--update-color);
+  font-size: 11px;
+  font-weight: 600;
+}
+.title {
+  color: var(--text-strong);
+  font-size: 14px;
+  font-weight: 600;
+}
+.detail {
+  color: var(--text-2);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.refresh {
+  align-self: flex-start;
+  margin-top: 4px;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 600;
+  cursor: pointer;
+}
+.refresh:hover {
+  background: var(--accent-hover);
+}
+.close {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  margin: 6px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: none;
+  color: var(--text-3);
+  cursor: pointer;
+}
+.close:hover {
+  background: var(--hover);
+}
+@media (max-width: 1023px) {
+  .summary {
+    gap: 8px;
+    padding: 12px;
+  }
+  .close {
+    width: 44px;
+    height: 44px;
+    margin: 0;
+  }
+  .refresh {
+    min-height: 44px;
+  }
+}

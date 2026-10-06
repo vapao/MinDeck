@@ -160,3 +160,8 @@
 
 - 复用输入框上方补全弹层，`#` 只列会话，`@` 只列文件；会话项显示 MessageSquare 图标、标题、项目、Provider、短 ID，Inactive 会话另标注状态。
 - 当前项目优先，支持上下键 / Enter / Tab / Escape；引用沿用蓝色 `--ref` 配色。输入框保留 `#[标题](session:ID)` 可编辑文本，消息气泡显示可点击的 `#标题`。
+
+## 空闲更新通知
+
+- 更新提示独立于右下角会话通知，固定在顶部栏下方居中，桌面最大宽 560px、手机两侧留 16px。使用 Application update 标签、36px 图标底座和加粗左边框；进行中为琥珀色、成功为绿色、失败为红色，复用现有语义颜色变量。包括 Update queued、Building update、Restarting AgentDeck、AgentDeck updated、AgentDeck update failed，显示阶段时间和失败原因，不自动消失。
+- 成功状态附 Refresh 按钮，由用户主动加载新界面；不自动刷新。关闭提示仅隐藏该任务的当前阶段，完成或失败仍提示；关闭状态按浏览器记住，刷新和重开页面不重复显示已关闭的结果。

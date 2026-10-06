@@ -1,5 +1,5 @@
 #!/bin/zsh
-# Hub 常驻（方案 §11.3：launchd 自动拉起）。用法：scripts/launchd.sh install | uninstall | update | restart | status | logs
+# Hub 常驻（方案 §11.3：launchd 自动拉起）。用法：scripts/launchd.sh install | uninstall | update | update-when-idle | restart | status | logs
 # install 会先构建前端，再写 ~/Library/LaunchAgents/com.agentdeck.hub.plist 并加载（改了代理配置要重新 install）。
 # 改了代码后 update：重新构建前端并重启 Hub，不动 plist；只改了 server 端用 restart 即可（tsx 直接跑源码）。
 set -euo pipefail
@@ -64,6 +64,10 @@ PLIST
     launchctl kickstart -k "gui/$UID/$label"
     echo "已重新构建并重启 $label"
     ;;
+  update-when-idle)
+    launchctl print "gui/$UID/$label" >/dev/null
+    "$node" "$root/scripts/update-when-idle.mjs"
+    ;;
   restart)
     launchctl kickstart -k "gui/$UID/$label"
     ;;
@@ -74,7 +78,7 @@ PLIST
     tail -f "$log"
     ;;
   *)
-    echo "用法: $0 install | uninstall | update | restart | status | logs" >&2
+    echo "用法: $0 install | uninstall | update | update-when-idle | restart | status | logs" >&2
     exit 1
     ;;
 esac

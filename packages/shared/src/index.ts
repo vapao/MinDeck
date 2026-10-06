@@ -237,6 +237,16 @@ export type CreateSessionResponse = Session;
 /** 按 updatedAt 倒序 */
 export type ListSessionsResponse = Session[];
 
+export type UpdateStatus = {
+  id: string;
+  pid: number;
+  phase: 'waiting' | 'building' | 'restarting' | 'completed' | 'failed';
+  requestedAt: string;
+  updatedAt: string;
+  error?: string;
+};
+export type UpdateStatusResponse = { instanceId: string; update: UpdateStatus | null };
+
 /** text 与 attachmentIds 至少有一个非空；附件必须属于同一 session */
 export type SendMessageBody = { text: string; attachmentIds?: string[] };
 /** steered：当前有一轮在跑，消息已插入该轮，Agent 下一步就能看到 */
