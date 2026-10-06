@@ -16,6 +16,11 @@ export function UpdateNotice() {
     completed: 'AgentDeck updated',
     failed: 'AgentDeck update failed',
   }[update.phase]
+  const dismiss = () => {
+    const key = `${update.id}:${update.phase}`
+    localStorage.setItem('agentdeck.dismissedUpdate', key)
+    setDismissed(key)
+  }
   const Icon = update.phase === 'completed' ? Check : update.phase === 'failed' ? TriangleAlert : RefreshCw
   return (
     <div className={styles.notice} data-phase={update.phase} role="status" aria-label="Application update">
@@ -29,14 +34,14 @@ export function UpdateNotice() {
             {update.phase === 'completed' && ' · Hub is ready. Refresh to load the latest interface.'}
             {update.error && ` · ${update.error}`}
           </span>
-          {update.phase === 'completed' && <button type="button" className={styles.refresh} onClick={() => location.reload()}>Refresh</button>}
+          {update.phase === 'completed' && <button type="button" className={styles.refresh} onClick={() => {
+            // 刷新后就是新界面，这条提醒已经完成使命，不该在刷新后再弹出来
+            dismiss()
+            location.reload()
+          }}>Refresh</button>}
         </span>
       </div>
-      <button type="button" className={styles.close} aria-label="Dismiss update notification" onClick={() => {
-        const key = `${update.id}:${update.phase}`
-        localStorage.setItem('agentdeck.dismissedUpdate', key)
-        setDismissed(key)
-      }}><X size={14} /></button>
+      <button type="button" className={styles.close} aria-label="Dismiss update notification" onClick={dismiss}><X size={14} /></button>
     </div>
   )
 }
