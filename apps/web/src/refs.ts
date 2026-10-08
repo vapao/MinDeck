@@ -9,8 +9,8 @@ export function splitRefs(text: string, skill: string | null | undefined): RefSe
     rest = text.slice(skill.length + 1)
   }
   let last = 0
-  // 与补全的判定一致：引用前面是开头或空白
-  for (const m of rest.matchAll(/(?<=^|\s)(?:#\[([^\]\r\n]*)\]\(session:([\w-]+)\)|@\S+)/g)) {
+  // 与补全的判定一致：引用前面是开头或空白；带空格的路径写成 @"..."，末尾未闭合的引号视为正在补全
+  for (const m of rest.matchAll(/(?<=^|\s)(?:#\[([^\]\r\n]*)\]\(session:([\w-]+)\)|@"[^"\r\n]*(?:"|$)|@\S+)/g)) {
     if (m.index > last) segments.push({ kind: 'text', text: rest.slice(last, m.index) })
     segments.push(m[2] ? { kind: 'session', text: m[0], title: m[1], id: m[2] } : { kind: 'file', text: m[0] })
     last = m.index + m[0].length

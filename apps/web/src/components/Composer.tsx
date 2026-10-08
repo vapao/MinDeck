@@ -46,10 +46,12 @@ type Props = {
 
 type Mention = { kind: '@' | '$' | '#'; start: number; query: string }
 
-// $ 只在消息开头触发 skill；@ 文件和 # 会话引用从行首或空白后开始，遇到空白结束补全
+// $ 只在消息开头触发 skill；@ 文件和 # 会话引用从行首或空白后开始，遇到空白结束补全；@"... 内的空格不结束
 function mentionAt(text: string, caret: number): Mention | null {
   const before = text.slice(0, caret)
   if (/^\$\S*$/.test(before)) return { kind: '$', start: 0, query: before.slice(1) }
+  const quoted = before.match(/(?:^|\s)@"([^"\r\n]*)$/)
+  if (quoted) return { kind: '@', start: before.length - quoted[1].length - 2, query: quoted[1] }
   const match = before.match(/(?:^|\s)([@#])(\S*)$/)
   return match ? { kind: match[1] as '@' | '#', start: before.length - match[2].length - 1, query: match[2] } : null
 }
@@ -130,7 +132,8 @@ export function Composer({ draftKey, disabled, sending, running, interrupting, o
   const pick = (opt: EntriesResponse['entries'][number]) => {
     const el = textarea.current
     if (!el || !mention) return
-    const insert = `@${opt.path}${opt.dir ? '' : ' '}`
+    // 带空格的路径加引号，否则 Agent 和着色都会在空格处截断；目录不闭合引号，继续往里敲
+    const insert = /\s/.test(opt.path) ? `@"${opt.path}${opt.dir ? '' : '" '}` : `@${opt.path}${opt.dir ? '' : ' '}`
     const next = text.slice(0, mention.start) + insert + text.slice(el.selectionStart)
     const caret = mention.start + insert.length
     setText(next)

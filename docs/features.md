@@ -43,7 +43,7 @@ cwd 内查看 Git 改动和文件；`turn.completed` 与写类工具完成后节
 
 ## 切片 11：`@` 文件引用
 
-`GET /api/sessions/:id/entries?q=`：相对 cwd，`~` 展开为家目录；直接子项在前、深层匹配在后，目录以 `/` 结尾可继续敲；cwd 内递归限 4 层 / 3000 项 / 1.5s，`~` 下只列直接子项。弹层支持上下键 / Enter / Tab / Escape。
+`GET /api/sessions/:id/entries?q=`：相对 cwd，`~` 展开为家目录；直接子项在前、深层匹配在后，目录以 `/` 结尾可继续敲；cwd 内递归限 4 层 / 3000 项 / 1.5s，`~` 下只列直接子项。弹层支持上下键 / Enter / Tab / Escape。路径含空格时插入 `@"a b/c.md"`（选目录时引号不闭合，可继续往里补全），着色与补全都识别引号形式。
 
 **未做**：会话中切模型（Codex 按轮传 model / effort 简单；Claude 只有 `setModel()`，effort 需 resume 重开）。
 
