@@ -129,6 +129,27 @@
   text-decoration: underline;
   text-underline-offset: 2px;
 }
+.followup {
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: var(--accent);
+  text-align: left;
+  cursor: pointer;
+}
+.followup > svg {
+  margin-left: 2px;
+  vertical-align: -2px;
+  transition: transform 0.15s ease-out;
+}
+.followup:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.followup:hover > svg {
+  transform: translateX(2px);
+}
 /* 表格：包裹层出圆角外框，与代码块同一套 border / radius；格子只画内部分隔线，避免与外框叠成双线 */
 .table {
   margin: 0 0 10px;

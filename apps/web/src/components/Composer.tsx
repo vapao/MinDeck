@@ -70,6 +70,17 @@ export function Composer({ draftKey, disabled, sending, running, interrupting, o
   const [dragging, setDragging] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
   const textarea = useRef<HTMLTextAreaElement>(null)
+  // 消息里的后续建议：输入框空着就填入，已有草稿则另起一行接上，不覆盖
+  useEffect(() => {
+    const onFill = (e: Event) => {
+      const { sessionId, text: fill } = (e as CustomEvent<{ sessionId: string; text: string }>).detail
+      if (sessionId !== draftKey) return
+      setText((t) => (t.trim() ? `${t}\n${fill}` : fill))
+      textarea.current?.focus()
+    }
+    window.addEventListener('agentdeck:fill-composer', onFill)
+    return () => window.removeEventListener('agentdeck:fill-composer', onFill)
+  }, [draftKey])
 
   // 空会话的 Agent / 模型 / 思考等级平时只显示成一段文字，点开才在输入框上方弹出下拉，不占输入区
   const switchable = onSwitchProvider !== undefined && drafts.length === 0
