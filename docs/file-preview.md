@@ -6,7 +6,7 @@
 
 图片原地预览，文本最多读取 512 KiB，Markdown 可切源码，PDF 使用浏览器查看器，音视频使用原生播放器。其他文件展示操作弹窗。HTML 作为文本，SVG 以 img 展示；文件内容响应带 sandbox CSP 和 nosniff，未知类型强制下载，不作为 Hub 同源页面执行。下载使用流。
 
-预览弹窗标题栏显示文件名（悬停可看完整路径），Markdown 的 Preview / Source 和图片缩放放在标题栏。主体只显示文件内容及必要的错误 / 截断提示；Copy text、Show in Finder、下载统一放到底部，不展示文件大小、服务端路径和 MacBook 映射路径。
+预览弹窗标题栏显示文件名，标题栏下方直接显示 Mac Mini 上的完整文件路径，可选中复制，长路径自动换行；加载中或读取失败时显示消息中的原始路径。聊天上传图片与待发送图片不展示路径。Markdown 的 Preview / Source 和图片缩放放在标题栏。主体只显示文件内容及必要的错误 / 截断提示；Copy text、Show in Finder、下载统一放到底部，不展示文件大小和 MacBook 映射路径。
 
 代码预览使用按需加载的 lowlight / highlight.js，按扩展名识别 Python、JS / TS（含 JSX / TSX）、JSON、HTML / XML、CSS、Shell、SQL、YAML、Markdown。Markdown 渲染视图中的 fenced code 按语言标注高亮，源码视图保留行号。单段内容超过 100 KiB 或语言不支持时显示纯文本，不自动猜语言；复制始终使用原文。先解析全文再分行，保留多行注释 / 字符串的颜色。颜色仅作用于预览弹窗，不改变 Changes diff 和聊天消息。
 

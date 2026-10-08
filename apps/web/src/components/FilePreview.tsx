@@ -141,6 +141,7 @@ function Preview({ sessionId, path, line, image }: Selected) {
       </>}
       <button className={modal.close} onClick={() => ref.current!.close()} aria-label="Close">×</button>
     </header>
+    {!image && <div className={styles.filePath}>{file?.path ?? path}</div>}
     <div className={styles.content}>
       {q.error && <p role="alert">{q.error.message}</p>}
       {!file && !q.error && <p>Loading…</p>}
