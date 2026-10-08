@@ -1,13 +1,14 @@
 import { execFile } from 'node:child_process';
 import type { Dirent } from 'node:fs';
-import { readdir, readFile, realpath, stat } from 'node:fs/promises';
+import { readdir, readFile, realpath, stat, unlink } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { promisify } from 'node:util';
-import type { ChangedFile, DiffResponse, EntriesResponse, FileResponse, ListChangesResponse } from '@agentdeck/shared';
+import type { ChangedFile, DiffResponse, DiscardChangeBody, EntriesResponse, FileResponse, ListChangesResponse } from '@agentdeck/shared';
 import { HubError } from './hub';
+import { workspaceWritePath } from './files';
 
-// 改动侧栏（切片 10）：只读地看工作区里改了什么。全是 git 只读命令 + 读文件，Hub 不写任何东西。
+// 改动侧栏（切片 10）：查看工作区差异；单文件丢弃同时还原 index 和 worktree。
 // 大仓库 git status 慢就慢，超时返回错误，不影响会话主流程。
 // cwd 本身不是仓库时（一个项目拆成前后端 / App 多个仓库，共用一个根目录），往下找两级子目录里的仓库合并展示，
 // 路径统一相对 cwd；不无限递归。
@@ -52,10 +53,11 @@ async function insideCwd(cwd: string, rel: string): Promise<string> {
   return abs;
 }
 
-export async function listChanges(cwd: string): Promise<ListChangesResponse> {
+export async function listChanges(cwd: string, busyReason: (root: string) => string | undefined = () => undefined): Promise<ListChangesResponse> {
+  cwd = await realpath(cwd);
   const repos = (await isGitRepo(cwd)) ? [''] : await findNestedRepos(cwd);
   if (repos.length === 0) return { git: false, files: [] };
-  const files = (await Promise.all(repos.map((rel) => repoChanges(join(cwd, rel), rel ? `${rel}/` : '')))).flat();
+  const files = (await Promise.all(repos.map((rel) => repoChanges(join(cwd, rel), rel ? `${rel}/` : '', busyReason)))).flat();
   return { git: true, files: files.sort((a, b) => a.path.localeCompare(b.path)) };
 }
 
@@ -95,11 +97,20 @@ async function baseRef(root: string): Promise<string> {
   return head.trim() || '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
 }
 
-async function repoChanges(root: string, prefix: string): Promise<ChangedFile[]> {
+async function repoChanges(root: string, prefix: string, busyReason: (root: string) => string | undefined): Promise<ChangedFile[]> {
   const base = await baseRef(root);
+  const top = (await git(root, ['rev-parse', '--show-toplevel'])).trim();
   // -z：路径不转义、NUL 分隔；重命名会跟一个额外的原路径条目
-  const [out, numstat] = await Promise.all([git(root, ['status', '--porcelain=v1', '-z', '--untracked-files=all']), git(root, ['diff', base, '--numstat', '-z'])]);
+  const [out, numstat, tree, index] = await Promise.all([
+    git(root, ['status', '--porcelain=v1', '-z', '--untracked-files=all', '--', '.']),
+    git(root, ['diff', base, '--numstat', '-z', '--relative', '--', '.']),
+    git(root, ['ls-tree', '-r', '-z', base]),
+    git(root, ['ls-files', '--stage', '-z']),
+  ]);
+  const headPaths = new Set(tree.split('\0').filter(Boolean).map((entry) => entry.slice(entry.indexOf('\t') + 1)));
+  const submodules = new Set((tree + index).split('\0').filter((entry) => entry.startsWith('160000 ')).map((entry) => entry.slice(entry.indexOf('\t') + 1)));
   const stats = parseNumstat(numstat);
+  const busy = busyReason(top);
   const parts = out.split('\0');
   const files: ChangedFile[] = [];
   for (let i = 0; i < parts.length; i++) {
@@ -107,18 +118,52 @@ async function repoChanges(root: string, prefix: string): Promise<ChangedFile[]>
     if (p.length < 4) continue;
     const x = p[0];
     const y = p[1];
-    const path = p.slice(3);
+    const path = relative(root, join(top, p.slice(3))) + (p.endsWith('/') ? '/' : '');
     if (x === 'R' || x === 'C') i++; // 跳过原路径
     // Git 把未跟踪的嵌套仓库报成 `目录/`，改为展示该仓库自己的文件改动。
     if (path.endsWith('/')) {
-      if (await exists(join(root, path, '.git'))) files.push(...await repoChanges(join(root, path), prefix + path));
+      if (await exists(join(root, path, '.git'))) files.push(...await repoChanges(join(root, path), prefix + path, busyReason));
       continue;
     }
     // 合并 index / worktree 两列成一个字母：未跟踪 ?、删除 D、新增 A、其余按修改 M
     const status: ChangedFile['status'] = x === '?' ? '?' : x === 'D' || y === 'D' ? 'D' : x === 'A' ? 'A' : x === 'R' ? 'R' : 'M';
-    files.push({ path: prefix + path, status, ...(stats.get(path) ?? { additions: null, deletions: null }) });
+    const unsupported = x === 'R' || x === 'C' ? 'Renames and copies cannot be discarded here'
+      : ['DD', 'AU', 'UD', 'UA', 'DU', 'AA', 'UU'].includes(x + y) ? 'Resolve merge conflicts with Git'
+      : submodules.has(path) ? 'Submodules cannot be discarded here' : undefined;
+    files.push({ path: prefix + path, status, ...(stats.get(path) ?? { additions: null, deletions: null }),
+      base, discard: headPaths.has(path) ? 'restore' : 'delete', discardDisabled: unsupported ?? busy });
   }
   return files;
+}
+
+/** 写入路径不沿父目录 symlink，不接受目录；文件名按字面匹配，叶子 symlink 只操作链接本身。 */
+async function discardPath(cwd: string, rel: string): Promise<{ root: string; abs: string }> {
+  const { root, abs, info } = await workspaceWritePath(cwd, rel);
+  if (info && !info.isFile() && !info.isSymbolicLink()) throw new HubError(400, 'Only individual files can be discarded');
+  return { root, abs };
+}
+
+export async function discardChange(cwd: string, body: DiscardChangeBody, withIdleRepository: (root: string, write: () => Promise<void>) => Promise<void>): Promise<void> {
+  const { root, abs } = await discardPath(cwd, body.path);
+  // 已删除的目录可能不存在，从最近的现存父目录定位实际仓库。
+  let parent = dirname(abs);
+  while (!(await exists(parent))) parent = dirname(parent);
+  const repo = (await git(parent, ['rev-parse', '--show-toplevel'])).trim();
+  const path = relative(repo, abs);
+  await withIdleRepository(repo, async () => {
+    const change = (await listChanges(root)).files.find((file) => file.path === body.path);
+    if (!change) throw new HubError(409, 'File is no longer in Changes; refresh and try again');
+    if (change.discardDisabled) throw new HubError(409, change.discardDisabled);
+    if (change.base !== body.base || change.discard !== body.discard) throw new HubError(409, 'Git state changed; refresh and confirm again');
+    await discardPath(cwd, body.path);
+    if (body.discard === 'restore') {
+      await git(repo, ['--literal-pathspecs', 'restore', `--source=${body.base}`, '--staged', '--worktree', '--', path]);
+    } else {
+      const tracked = await git(repo, ['--literal-pathspecs', 'ls-files', '-z', '--', path]);
+      if (tracked) await git(repo, ['--literal-pathspecs', 'rm', '-f', '--', path]);
+      else await unlink(abs);
+    }
+  });
 }
 
 // `git diff --numstat -z`：每条 `加\t减\t路径\0`；重命名时路径列为空，后面跟 `旧\0新\0`；二进制两列是 `-`

@@ -1,5 +1,6 @@
 import type { ProjectFilesResponse, CreateServiceBody, ListServicesResponse, Service, ServiceLogResponse, UpdateServiceBody, CreateSessionBody, CreateSessionResponse, CreateWorkspaceBody, DeleteSessionResponse, DiffResponse, EntriesResponse, ForkSessionBody, ForkSessionResponse, FileResponse, InterruptResponse, ListChangesResponse, ListDirsResponse, ListSessionsResponse, ListWorkspacesResponse, ResolvePendingBody, ResolvePendingResponse, SendMessageBody, SendMessageResponse, SettingsResponse, SkillsResponse, UpdateSessionBody, UpdateSessionResponse, UpdateSettingsBody, UpdateWorkspaceBody, UploadAttachmentResponse, UsageResponse, Workspace } from '@agentdeck/shared'
 import type { UpdateStatusResponse } from '@agentdeck/shared'
+import type { CreateProjectEntryBody, DeleteProjectEntryBody, DiscardChangeBody } from '@agentdeck/shared'
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   // 只有 JSON body 才声明 content-type：FormData 由浏览器自己设 multipart boundary；无 body 的 DELETE 带上会被 Fastify 按空 JSON 拒绝
@@ -37,7 +38,10 @@ export const api = {
   listEntries: (sessionId: string, q: string) => request<EntriesResponse>(`/api/sessions/${sessionId}/entries?q=${encodeURIComponent(q)}`),
   listSkills: (sessionId: string) => request<SkillsResponse>(`/api/sessions/${sessionId}/skills`),
   listProjectFiles: (id: string, path: string, q: string, hidden: boolean) => request<ProjectFilesResponse>(`/api/sessions/${id}/files?${new URLSearchParams({ path, q, hidden: String(hidden) })}`),
+  createProjectEntry: (id: string, body: CreateProjectEntryBody) => request<{ ok: true }>(`/api/sessions/${id}/files`, { method: 'POST', body: JSON.stringify(body) }),
+  deleteProjectEntry: (id: string, body: DeleteProjectEntryBody) => request<{ ok: true }>(`/api/sessions/${id}/files`, { method: 'DELETE', body: JSON.stringify(body) }),
   listChanges: (sessionId: string) => request<ListChangesResponse>(`/api/sessions/${sessionId}/changes`),
+  discardChange: (sessionId: string, body: DiscardChangeBody) => request<{ ok: true }>(`/api/sessions/${sessionId}/changes/discard`, { method: 'POST', body: JSON.stringify(body) }),
   fileDiff: (sessionId: string, path: string) => request<DiffResponse>(`/api/sessions/${sessionId}/diff?path=${encodeURIComponent(path)}`),
   readFile: (sessionId: string, path: string) => request<FileResponse>(`/api/sessions/${sessionId}/file?path=${encodeURIComponent(path)}`),
   updateSession: (sessionId: string, body: UpdateSessionBody) => request<UpdateSessionResponse>(`/api/sessions/${sessionId}`, { method: 'PATCH', body: JSON.stringify(body) }),

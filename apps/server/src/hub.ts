@@ -1,5 +1,7 @@
 import { generateTitle } from './providers/title';
 import { randomUUID } from 'node:crypto';
+import { realpathSync } from 'node:fs';
+import { resolve, sep } from 'node:path';
 import { getEffortOptions, isCompactCommand, modelOptions, permissionModeOptions, type AgentEvent, type Attachment, type MessageDelta, type PendingRequest, type PendingRequestBody, type PermissionMode, type ProviderEvent, type ProviderOutput, type Resolution, type Session, type SessionStatus, type Settings, type UpdateSettingsBody, type UsageInfo } from '@agentdeck/shared';
 import type { Store } from './store/db';
 import type { AttachmentStore } from './store/attachments';
@@ -16,6 +18,14 @@ export class HubError extends Error {
     super(message);
   }
 }
+
+function workspacePath(path: string): string {
+  try { return realpathSync(path); } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return resolve(path);
+    throw err;
+  }
+}
+const overlaps = (a: string, b: string) => a === b || a.startsWith(b + sep) || b.startsWith(a + sep);
 
 // Hub：Session 元数据 + append-only 事件流 + 多端 fan-out。Provider 会话在首条消息时才拉起。
 export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (sessionId: string) => AgentdeckMcp) {
@@ -39,6 +49,13 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
   const spawnGrants = new Set<string>();
   // 各会话 Agent 自己起的后台任务数：Hub 重启时子进程连同后台任务一起没了，所以只放内存
   const background = new Map<string, number>();
+  const repositoryWrites = new Map<string, string>();
+  const writeBlocked = (cwd: string) => [...repositoryWrites].find(([root]) => overlaps(root, workspacePath(cwd)))?.[1];
+  function repositoryBusyReason(root: string): string | undefined {
+    if (writeBlocked(root)) return 'A file operation is already in progress';
+    return store.listSessions().some((s) => (s.status === 'running' || s.status === 'waiting_user' || (background.get(s.id) ?? 0) > 0) && overlaps(workspacePath(root), workspacePath(s.cwd)))
+      ? 'Wait for all tasks in this workspace to finish before changing files' : undefined;
+  }
   // 有派生授权的会话本来就是要无人值守地派活、收结果，5 次不够；仍留上限防两个 Agent 失控互相唤醒
   const maxGrantedAutoWakes = 30;
   let closing = false;
@@ -75,6 +92,7 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
   function notifyWatchers(childId: string, status: 'idle' | 'error') {
     const parents = watchers.get(childId);
     if (!parents) return;
+    if ([...parents.keys()].some((id) => { const parent = store.getSession(id); return parent && writeBlocked(parent.cwd); })) return;
     watchers.delete(childId);
     const child = getSession(childId);
     for (const [parentId, sinceSeq] of parents) {
@@ -235,6 +253,8 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
   /** origin 'user' 是用户从界面发的，会清零自动唤醒计数；'agent' 是 MCP send_message 或子会话回调 */
   function sendMessage(sessionId: string, text: string, attachmentIds: string[], origin: 'user' | 'agent' = 'user'): { seq: number; steered: boolean } {
     const session = getSession(sessionId);
+    const fileOperation = writeBlocked(session.cwd);
+    if (fileOperation) throw new HubError(409, `${fileOperation} in this workspace; try again when it finishes`);
     if (origin === 'user') autoWakes.delete(sessionId);
     let files;
     try {
@@ -314,6 +334,20 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
 
     getSession: (id: string) => withBackground(getSession(id)),
     listSessions: () => store.listSessions().map(withBackground),
+    repositoryBusyReason,
+    async withIdleRepository(root: string, write: () => Promise<void>, operation = 'Discarding changes'): Promise<void> {
+      root = workspacePath(root);
+      const reason = repositoryBusyReason(root);
+      if (reason) throw new HubError(409, reason);
+      repositoryWrites.set(root, operation);
+      try { await write(); } finally {
+        repositoryWrites.delete(root);
+        for (const id of watchers.keys()) {
+          const status = store.getSession(id)?.status;
+          if (status === 'idle' || status === 'error') notifyWatchers(id, status);
+        }
+      }
+    },
     usage,
 
     /** 归档只是隐藏：跟删除一样只允许 idle / error，避免运行中的会话从侧栏消失后没人盯；取消归档没有限制 */

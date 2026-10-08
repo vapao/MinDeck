@@ -1,5 +1,5 @@
 import { outputFile } from './output-files';
-import { listProjectFiles } from './files';
+import { createProjectEntry, deleteProjectEntry, listProjectFiles } from './files';
 import { randomUUID } from 'node:crypto';
 import { createReadStream, existsSync, mkdirSync, readdirSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -14,7 +14,8 @@ import { createAttachmentStore, isImageMime, maxAttachmentBytes, maxAttachmentsP
 import { createHub, HubError } from './hub';
 import { listClaudeSkills, verifyDeepseekConnection } from './providers/claude';
 import { listCodexSkills } from './providers/codex';
-import { fileDiff, listChanges, listEntries, readWorkspaceFile } from './changes';
+import { discardChange, fileDiff, listChanges, listEntries, readWorkspaceFile } from './changes';
+import type { CreateProjectEntryBody, DeleteProjectEntryBody, DiscardChangeBody } from '@agentdeck/shared';
 import { createServices } from './services';
 import { agentdeckMcpFor, registerMcpRoute } from './mcp';
 import { readUpdateStatus } from './update-status';
@@ -204,7 +205,15 @@ app.post<{ Params: { id: string }; Body: SendMessageBody }>(
   },
 );
 
-app.get<{ Params: { id: string } }>('/api/sessions/:id/changes', (req) => listChanges(hub.getSession(req.params.id).cwd));
+app.get<{ Params: { id: string } }>('/api/sessions/:id/changes', (req) => listChanges(hub.getSession(req.params.id).cwd, hub.repositoryBusyReason));
+app.post<{ Params: { id: string }; Body: DiscardChangeBody }>('/api/sessions/:id/changes/discard', {
+  schema: { body: { type: 'object', additionalProperties: false, required: ['path', 'base', 'discard'], properties: {
+    path: { type: 'string', minLength: 1 }, base: { type: 'string', pattern: '^[a-f0-9]{40,64}$' }, discard: { enum: ['restore', 'delete'] },
+  } } },
+}, async (req) => {
+  await discardChange(hub.getSession(req.params.id).cwd, req.body, hub.withIdleRepository);
+  return { ok: true };
+});
 
 const pathQuery = { schema: { querystring: { type: 'object', required: ['path'], properties: { path: { type: 'string', minLength: 1 } } } } };
 app.get<{ Params: { id: string }; Querystring: { path: string } }>('/api/sessions/:id/diff', pathQuery, (req) => fileDiff(hub.getSession(req.params.id).cwd, req.query.path));
@@ -234,7 +243,24 @@ app.get<{ Params: { id: string } }>('/api/sessions/:id/skills', async (req): Pro
 
 app.get<{ Params: { id: string }; Querystring: { path?: string; q?: string; hidden?: boolean } }>('/api/sessions/:id/files', {
   schema: { querystring: { type: 'object', properties: { path: { type: 'string' }, q: { type: 'string' }, hidden: { type: 'boolean' } } } },
-}, (req) => listProjectFiles(hub.getSession(req.params.id).cwd, req.query.path ?? '', req.query.q ?? '', req.query.hidden ?? false));
+}, async (req) => {
+  const cwd = hub.getSession(req.params.id).cwd;
+  return { ...await listProjectFiles(cwd, req.query.path ?? '', req.query.q ?? '', req.query.hidden ?? false), writeDisabled: hub.repositoryBusyReason(cwd) };
+});
+
+const projectEntryBody = { schema: { body: { type: 'object', additionalProperties: false, required: ['path', 'dir'], properties: {
+  path: { type: 'string', minLength: 1 }, dir: { type: 'boolean' },
+} } } };
+app.post<{ Params: { id: string }; Body: CreateProjectEntryBody }>('/api/sessions/:id/files', projectEntryBody, async (req) => {
+  const cwd = hub.getSession(req.params.id).cwd;
+  await hub.withIdleRepository(cwd, () => createProjectEntry(cwd, req.body), 'Creating a file or folder');
+  return { ok: true };
+});
+app.delete<{ Params: { id: string }; Body: DeleteProjectEntryBody }>('/api/sessions/:id/files', projectEntryBody, async (req) => {
+  const cwd = hub.getSession(req.params.id).cwd;
+  await hub.withIdleRepository(cwd, () => deleteProjectEntry(cwd, req.body), 'Deleting a file or folder');
+  return { ok: true };
+});
 
 app.patch<{ Params: { id: string }; Body: UpdateSessionBody }>(
   '/api/sessions/:id',

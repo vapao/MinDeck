@@ -1,18 +1,20 @@
 import { useEffect, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { ChevronLeft, FileCode, FileDiff, Folder, RefreshCw, Server } from 'lucide-react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { ChevronLeft, FileCode, FileDiff, Folder, RefreshCw, RotateCcw, Server } from 'lucide-react'
 import type { ChangedFile } from '@agentdeck/shared'
 import { showFile } from './FilePreview'
 import { FilesPanel } from './FilesPanel'
 import { ServicesPanel, useServices } from './ServicesPanel'
 import { api } from '../api'
 import { useResizable } from './Resizer'
+import { dialog } from './Dialog'
+import { useSessions } from '../session/useSessions'
 import styles from './ChangesPanel.module.css'
 
-// 项目侧栏（桌面端）：改动 diff、完整目录浏览（只读）与项目服务。
+// 项目侧栏（桌面端）：改动 diff、文件管理与项目服务。
 // version 在一轮结束 / 工具完成时递增，面板据此节流刷新，不轮询。
 
-type Props = { sessionId: string; cwd: string; version: number }
+type Props = { sessionId: string; cwd: string; version: number; busy: boolean }
 
 // 目录树：只含有改动的路径；只有一个子目录的目录链压成一行（apps/web/src）
 type TreeNode = { name: string; dirs: TreeNode[]; files: ChangedFile[] }
@@ -49,7 +51,12 @@ function FileStat({ f }: { f: ChangedFile }) {
   )
 }
 
-function Tree({ node, depth, onSelect }: { node: TreeNode; depth: number; onSelect: (path: string) => void }) {
+function DiscardButton({ file, busy, onDiscard }: { file: ChangedFile; busy: boolean; onDiscard: (file: ChangedFile) => void }) {
+  return <button type="button" className={styles.iconButton} disabled={busy || !!file.discardDisabled} title={file.discardDisabled ?? (busy ? 'Wait for the current task to finish' : 'Discard changes')} aria-label={`Discard changes to ${file.path}`} onClick={() => onDiscard(file)}><RotateCcw size={14} /></button>
+}
+
+type TreeProps = { node: TreeNode; depth: number; onSelect: (path: string) => void }
+function Tree({ node, depth, onSelect }: TreeProps) {
   return (
     <>
       {node.dirs.map((d) => (
@@ -71,8 +78,12 @@ function Tree({ node, depth, onSelect }: { node: TreeNode; depth: number; onSele
   )
 }
 
-export function ChangesPanel({ sessionId, cwd, version }: Props) {
+export function ChangesPanel({ sessionId, cwd, version, busy }: Props) {
+  const client = useQueryClient()
   const changes = useQuery({ queryKey: ['changes', sessionId], queryFn: () => api.listChanges(sessionId) })
+  const sessions = useSessions()
+  const activeSessions = sessions.data?.filter((s) => s.status === 'running' || s.status === 'waiting_user' || (s.backgroundTasks ?? 0) > 0).map((s) => s.id).sort().join(',')
+  const [discarding, setDiscarding] = useState(false)
   const [tab, setTab] = useState<'changes' | 'files' | 'services'>('changes')
   const [selected, setSelected] = useState<string | null>(null)
   const [view, setView] = useState<'diff' | 'file'>('diff')
@@ -81,7 +92,7 @@ export function ChangesPanel({ sessionId, cwd, version }: Props) {
   useEffect(() => {
     const t = setTimeout(() => refetch(), 1500)
     return () => clearTimeout(t)
-  }, [version, refetch])
+  }, [version, busy, activeSessions, refetch])
   useEffect(() => setSelected(null), [sessionId])
   const { width, handle } = useResizable('changes', 380, 280, 720, 'right')
   const services = useServices()
@@ -89,6 +100,26 @@ export function ChangesPanel({ sessionId, cwd, version }: Props) {
   const workspaceId = workspaces.data?.find((w) => w.path === cwd)?.id
 
   const files = changes.data?.files ?? []
+  const selectedFile = files.find((f) => f.path === selected)
+  const discard = async (file: ChangedFile) => {
+    if (discarding || busy || file.discardDisabled) return
+    setDiscarding(true)
+    try {
+      const confirmed = await dialog.confirm({
+        title: file.discard === 'delete' ? 'Delete added file?' : 'Discard changes?',
+        message: `${file.path}\n\n${file.discard === 'delete' ? 'This file is not in the last commit. It will be deleted and removed from staging.' : 'Restore this file to the last commit (HEAD), discarding both staged and unstaged changes.'}\n\nThis affects all uncommitted changes to this file, including changes made before this session. This cannot be undone here.`,
+        ok: file.discard === 'delete' ? 'Delete file' : 'Discard changes', danger: true,
+      })
+      if (!confirmed) return
+      await api.discardChange(sessionId, { path: file.path, base: file.base, discard: file.discard })
+      setSelected((current) => current === file.path ? null : current)
+    } catch (err) {
+      await dialog.alert({ title: 'Could not discard changes', message: (err as Error).message })
+    } finally {
+      await Promise.all(['changes', 'diff', 'file', 'projectFiles', 'output'].map((key) => client.invalidateQueries({ queryKey: [key] })))
+      setDiscarding(false)
+    }
+  }
   return (
     <aside className={styles.panel} style={{ width }}>
       <div {...handle} />
@@ -108,6 +139,7 @@ export function ChangesPanel({ sessionId, cwd, version }: Props) {
             <ChevronLeft size={16} />
           </button>
           <code className={styles.path} title={selected}>{selected}</code>
+          {selectedFile && <DiscardButton file={selectedFile} busy={busy || discarding} onDiscard={discard} />}
           <button type="button" className={styles.iconButton} onClick={() => showFile(sessionId, selected)} title="Preview / Finder / Download"><FileCode size={15} /></button>
           <button type="button" className={styles.iconButton} data-active={view === 'diff' || undefined} onClick={() => setView('diff')} title="Diff">
             <FileDiff size={15} />
@@ -129,7 +161,7 @@ export function ChangesPanel({ sessionId, cwd, version }: Props) {
         )}
       </div>}
       </section>
-      <FilesPanel key={sessionId} sessionId={sessionId} active={tab === 'files'} version={version} />
+      <FilesPanel key={sessionId} sessionId={sessionId} active={tab === 'files'} version={version} busy={busy || discarding} activity={activeSessions} />
       <ServicesPanel key={cwd} cwd={cwd} active={tab === 'services'} />
     </aside>
   )

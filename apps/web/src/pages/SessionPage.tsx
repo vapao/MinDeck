@@ -372,7 +372,7 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
             </div>
           </footer>
         </div>
-        {desktop && showChanges && <ChangesPanel sessionId={sessionId} cwd={info?.cwd ?? ''} version={changesVersion} />}
+        {desktop && showChanges && <ChangesPanel key={sessionId} sessionId={sessionId} cwd={info?.cwd ?? ''} version={changesVersion} busy={status === 'running' || status === 'waiting_user' || (info?.backgroundTasks ?? 0) > 0} />}
       </div>
     </div>
   )
