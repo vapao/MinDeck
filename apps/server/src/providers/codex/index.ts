@@ -74,6 +74,8 @@ export function startCodexSession({ cwd, resume, model, effort, permissionMode, 
   let deferredEnd: { turnId: string; event: ProviderOutput } | null = null;
   // interrupt 时递增：还没送出去的消息随中断一并作废
   let epoch = 0;
+  // 轮次还没开起来就被中断（如 resume 中）：消息被作废后不会再有 turn/completed，由 send 落定时补报
+  let interruptedBeforeStart = false;
   // 每轮一个 controller：interrupt 时触发，让 Hub 作废本轮还在等的审批
   let abort = new AbortController();
   // 异步问题可以在一轮结束后回答，只在中断 / 关闭会话时作废。
@@ -229,22 +231,32 @@ export function startCodexSession({ cwd, resume, model, effort, permissionMode, 
             // 新一轮已开：之前压着的旧轮结束作废；极快的轮可能在回包前就已结束
             if (deferredEnd?.turnId !== res.turn.id) deferredEnd = null;
             turnId = res.turn.id === lastCompletedTurnId ? null : res.turn.id;
+            // turn/start 已发出后才中断：轮次照样会开，开了立刻停，结束由它自己的 turn/completed 报
+            // 这期间轮次可能已自然结束，interrupt 被拒不算开轮失败
+            if (epoch !== sentAt && turnId) await rpc.request('turn/interrupt', { threadId: threadId!, turnId }).catch((err) => { if (!(err instanceof RpcError)) throw err; });
           },
           () => {}, // thread 没开起来已经走了 onExit，不再重复报
         )
         .catch((err: Error) => {
           deferredEnd = null;
+          interruptedBeforeStart = false;
           onEvent({ type: 'turn.failed', payload: { message: `Codex refused to start the turn: ${err.message}` } });
         })
         .finally(() => {
-          if (--inFlight || !deferredEnd) return;
-          onEvent(deferredEnd.event);
+          if (--inFlight) return;
+          const stopped = interruptedBeforeStart && !turnId;
+          interruptedBeforeStart = false;
+          if (deferredEnd) onEvent(deferredEnd.event);
+          else if (stopped) onEvent({ type: 'turn.completed', payload: { reason: 'interrupted', durationMs: 0, costUsd: 0 } });
           deferredEnd = null;
         });
     },
     async interrupt() {
       epoch++;
-      if (!threadId || !turnId) return;
+      if (!threadId || !turnId) {
+        if (inFlight) interruptedBeforeStart = true;
+        return;
+      }
       abort.abort();
       asyncQuestions.abort();
       asyncQuestions = new AbortController();
