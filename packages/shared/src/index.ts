@@ -68,6 +68,7 @@ export const modelOptions: Record<ProviderId, readonly SelectOption[]> = {
   ],
   codex: [
     { value: 'gpt-6-astra', label: 'GPT-6 Astra' },
+    { value: 'gpt-6.1-sol', label: 'GPT-6.1 Sol' },
     { value: 'gpt-6-sol', label: 'GPT-6 Sol' },
     { value: 'gpt-6-luna', label: 'GPT-6 Luna' },
   ],
@@ -96,6 +97,7 @@ export const effortOptions: Record<ProviderId, readonly SelectOption[]> = {
 // 按本机 Codex 模型目录维护；ultra 是 Codex 级能力，不能用底层 Responses API 枚举代替。
 const codexModelEfforts: Record<string, readonly string[]> = {
   'gpt-6-astra': ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
+  'gpt-6.1-sol': ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
   'gpt-6-sol': ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
   'gpt-6-luna': ['low', 'medium', 'high', 'xhigh', 'max'],
 };

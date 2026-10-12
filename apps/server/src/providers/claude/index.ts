@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { forkSession, query, type CanUseTool, type EffortLevel, type PermissionResult, type PermissionUpdate, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
+import { forkSession, importSessionToStore, query, type CanUseTool, type EffortLevel, type PermissionResult, type PermissionUpdate, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import { skillToken, type QuestionSpec } from '@agentdeck/shared';
 import type { ProviderSession, StartOptions } from '../types';
 import { createNormalizer } from './normalize';
@@ -126,7 +126,19 @@ export async function listClaudeSkills(cwd: string) {
 
 /** 复制出一份截到 anchor（含）的新会话记录，返回新 session id；原记录不动（DeepSeek 同用） */
 export async function forkClaudeSession(sessionId: string, anchor: string, cwd: string): Promise<string> {
-  return (await forkSession(sessionId, { dir: cwd, upToMessageId: anchor })).sessionId;
+  const upToMessageId = await resolveAnchor(sessionId, anchor, cwd);
+  if (!upToMessageId) throw new Error(`Fork point ${anchor} not found in session ${sessionId} or the sessions it was forked from`);
+  return (await forkSession(sessionId, { dir: cwd, upToMessageId })).sessionId;
+}
+
+// SDK 分叉时给每条消息换新 uuid（原 uuid 记在 forkedFrom），Hub 复制过来的旧轮锚点仍是祖先会话的 uuid，沿 forkedFrom 链换回本会话的
+async function resolveAnchor(sessionId: string, anchor: string, cwd: string): Promise<string | undefined> {
+  const entries: Array<{ uuid?: string; forkedFrom?: { sessionId: string; messageUuid: string } }> = [];
+  await importSessionToStore(sessionId, { append: async (_key, batch) => void entries.push(...batch), load: async () => null }, { dir: cwd, includeSubagents: false });
+  if (entries.some((e) => e.uuid === anchor)) return anchor;
+  const parent = entries.find((e) => e.forkedFrom)?.forkedFrom?.sessionId;
+  const inParent = parent && (await resolveAnchor(parent, anchor, cwd));
+  return inParent ? entries.find((e) => e.forkedFrom?.messageUuid === inParent)?.uuid : undefined;
 }
 
 // 最小连通验证：与会话共用环境注入，经真实 SDK 请求，但不运行工具或保存测试会话。
