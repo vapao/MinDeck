@@ -114,8 +114,35 @@ export function startClaudeSession({ cwd, resume, model, effort, permissionMode,
   };
 }
 
-/** 列出 cwd 下的 skill（不含内置命令）：起一个空的 Streaming Input 会话只发控制请求，不调模型；DeepSeek 同用 */
+// 起进程列 skill 要 2 秒多，按 cwd 缓存：有缓存直接返回，超过 60 秒才在后台刷新，下次请求拿到新的。
+// 同一 cwd 同时只跑一个刷新；失败的不进缓存，下次重试
+type SkillList = Awaited<ReturnType<typeof fetchClaudeSkills>>;
+const skillCache = new Map<string, { skills: SkillList; at: number }>();
+const skillLoads = new Map<string, Promise<SkillList>>();
+function loadClaudeSkills(cwd: string) {
+  let load = skillLoads.get(cwd);
+  if (!load) {
+    load = fetchClaudeSkills(cwd)
+      .then((skills) => {
+        skillCache.set(cwd, { skills, at: Date.now() });
+        return skills;
+      })
+      .finally(() => skillLoads.delete(cwd));
+    skillLoads.set(cwd, load);
+  }
+  return load;
+}
+
+/** 列出 cwd 下的 skill（不含内置命令），DeepSeek 同用 */
 export async function listClaudeSkills(cwd: string) {
+  const cached = skillCache.get(cwd);
+  if (!cached) return loadClaudeSkills(cwd);
+  if (Date.now() - cached.at > 60_000) loadClaudeSkills(cwd).catch(() => {});
+  return cached.skills;
+}
+
+/** 起一个空的 Streaming Input 会话只发控制请求，不调模型 */
+async function fetchClaudeSkills(cwd: string) {
   const q = query({ prompt: createInbox(), options: { cwd, env: childEnv(), settingSources: ['user', 'project'], systemPrompt: { type: 'preset', preset: 'claude_code' }, persistSession: false } });
   try {
     return (await q.reloadSkills()).skills;

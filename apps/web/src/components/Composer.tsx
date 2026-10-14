@@ -116,9 +116,9 @@ export function Composer({ draftKey, disabled, sending, running, interrupting, o
     enabled: mention?.kind === '@',
     placeholderData: (prev) => prev,
   })
-  // 列表要起进程扫描（Claude 约 2 秒），按会话 + Provider 缓存；空会话换 Provider 后重新拉
+  // Claude 列 skill 要起进程（约 2 秒），服务端按 cwd 缓存；打开会话就预取，敲 $ 时列表已就绪。按会话 + Provider 缓存，空会话换 Provider 后重新拉
   const token = skillToken(text)
-  const skills = useQuery({ queryKey: ['skills', draftKey, provider], queryFn: listSkills, enabled: mention?.kind === '$' || token !== undefined, staleTime: 60_000 })
+  const skills = useQuery({ queryKey: ['skills', draftKey, provider], queryFn: listSkills, staleTime: 60_000 })
   const sessions = useQuery({ queryKey: ['sessions'], queryFn: api.listSessions, enabled: mention?.kind === '#' })
   const workspaces = useQuery({ queryKey: ['workspaces'], queryFn: api.listWorkspaces, enabled: mention?.kind === '#' })
   const workspaceName = (cwd: string) => workspaces.data?.find((w) => w.path === cwd)?.alias ?? cwd.split('/').pop() ?? cwd

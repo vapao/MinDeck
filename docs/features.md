@@ -134,9 +134,9 @@ Files 支持在项目根目录或指定子目录新建空文件 / 文件夹，�
 ## `$` 调用 skill
 
 - 三个 Provider 统一用 `$` 触发，**只在消息开头生效**（Claude 的 slash 命令只认开头的一个）。输入框光标前整段是 `$xxx` 时弹出候选，按 name 子串过滤，交互同 `@`，选中插入 `$name `。
-- `GET /api/sessions/:id/skills` 只列 skill、不含内置命令（`/clear`、`/model` 等会和 Hub 状态冲突）：Claude / DeepSeek 起空 Streaming Input 调 `reloadSkills()`（约 2 秒，不调模型、不存会话）；Codex 调共享 app-server 的 `skills/list`，只取 enabled。前端按会话 + Provider 缓存 60 秒。
+- `GET /api/sessions/:id/skills` 只列 skill、不含内置命令（`/clear`、`/model` 等会和 Hub 状态冲突）：Claude / DeepSeek 起空 Streaming Input 调 `reloadSkills()`（约 2 秒，不调模型、不存会话），服务端按 cwd 缓存：命中直接返回，超过 60 秒后台刷新（新增的 skill 晚一次请求出现）；Codex 调共享 app-server 的 `skills/list`，只取 enabled。前端打开会话即预取，按会话 + Provider 缓存 60 秒。
 - 发送时服务端再解析一次，开头 `$name` 不是已知 skill 就原样发：Claude / DeepSeek 改写成 `/name 其余文本` 推入 Streaming Input；Codex 保留文本并追加 `{ type: 'skill', name, path }`（path 由服务端查，不信任客户端）。实测 Codex steer 只带 skill 项、文本不含 `$name` 时模型会忽略该 skill。
-- 开头 `$name` 在当前会话的 skill 列表里时着琥珀色，`@` 引用（前面是开头或空白）着蓝色：输入框由 textarea 背后同排版的背景层代为显示文字，消息气泡渲染为标签；列表与补全共用缓存，只有出现 `$` 开头的消息才拉取。
+- 开头 `$name` 在当前会话的 skill 列表里时着琥珀色，`@` 引用（前面是开头或空白）着蓝色：输入框由 textarea 背后同排版的背景层代为显示文字，消息气泡渲染为标签；列表与补全共用缓存。
 - 事件流存用户原文 `$name …`。一轮进行中插入：Claude 在当前轮结束后接着执行 skill，`idle` 等它执行完才到；Codex steer 进当前轮。
 
 ## Claude 后台任务
