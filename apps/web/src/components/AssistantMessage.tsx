@@ -77,6 +77,21 @@ function CodeBlock(props: ComponentProps<'pre'>) {
   )
 }
 
+/** 整条消息复制原文（Markdown），方便转贴给别的会话；样式由调用方给 */
+export function CopyMessage({ text, className }: { text: string; className: string }) {
+  const [copied, setCopied] = useState(false)
+  const copy = async () => {
+    await navigator.clipboard.writeText(text)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }
+  return (
+    <button type="button" className={className} onClick={copy} title="Copy this message">
+      {copied ? <Check size={12} /> : <Copy size={12} />} {copied ? 'Copied' : 'Copy'}
+    </button>
+  )
+}
+
 type Props = { text: string; streaming: boolean; sessionId: string }
 
 // 不带发送者 / 时间头部：一轮的落款（TurnRow）已经记了时间，回复段落直接接在用户消息后

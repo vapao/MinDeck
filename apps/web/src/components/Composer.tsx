@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowUp, ChevronUp, File, Folder, FolderOpen, ImagePlus, LoaderCircle, MessageSquare, MessageSquarePlus, Sparkles, Square, SquareTerminal, X } from 'lucide-react'
+import { ArrowUp, ChevronUp, DollarSign, File, Folder, FoldVertical, FolderOpen, Hash, ImagePlus, LoaderCircle, MessageSquare, MessageSquarePlus, Sparkles, Square, SquareSlash, SquareTerminal, X } from 'lucide-react'
 import { getEffortOptions, modelOptions, type Attachment, skillToken, type EntriesResponse, type ProviderId, type Session, type SkillsResponse } from '@agentdeck/shared'
 import { api } from '../api'
 import { Select } from './Select'
@@ -21,6 +21,9 @@ type Props = {
   onInterrupt: () => void
   /** "新开一轮"（等价 /clear）；未就绪时不传，按钮置灰 */
   onFresh?: () => void
+  /** 一键发 /compact；当前不能压缩（运行中、空会话等）时不传，按钮置灰 */
+  /** 会话空闲且有内容时才能压缩 */
+  canCompact?: boolean
   onTerminal?: () => void
   onFinder?: () => void
   provider: ProviderId
@@ -61,7 +64,7 @@ type Draft = { key: string; file: File; previewUrl: string } & ({ status: 'uploa
 
 const maxPerMessage = 5
 
-export function Composer({ draftKey, disabled, sending, running, interrupting, onInterrupt, onFresh, onTerminal, onFinder, provider, imagesAllowed = true, onSwitchProvider, modelSelect, meta, hint, hintError, placeholder, upload, search, listSkills, onSend }: Props) {
+export function Composer({ draftKey, disabled, sending, running, interrupting, onInterrupt, onFresh, canCompact, onTerminal, onFinder, provider, imagesAllowed = true, onSwitchProvider, modelSelect, meta, hint, hintError, placeholder, upload, search, listSkills, onSend }: Props) {
   const [text, setText] = useState(() => readDraft(draftKey))
   useEffect(() => {
     saveDraft(draftKey, text)
@@ -87,6 +90,20 @@ export function Composer({ draftKey, disabled, sending, running, interrupting, o
   const [switching, setSwitching] = useState(false)
   const switcher = useRef<HTMLDivElement>(null)
   const switchButton = useRef<HTMLButtonElement>(null)
+  // 手机上 $ / # / /compact 不好敲，收进一个按钮弹出的小菜单
+  const [commanding, setCommanding] = useState(false)
+  const commands = useRef<HTMLSpanElement>(null)
+  useEffect(() => {
+    if (!commanding) return
+    const onDown = (e: MouseEvent) => !commands.current?.contains(e.target as Node) && setCommanding(false)
+    const onKey = (e: globalThis.KeyboardEvent) => e.key === 'Escape' && setCommanding(false)
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [commanding])
   useEffect(() => {
     if (!switching) return
     const onDown = (e: MouseEvent) => {
@@ -160,7 +177,7 @@ export function Composer({ draftKey, disabled, sending, running, interrupting, o
     const el = textarea.current
     if (!el) return
     const insert = `$${skill.name} `
-    setText(insert + text.slice(el.selectionStart))
+    setText(insert + text.slice(el.selectionStart).trimStart())
     requestAnimationFrame(() => {
       el.focus()
       el.setSelectionRange(insert.length, insert.length)
@@ -178,6 +195,40 @@ export function Composer({ draftKey, disabled, sending, running, interrupting, o
       el.focus()
       el.setSelectionRange(caret, caret)
       setMention(null)
+    })
+  }
+  // 菜单项只往输入框里填，由用户自己发送。$ 和 /compact 只认消息开头：已有的就换掉，原文挪到后面（Claude 会把它当压缩说明）
+  const insertTrigger = (kind: '$' | '#' | '/compact') => {
+    setCommanding(false)
+    const el = textarea.current
+    if (!el) return
+    let next: string
+    let start: number
+    if (kind === '/compact') {
+      const rest = text.replace(/^\/compact\b\s*/, '')
+      setText(rest ? `/compact ${rest}` : '/compact')
+      requestAnimationFrame(() => {
+        el.focus()
+        el.setSelectionRange(8, 8)
+      })
+      return
+    }
+    if (kind === '$') {
+      const rest = text.replace(/^\$\S*\s*/, '')
+      next = rest ? `$ ${rest}` : '$'
+      start = 0
+    } else {
+      const caret = el.selectionStart
+      const pad = caret > 0 && !/\s/.test(text[caret - 1]) ? ' ' : ''
+      next = text.slice(0, caret) + pad + '#' + text.slice(caret)
+      start = caret + pad.length
+    }
+    setText(next)
+    requestAnimationFrame(() => {
+      el.focus()
+      el.setSelectionRange(start + 1, start + 1)
+      setMention({ kind, start, query: '' })
+      setCursor(0)
     })
   }
   // 卸载时释放所有预览 URL
@@ -428,6 +479,30 @@ export function Composer({ draftKey, disabled, sending, running, interrupting, o
             <button type="button" className={styles.attach} onClick={() => fileInput.current?.click()} disabled={sending || !imagesAllowed || drafts.length >= maxPerMessage} aria-label="Add image" title={imagesAllowed ? "Add image" : "DeepSeek Pro 不支持图片"}>
               <ImagePlus size={16} />
             </button>
+            <span ref={commands} className={styles.commands}>
+              <button type="button" className={styles.attach} onClick={() => setCommanding((v) => !v)} disabled={sending || disabled} aria-expanded={commanding} aria-label="Commands" title="Skill, session reference or compact">
+                <SquareSlash size={16} />
+              </button>
+              {commanding && (
+                <div className={styles.commandMenu}>
+                  <button type="button" className={styles.mention} onClick={() => insertTrigger('$')}>
+                    <DollarSign size={14} />
+                    <span className={styles.mentionPath}>Use a skill</span>
+                    <code className={styles.commandKey}>$</code>
+                  </button>
+                  <button type="button" className={styles.mention} onClick={() => insertTrigger('#')}>
+                    <Hash size={14} />
+                    <span className={styles.mentionPath}>Reference a session</span>
+                    <code className={styles.commandKey}>#</code>
+                  </button>
+                  <button type="button" className={styles.mention} onClick={() => insertTrigger('/compact')} disabled={!canCompact} title={canCompact ? undefined : 'Available once the session has messages and is idle'}>
+                    <FoldVertical size={14} />
+                    <span className={styles.mentionPath}>Compact context</span>
+                    <code className={styles.commandKey}>/compact</code>
+                  </button>
+                </div>
+              )}
+            </span>
             {switchable ? (
               <button ref={switchButton} type="button" className={styles.provider} onClick={() => setSwitching((v) => !v)} aria-expanded={switching} title="Change agent, model or effort">
                 {[providerName[provider], meta].filter(Boolean).join(' · ')}

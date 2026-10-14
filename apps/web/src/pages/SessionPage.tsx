@@ -242,6 +242,17 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
   // 状态区 Provider 名字后面：模型 · 思考等级 · 上下文用量；init 前模型取创建时指定的；没指定 effort（用 Provider 默认）就不显示
   const meta = [formatModel(provider, model ?? info?.model), formatEffort(provider, info?.effort), context !== null && formatTokens(context)].filter(Boolean).join(' · ')
 
+  // 每轮落款上的复制取这轮最后一段回复，方便转贴给别的会话
+  const replies = new Map<string, string>()
+  let reply = ''
+  for (const it of items) {
+    if (it.kind === 'assistant') reply = it.text
+    else if (it.kind === 'user') reply = ''
+    else if (it.kind === 'turn') {
+      if (reply) replies.set(it.key, reply)
+      reply = ''
+    }
+  }
   const renderItem = (it: StreamItem) => {
     switch (it.kind) {
       case 'user':
@@ -251,7 +262,7 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
       case 'error':
         return <ErrorCard key={it.key} message={it.message} />
       case 'turn':
-        return <TurnRow key={it.key} reason={it.reason} durationMs={it.durationMs} at={it.at} />
+        return <TurnRow key={it.key} reason={it.reason} durationMs={it.durationMs} at={it.at} reply={replies.get(it.key)} />
       case 'approval':
         return (
           <ApprovalCard
@@ -352,6 +363,8 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
                 onTerminal={desktop && info?.cwd ? () => openProjectTerminal(info.cwd) : undefined}
                 onFinder={desktop && info?.cwd ? () => openProjectFinder(info.cwd) : undefined}
                 onFresh={session && !fresh.isPending ? onFresh : undefined}
+                // Hub 对运行中 / 等待中 / 空会话的 /compact 回 409，这里提前置灰
+                canCompact={items.length > 0 && (status === 'idle' || status === 'error')}
                 provider={provider}
                 imagesAllowed={provider !== 'deepseek' || info?.model !== 'deepseek-v4-pro'}
                 onSwitchProvider={canSwitchProvider ? (p) => switchProvider.mutate(p) : undefined}

@@ -1,10 +1,11 @@
 import { useState, useSyncExternalStore, type ReactNode } from 'react'
-import { ChevronDown, ChevronRight, Eye, EyeOff, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, Eye, EyeOff, Plus, Trash2 } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { Session, SessionStatus } from '@agentdeck/shared'
 import { api } from '../api'
 import { formatTime } from '../format'
 import { navigate } from '../router'
+import { openNewSession } from './NewSessionDialog'
 import { dialog } from './Dialog'
 import { isUnread, useSeen } from '../session/seen'
 import { useDraftSessions } from '../session/drafts'
@@ -113,12 +114,20 @@ function SessionList({ sessions, activeId, onSelect, actions, empty }: Props) {
         const visible = isCollapsed ? items.filter(needsAttention) : items
         return (
           <section key={cwd} className={styles.group}>
-            <button type="button" className={styles.groupHead} onClick={() => toggleCollapsed(cwd)} aria-expanded={!isCollapsed}>
-              {isCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
-              <span className={styles.groupName} title={cwd}>{aliasOf(cwd)}</span>
-              {servicesRunning(cwd) && <span className={styles.serviceDot} title="Services running" />}
-              <code className={styles.groupCount}>{items.length}</code>
-            </button>
+            <div className={styles.groupHeadRow}>
+              <button type="button" className={styles.groupHead} onClick={() => toggleCollapsed(cwd)} aria-expanded={!isCollapsed}>
+                {isCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+                <span className={styles.groupName} title={cwd}>{aliasOf(cwd)}</span>
+                {servicesRunning(cwd) && <span className={styles.serviceDot} title="Services running" />}
+                <code className={styles.groupCount}>{items.length}</code>
+              </button>
+              {/* 已移除的项目不能再建会话 */}
+              {workspaces.data?.some((w) => w.path === cwd) && (
+                <button type="button" className={styles.groupAdd} onClick={() => openNewSession(cwd)} aria-label={`New session in ${aliasOf(cwd)}`} title="New session in this project">
+                  <Plus size={14} />
+                </button>
+              )}
+            </div>
             {visible.map((s) => (
               <div key={s.id} className={styles.row}>
                 <button type="button" className={styles.item} data-active={s.id === activeId || undefined} onClick={() => onSelect(s.id)}>

@@ -15,7 +15,7 @@
 
 ## 切片 7：易用性
 
-输入框草稿（localStorage 按会话）；「新开一轮」（同 cwd / provider 新建会话，等价 `/clear`，弹窗可选删除旧会话）；会话通知；头部显示当前模型。
+输入框草稿（localStorage 按会话）；用户消息 hover 出现 Copy（触屏常显）；每轮落款（Completed / Stopped）右侧有 Copy，复制这轮最后一段回复的原文 Markdown，便于转贴给其他会话（中间过程段落不单独提供复制）；「新开一轮」（同 cwd / provider 新建会话，等价 `/clear`，弹窗可选删除旧会话）；会话通知；头部显示当前模型。
 
 - 发送收到成功回执后才清空输入框和附件；请求期间锁定编辑及重复发送，发送按钮显示 loading 转圈（减少动态效果偏好下不旋转）。发送失败保留原文、文字草稿和当前页面的已上传附件，错误在输入框上方完整显示，用户手动重试。文字草稿刷新后仍在；附件仍沿用当前页面内存保存，不跨刷新恢复。不自动重发、不新增服务端去重协议；回执丢失时可先核对聊天记录再重试。
 
@@ -25,7 +25,7 @@
 
 ## 切片 8：项目与设置
 
-`workspaces` 表 + 目录浏览（限家目录内）添加、别名、移除，首次启动种入本仓库。设置页：各 Provider 默认模型与 effort，创建会话时传给 Provider，靠 init 回包校验。
+`workspaces` 表 + 目录浏览（限家目录内，弹窗内选）添加、别名、移除，首次启动种入本仓库。添加成功直接弹出新建会话并选中该项目；项目行可新建会话，桌面另有 Finder / iTerm2。新建会话是全局弹窗（不占路由）：项目页、侧栏分组头 hover 的 `+`、侧栏 New session（带上当前会话的项目）都可打开并预选项目，没带时用上次新建所选；项目选择框可按别名 / 路径搜索。设置页：各 Provider 默认模型与 effort，创建会话时传给 Provider，靠 init 回包校验。
 
 ## 切片 9：删除会话
 
@@ -133,6 +133,7 @@ Files 支持在项目根目录或指定子目录新建空文件 / 文件夹，�
 
 ## `$` 调用 skill
 
+- 输入框底部指令按钮（手机免切符号键盘）弹出小菜单，各项只往输入框填内容，不直接发送：`$` 插到消息开头并弹出 skill 补全，已有 skill 会被替换、原文保留在后面；`#` 插在光标处（前面不是空白就补一个空格）并弹出会话补全；`/compact` 见下。
 - 三个 Provider 统一用 `$` 触发，**只在消息开头生效**（Claude 的 slash 命令只认开头的一个）。输入框光标前整段是 `$xxx` 时弹出候选，按 name 子串过滤，交互同 `@`，选中插入 `$name `。
 - `GET /api/sessions/:id/skills` 只列 skill、不含内置命令（`/clear`、`/model` 等会和 Hub 状态冲突）：Claude / DeepSeek 起空 Streaming Input 调 `reloadSkills()`（约 2 秒，不调模型、不存会话），服务端按 cwd 缓存：命中直接返回，超过 60 秒后台刷新（新增的 skill 晚一次请求出现）；Codex 调共享 app-server 的 `skills/list`，只取 enabled。前端打开会话即预取，按会话 + Provider 缓存 60 秒。
 - 发送时服务端再解析一次，开头 `$name` 不是已知 skill 就原样发：Claude / DeepSeek 改写成 `/name 其余文本` 推入 Streaming Input；Codex 保留文本并追加 `{ type: 'skill', name, path }`（path 由服务端查，不信任客户端）。实测 Codex steer 只带 skill 项、文本不含 `$name` 时模型会忽略该 skill。
@@ -148,6 +149,7 @@ Files 支持在项目根目录或指定子目录新建空文件 / 文件夹，�
 
 ## `/compact` 手动压缩
 
+- 指令菜单里的 Compact context 把 `/compact` 填到消息开头（已有草稿保留在后面，Claude 会当作压缩说明；Codex 带说明会被拒），由用户自己发送；运行中、等待中、空会话时置灰。
 - 消息开头是 `/compact` 时触发，是唯一放行的内置命令（不改会话身份、模型、权限）。事件流照常存用户原文，显示为一轮普通的"运行 → 完成"，不新增事件类型。
 - Hub 前置校验：运行中 / 等待中 409（压缩独占一轮，不插入）；空会话 409；不能带附件；Codex 不接受附带指示（`/compact 其余文本` 400），Claude / DeepSeek 原样透传给 SDK 作为压缩指示。
 - Claude / DeepSeek：原文推入 Streaming Input，SDK 依次发 `status: compacting` → `compact_boundary` → `result: success` → `idle`；`compact_boundary.compact_metadata.post_tokens` 映射为 `context.updated`（自动压缩同样生效）。

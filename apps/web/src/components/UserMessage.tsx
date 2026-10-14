@@ -2,6 +2,7 @@ import type { Attachment } from '@agentdeck/shared'
 import { GitBranch } from 'lucide-react'
 import { api } from '../api'
 import { showImage } from './FilePreview'
+import { CopyMessage } from './AssistantMessage'
 import { formatTime } from '../format'
 import { splitRefs } from '../refs'
 import { navigate } from '../router'
@@ -12,6 +13,7 @@ export function UserMessage({ text, attachments, at, skill, onRewind }: { text: 
   return (
     <div className={styles.row}>
       <div className={styles.meta}>
+        {text && <CopyMessage text={text} className={styles.rewind} />}
         {onRewind && (
           <button type="button" className={styles.rewind} onClick={onRewind} title="Fork or rewind to before this message">
             <GitBranch size={12} /> Rewind

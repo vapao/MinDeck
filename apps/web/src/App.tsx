@@ -12,14 +12,14 @@ import { Loading } from './components/Loading'
 import { useMarkSeen } from './session/seen'
 import { RateMeter } from './components/RateMeter'
 import { useResizable } from './components/Resizer'
-import { NewSessionPage } from './pages/NewSessionPage'
+import { NewSessionHost, openNewSession } from './components/NewSessionDialog'
 import { SessionListPage } from './pages/SessionListPage'
 import { SessionPage } from './pages/SessionPage'
 import { WorkspacesPage } from './pages/WorkspacesPage'
 import { SettingsPage } from './pages/SettingsPage'
 import styles from './App.module.css'
 
-// 路由：/ 列表（桌面为侧栏 + 空态）、/new 新建、/s/:id 会话页、/workspaces 项目、/settings 设置
+// 新建会话是全局弹窗，不占路由。路由：/ 列表（桌面为侧栏 + 空态）、/s/:id 会话页、/workspaces 项目、/settings 设置
 export default function App() {
   const pathname = usePathname()
   const desktop = useMediaQuery('(min-width: 1024px)')
@@ -35,10 +35,11 @@ export default function App() {
       {desktop ? (
         <div className={styles.shell}>
           <Sidebar activeId={sessionId} />
-          <main className={styles.main} data-session={sessionId ? '' : undefined}>{page ?? (pathname === '/new' ? <NewSessionPage /> : <EmptyState />)}</main>
+          <main className={styles.main} data-session={sessionId ? '' : undefined}>{page ?? <EmptyState />}</main>
         </div>
-      ) : page ?? (pathname === '/new' ? <NewSessionPage /> : <SessionListPage />)}
+      ) : page ?? <SessionListPage />}
       <UpdateNotice />
+      <NewSessionHost />
       <SessionNotifications {...notifications} />
     </>
   )
@@ -50,7 +51,7 @@ function EmptyState() {
     <div className={styles.empty}>
       <MessageSquare size={28} strokeWidth={1.5} />
       <p>Select a session, or start a new one.</p>
-      <button type="button" className={styles.emptyButton} onClick={() => navigate('/new')}>
+      <button type="button" className={styles.emptyButton} onClick={() => openNewSession()}>
         <Plus size={14} />
         New session
       </button>
@@ -82,7 +83,8 @@ function Sidebar({ activeId }: { activeId?: string }) {
       <div ref={list} className={styles.sidebarList}>
         {sessions.isPending ? <Loading label="Loading sessions…" /> : <SessionTabs sessions={sessions.data ?? []} activeId={activeId} />}
       </div>
-      <button type="button" className={styles.newButton} onClick={() => navigate('/new')}>
+      {/* 正在看某个会话时，新建默认落在同一项目 */}
+      <button type="button" className={styles.newButton} onClick={() => openNewSession(sessions.data?.find((s) => s.id === activeId)?.cwd)}>
         <Plus size={16} />
         New session
       </button>

@@ -103,6 +103,10 @@
 .primary:hover:not(:disabled) {
   background: var(--accent-hover);
 }
+.primary:disabled {
+  opacity: 0.42;
+  cursor: default;
+}
 .primary[data-danger] {
   border-color: var(--danger-border);
   background: var(--danger-bg);

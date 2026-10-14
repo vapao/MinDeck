@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react'
 
-// 几个页面不值得引路由库：/ 新建会话，/s/:id 会话页，/workspaces 项目管理，/settings 设置
+// 几个页面不值得引路由库：/ 列表，/s/:id 会话页，/workspaces 项目管理，/settings 设置
 const subscribe = (cb: () => void) => {
   window.addEventListener('popstate', cb)
   return () => window.removeEventListener('popstate', cb)

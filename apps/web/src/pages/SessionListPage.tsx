@@ -4,6 +4,7 @@ import { useAutoHideScrollbar } from '../session/useAutoHideScrollbar'
 import { navigate } from '../router'
 import { useSessions } from '../session/useSessions'
 import { SessionTabs } from '../components/SessionList'
+import { openNewSession } from '../components/NewSessionDialog'
 import { Loading } from '../components/Loading'
 import { RateMeter } from '../components/RateMeter'
 import styles from './SessionListPage.module.css'
@@ -23,7 +24,7 @@ export function SessionListPage() {
           AgentDeck
         </span>
         <span className={styles.nav}>
-          <button type="button" className={styles.navButton} onClick={() => navigate('/new')} aria-label="New session">
+          <button type="button" className={styles.navButton} onClick={() => openNewSession()} aria-label="New session">
             <Plus size={24} />
           </button>
           <button type="button" className={styles.navButton} onClick={() => navigate('/workspaces')} aria-label="Projects">

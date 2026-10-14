@@ -428,3 +428,39 @@ button.provider:hover {
     grid-column: 2;
   }
 }
+/* 指令菜单贴着按钮往上弹 */
+.commands {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+}
+.commandMenu {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 8px);
+  width: 240px;
+  padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border-3);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-menu);
+  z-index: 5;
+}
+.commandMenu .mention:hover:enabled {
+  background: var(--selected);
+  color: var(--text);
+}
+.commandMenu .mention:disabled {
+  opacity: 0.42;
+  cursor: default;
+}
+.commandKey {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-3);
+}
+@media (max-width: 1023px) {
+  .commandMenu .mention {
+    height: 40px;
+  }
+}
