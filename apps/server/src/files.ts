@@ -1,6 +1,6 @@
 import { lstat, mkdir, readdir, realpath, rm, writeFile } from 'node:fs/promises';
-import { isAbsolute, join, resolve, sep } from 'node:path';
-import type { CreateProjectEntryBody, DeleteProjectEntryBody, ProjectFilesResponse } from '@agentdeck/shared';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import type { CreateProjectEntryBody, DeleteProjectEntryBody, ProjectFilesResponse, SaveProjectFileBody } from '@agentdeck/shared';
 import { HubError } from './hub';
 
 export async function listProjectFiles(cwd: string, path: string, query: string, hidden: boolean): Promise<ProjectFilesResponse> {
@@ -78,4 +78,20 @@ export async function deleteProjectEntry(cwd: string, body: DeleteProjectEntryBo
   }
   // rm 不跟随叶子及目录内的符号链接；不改暂存区，Git 仍能显示已跟踪文件的删除。
   await rm(abs, { recursive: body.dir });
+}
+
+/** 预览拿到的是绝对路径；只有 cwd 内、非 Git 元数据的文件可编辑，返回相对 cwd 的路径。 */
+export async function editablePath(cwd: string, path: string) {
+  const root = await realpath(cwd);
+  const abs = join(await realpath(dirname(path)), basename(path));
+  const rel = relative(root, abs);
+  return abs.startsWith(root + sep) && !rel.split(sep).some((part) => part.toLowerCase() === '.git') ? rel : null;
+}
+
+export async function saveProjectFile(cwd: string, body: SaveProjectFileBody): Promise<void> {
+  const rel = await editablePath(cwd, body.path);
+  if (!rel) throw new HubError(400, 'Only files inside the workspace can be edited');
+  const { abs, info } = await workspaceWritePath(cwd, rel);
+  if (!info?.isFile()) throw new HubError(404, 'File no longer exists or is not a regular file');
+  await writeFile(abs, body.content);
 }

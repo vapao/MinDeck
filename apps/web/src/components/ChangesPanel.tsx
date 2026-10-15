@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronLeft, FileCode, FileDiff, Folder, RefreshCw, RotateCcw, Server } from 'lucide-react'
+import { FileDiff, Folder, RefreshCw, Server } from 'lucide-react'
 import type { ChangedFile } from '@agentdeck/shared'
-import { showFile } from './FilePreview'
+import { showDiff } from './FilePreview'
 import { FilesPanel } from './FilesPanel'
 import { ServicesPanel, useServices } from './ServicesPanel'
 import { api } from '../api'
@@ -51,10 +51,6 @@ function FileStat({ f }: { f: ChangedFile }) {
   )
 }
 
-function DiscardButton({ file, busy, onDiscard }: { file: ChangedFile; busy: boolean; onDiscard: (file: ChangedFile) => void }) {
-  return <button type="button" className={styles.iconButton} disabled={busy || !!file.discardDisabled} title={file.discardDisabled ?? (busy ? 'Wait for the current task to finish' : 'Discard changes')} aria-label={`Discard changes to ${file.path}`} onClick={() => onDiscard(file)}><RotateCcw size={14} /></button>
-}
-
 type TreeProps = { node: TreeNode; depth: number; onSelect: (path: string) => void }
 function Tree({ node, depth, onSelect }: TreeProps) {
   return (
@@ -85,24 +81,28 @@ export function ChangesPanel({ sessionId, cwd, version, busy }: Props) {
   const activeSessions = sessions.data?.filter((s) => s.status === 'running' || s.status === 'waiting_user' || (s.backgroundTasks ?? 0) > 0).map((s) => s.id).sort().join(',')
   const [discarding, setDiscarding] = useState(false)
   const [tab, setTab] = useState<'changes' | 'files' | 'services'>('changes')
-  const [selected, setSelected] = useState<string | null>(null)
-  const [view, setView] = useState<'diff' | 'file'>('diff')
   // 事件密集时（一轮里连着几十次 Edit）合并成 1.5s 一次
   const { refetch } = changes
   useEffect(() => {
     const t = setTimeout(() => refetch(), 1500)
     return () => clearTimeout(t)
   }, [version, busy, activeSessions, refetch])
-  useEffect(() => setSelected(null), [sessionId])
   const { width, handle } = useResizable('changes', 380, 280, 720, 'right')
   const services = useServices()
   const workspaces = useQuery({ queryKey: ['workspaces'], queryFn: api.listWorkspaces })
   const workspaceId = workspaces.data?.find((w) => w.path === cwd)?.id
 
   const files = changes.data?.files ?? []
-  const selectedFile = files.find((f) => f.path === selected)
-  const discard = async (file: ChangedFile) => {
-    if (discarding || busy || file.discardDisabled) return
+  // diff 弹窗打开期间列表可能刷新：丢弃时按路径取最新的 Git 状态和忙碌状态
+  const latest = useRef({ files, busy })
+  useEffect(() => { latest.current = { files, busy } })
+  const discard = async (path: string) => {
+    const file = latest.current.files.find((f) => f.path === path)
+    const reason = !file ? 'File is no longer in Changes; refresh and try again' : file.discardDisabled ?? (latest.current.busy ? 'Wait for the current task to finish' : undefined)
+    if (!file || reason) {
+      await dialog.alert({ title: 'Could not discard changes', message: reason! })
+      return false
+    }
     setDiscarding(true)
     try {
       const confirmed = await dialog.confirm({
@@ -110,11 +110,12 @@ export function ChangesPanel({ sessionId, cwd, version, busy }: Props) {
         message: `${file.path}\n\n${file.discard === 'delete' ? 'This file is not in the last commit. It will be deleted and removed from staging.' : 'Restore this file to the last commit (HEAD), discarding both staged and unstaged changes.'}\n\nThis affects all uncommitted changes to this file, including changes made before this session. This cannot be undone here.`,
         ok: file.discard === 'delete' ? 'Delete file' : 'Discard changes', danger: true,
       })
-      if (!confirmed) return
+      if (!confirmed) return false
       await api.discardChange(sessionId, { path: file.path, base: file.base, discard: file.discard })
-      setSelected((current) => current === file.path ? null : current)
+      return true
     } catch (err) {
       await dialog.alert({ title: 'Could not discard changes', message: (err as Error).message })
+      return false
     } finally {
       await Promise.all(['changes', 'diff', 'file', 'projectFiles', 'output'].map((key) => client.invalidateQueries({ queryKey: [key] })))
       setDiscarding(false)
@@ -133,23 +134,7 @@ export function ChangesPanel({ sessionId, cwd, version, busy }: Props) {
         </button>
       </header>
       <section className={styles.filesPane} style={{ display: tab === 'changes' ? 'flex' : 'none' }}>
-      {selected ? <>
-        <header className={styles.head}>
-          <button type="button" className={styles.iconButton} onClick={() => setSelected(null)} aria-label="Back to list">
-            <ChevronLeft size={16} />
-          </button>
-          <code className={styles.path} title={selected}>{selected}</code>
-          {selectedFile && <DiscardButton file={selectedFile} busy={busy || discarding} onDiscard={discard} />}
-          <button type="button" className={styles.iconButton} onClick={() => showFile(sessionId, selected)} title="Preview / Finder / Download"><FileCode size={15} /></button>
-          <button type="button" className={styles.iconButton} data-active={view === 'diff' || undefined} onClick={() => setView('diff')} title="Diff">
-            <FileDiff size={15} />
-          </button>
-          <button type="button" className={styles.iconButton} data-active={view === 'file' || undefined} onClick={() => setView('file')} title="Whole file">
-            <FileCode size={15} />
-          </button>
-        </header>
-        {view === 'diff' ? <DiffView key={`${sessionId}:${selected}:${version}`} sessionId={sessionId} path={selected} /> : <FileView key={`${sessionId}:${selected}:${version}`} sessionId={sessionId} path={selected} />}
-      </> : <div className={styles.body}>
+      <div className={styles.body}>
         {changes.error ? (
           <div className={styles.empty}>{changes.error.message}</div>
         ) : changes.data && !changes.data.git ? (
@@ -157,52 +142,12 @@ export function ChangesPanel({ sessionId, cwd, version, busy }: Props) {
         ) : files.length === 0 ? (
           <div className={styles.empty}>{changes.data ? 'Working tree clean' : '…'}</div>
         ) : (
-          <Tree node={buildTree(files)} depth={0} onSelect={setSelected} />
+          <Tree node={buildTree(files)} depth={0} onSelect={(path) => showDiff(sessionId, path, discard)} />
         )}
-      </div>}
+      </div>
       </section>
       <FilesPanel key={sessionId} sessionId={sessionId} active={tab === 'files'} version={version} busy={busy || discarding} activity={activeSessions} />
       <ServicesPanel key={cwd} cwd={cwd} active={tab === 'services'} />
     </aside>
-  )
-}
-
-// 自己解析 unified diff 按行着色，不引 diff 库、不做语法高亮
-function DiffView({ sessionId, path }: { sessionId: string; path: string }) {
-  const q = useQuery({ queryKey: ['diff', sessionId, path], queryFn: () => api.fileDiff(sessionId, path), staleTime: 0 })
-  if (q.error) return <div className={styles.empty}>{q.error.message}</div>
-  if (!q.data) return <div className={styles.empty}>…</div>
-  if (q.data.binary) return <div className={styles.empty}>Binary file</div>
-  const lines = q.data.diff.split('\n')
-  // 只展示 hunk 内容：文件头四行对用户没信息量
-  const body = lines.slice(lines.findIndex((l) => l.startsWith('@@')))
-  if (body.length === 0 || !body[0].startsWith('@@')) return <div className={styles.empty}>No differences</div>
-  return (
-    <pre className={styles.code}>
-      {body.map((l, i) => (
-        <div key={i} className={styles.line} data-kind={l.startsWith('@@') ? 'hunk' : l.startsWith('+') ? 'add' : l.startsWith('-') ? 'del' : undefined}>
-          {l || ' '}
-        </div>
-      ))}
-    </pre>
-  )
-}
-
-function FileView({ sessionId, path }: { sessionId: string; path: string }) {
-  const q = useQuery({ queryKey: ['file', sessionId, path], queryFn: () => api.readFile(sessionId, path), staleTime: 0 })
-  if (q.error) return <div className={styles.empty}>{q.error.message}</div>
-  if (!q.data) return <div className={styles.empty}>…</div>
-  if (q.data.binary || q.data.content === null) return <div className={styles.empty}>Binary file</div>
-  const lines = q.data.content.split('\n')
-  return (
-    <pre className={styles.code}>
-      {lines.map((l, i) => (
-        <div key={i} className={styles.line}>
-          <span className={styles.lineNo}>{i + 1}</span>
-          {l || ' '}
-        </div>
-      ))}
-      {q.data.truncated && <div className={styles.empty}>File too large, showing the first 512KB</div>}
-    </pre>
   )
 }

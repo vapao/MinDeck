@@ -313,8 +313,8 @@ export type ChangedFile = { path: string; status: '?' | 'A' | 'M' | 'D' | 'R'; a
 export type DiscardChangeBody = { path: string; base: string; discard: ChangedFile['discard'] };
 /** GET /api/sessions/:id/changes；cwd 不是 git 仓库时 git=false */
 export type ListChangesResponse = { git: boolean; files: ChangedFile[] };
-/** GET /api/sessions/:id/diff?path=：工作区 vs HEAD 的 unified diff；未跟踪文件与 /dev/null 比 */
-export type DiffResponse = { path: string; diff: string; binary: boolean };
+/** GET /api/sessions/:id/diff?path=：HEAD 与工作区两份全文，前端渲染合并视图；HEAD 中没有时 original 为空，已删除时 current 为空；二进制或任一侧超过 512KB 时两者均为空 */
+export type DiffResponse = { path: string; original: string; current: string; binary: boolean; tooLarge: boolean };
 /** GET /api/sessions/:id/file?path=：超过 512KB 截断；二进制文件 content 为 null */
 export type FileResponse = { path: string; content: string | null; truncated: boolean; binary: boolean };
 
@@ -336,6 +336,8 @@ export type ProjectFilesResponse = EntriesResponse & { truncated: boolean; write
 export type CreateProjectEntryBody = { path: string; dir: boolean };
 /** DELETE /api/sessions/:id/files；永久删除，dir 用于校验确认后条目类型未变化 */
 export type DeleteProjectEntryBody = { path: string; dir: boolean };
+/** PUT /api/sessions/:id/files/content；path 为预览返回的绝对路径，只覆盖 cwd 内已存在的 UTF-8 文本文件 */
+export type SaveProjectFileBody = { path: string; content: string };
 
 
 /** GET / PUT /api/settings */

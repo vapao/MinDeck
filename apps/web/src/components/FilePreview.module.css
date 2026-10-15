@@ -8,23 +8,23 @@
 .image img { display: block; max-width: 100%; max-height: 65dvh; margin: auto; }
 .pdf { width: 100%; height: 65dvh; border: 0; }
 .video { max-width: 100%; max-height: 65dvh; }
-.code { overflow: auto; font-size: 12px; line-height: 1.6; }
-.lineNumber { display: inline-block; min-width: 48px; padding-right: 12px; text-align: right; color: var(--text-3); user-select: none; }
-.code [data-selected] { background: var(--accent-bg); }
+.code :global(.cm-editor) { max-height: calc(100dvh - 212px); border: 1px solid var(--border); border-radius: var(--radius-control); }
 .copyButton { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
 .action { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
 .markdown { overflow-wrap: anywhere; }
 .markdown img { max-width: 100%; }
-@media (max-width: 600px) { .preview { width: 100vw; max-height: 100dvh; border-radius: 0; } .content { max-height: calc(100dvh - 220px); } }
+@media (max-width: 600px) { .preview { width: 100vw; max-height: 100dvh; border-radius: 0; } .content { max-height: calc(100dvh - 220px); } .code :global(.cm-editor) { max-height: calc(100dvh - 252px); } }
 
 .syntax { font-family: var(--font-mono); font-size: 12px; line-height: 1.6; color: var(--text); }
 .codeLine { display: block; min-height: 1.6em; white-space: pre; }
 .markdown pre { overflow: auto; padding: 12px; background: var(--panel); border-radius: var(--radius-control); }
-.syntax :global(.hljs-comment), .syntax :global(.hljs-quote) { color: var(--text-3); }
-.syntax :global(.hljs-keyword), .syntax :global(.hljs-selector-tag), .syntax :global(.hljs-tag) { color: var(--running); }
-.syntax :global(.hljs-string), .syntax :global(.hljs-regexp), .syntax :global(.hljs-addition) { color: var(--ok); }
-.syntax :global(.hljs-number), .syntax :global(.hljs-literal), .syntax :global(.hljs-attr), .syntax :global(.hljs-attribute), .syntax :global(.hljs-meta) { color: var(--accent); }
-.syntax :global(.hljs-title), .syntax :global(.hljs-section), .syntax :global(.hljs-built_in), .syntax :global(.hljs-type) { color: var(--text-strong); }
-.syntax :global(.hljs-deletion) { color: var(--danger); }
-.syntax :global(.hljs-emphasis) { font-style: italic; }
-.syntax :global(.hljs-strong) { font-weight: 600; }
+/* CodeMirror classHighlighter 输出的 tok-*：预览、编辑、Changes diff 与 Markdown 代码块共用 */
+:global(.tok-comment), :global(.tok-meta) { color: var(--text-3); }
+:global(.tok-keyword), :global(.tok-operator), :global(.tok-typeName), :global(.tok-namespace) { color: var(--running); }
+:global(.tok-string), :global(.tok-string2), :global(.tok-inserted), :global(.tok-url) { color: var(--ok); }
+:global(.tok-number), :global(.tok-bool), :global(.tok-atom), :global(.tok-literal), :global(.tok-propertyName), :global(.tok-labelName) { color: var(--accent); }
+:global(.tok-className), :global(.tok-macroName), :global(.tok-heading), :global(.tok-definition) { color: var(--text-strong); }
+:global(.tok-deleted), :global(.tok-invalid) { color: var(--danger); }
+:global(.tok-heading), :global(.tok-strong) { font-weight: 600; }
+:global(.tok-emphasis) { font-style: italic; }
+:global(.tok-link) { text-decoration: underline; }

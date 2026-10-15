@@ -183,16 +183,18 @@ function parseNumstat(out: string): Map<string, { additions: number | null; dele
 export async function fileDiff(cwd: string, rel: string): Promise<DiffResponse> {
   const abs = await insideCwd(cwd, rel);
   // 从文件所在目录往上找最近的仓库根（不出 cwd）；cwd 自身是仓库时就是 cwd。
-  // 用相对仓库根的规范路径调 git，diff 头里才是 a/<相对路径>
   let root = dirname(abs);
   while (root !== cwd && !(await exists(join(root, '.git')))) root = dirname(root);
   const path = relative(root, abs);
-  // 未跟踪文件 git diff HEAD 看不到：和 /dev/null 比；--no-index 有差异时退出码 1
-  const tracked = (await git(root, ['ls-files', '--error-unmatch', '--', path], [0, 1])) !== '';
-  const diff = tracked
-    ? await git(root, ['diff', await baseRef(root), '--', path])
-    : await git(root, ['diff', '--no-index', '--', '/dev/null', path], [0, 1]);
-  return { path: rel, diff, binary: /^Binary files /m.test(diff) };
+  // 前端用两份全文做 unified 合并视图；base 中没有（未跟踪、新加入暂存区）时原文为空，已删除时现文为空
+  const base = await baseRef(root);
+  const inBase = (await git(root, ['ls-tree', '--name-only', base, '--', path])) !== '';
+  const original = inBase ? (await run('git', ['cat-file', 'blob', `${base}:${path}`], { cwd: root, timeout: gitTimeoutMs, maxBuffer: 8 * 1024 * 1024, encoding: 'buffer' })).stdout : Buffer.alloc(0);
+  const current = (await exists(abs)) ? await readFile(abs) : Buffer.alloc(0);
+  const binary = original.subarray(0, 8000).includes(0) || current.subarray(0, 8000).includes(0);
+  const tooLarge = original.length > maxFileBytes || current.length > maxFileBytes;
+  if (binary || tooLarge) return { path: rel, original: '', current: '', binary, tooLarge };
+  return { path: rel, original: original.toString('utf8'), current: current.toString('utf8'), binary, tooLarge };
 }
 
 export async function readWorkspaceFile(cwd: string, rel: string): Promise<FileResponse> {

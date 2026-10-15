@@ -23,17 +23,6 @@
   font-size: 11px;
   color: var(--text-2);
 }
-.path {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  direction: rtl;
-  text-align: left;
-  font-size: 12px;
-  color: var(--text-2);
-}
 .iconButton {
   flex: none;
   width: 28px;
@@ -138,43 +127,6 @@
 .stat [data-kind='rename'] {
   color: var(--accent);
 }
-.code {
-  flex: 1;
-  min-height: 0;
-  margin: 0;
-  overflow: auto;
-  padding: 8px 0;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  line-height: 1.55;
-}
-.line {
-  padding: 0 10px;
-  white-space: pre;
-  color: var(--text-2);
-}
-.line[data-kind='hunk'] {
-  margin: 6px 0 2px;
-  color: var(--text-4);
-  background: var(--hover);
-}
-.line[data-kind='add'] {
-  color: var(--ok);
-  background: var(--ok-bg);
-}
-.line[data-kind='del'] {
-  color: var(--danger);
-  background: var(--danger-bg);
-}
-.lineNo {
-  display: inline-block;
-  width: 3.5em;
-  margin-right: 10px;
-  text-align: right;
-  color: var(--text-4);
-  user-select: none;
-}
-
 .filesPane {
   display: flex;
   flex-direction: column;

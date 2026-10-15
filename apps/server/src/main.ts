@@ -1,5 +1,5 @@
 import { outputFile } from './output-files';
-import { createProjectEntry, deleteProjectEntry, listProjectFiles } from './files';
+import { createProjectEntry, deleteProjectEntry, editablePath, listProjectFiles, saveProjectFile } from './files';
 import { randomUUID } from 'node:crypto';
 import { createReadStream, existsSync, mkdirSync, readdirSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -15,7 +15,7 @@ import { createHub, HubError } from './hub';
 import { listClaudeSkills, verifyDeepseekConnection } from './providers/claude';
 import { listCodexSkills } from './providers/codex';
 import { discardChange, fileDiff, listChanges, listEntries, readWorkspaceFile } from './changes';
-import type { CreateProjectEntryBody, DeleteProjectEntryBody, DiscardChangeBody } from '@agentdeck/shared';
+import type { CreateProjectEntryBody, DeleteProjectEntryBody, DiscardChangeBody, SaveProjectFileBody } from '@agentdeck/shared';
 import { createServices } from './services';
 import { agentdeckMcpFor, registerMcpRoute } from './mcp';
 import { readUpdateStatus } from './update-status';
@@ -221,7 +221,10 @@ app.get<{ Params: { id: string }; Querystring: { path: string } }>('/api/session
 
 app.get<{ Params: { id: string }; Querystring: { path: string } }>('/api/sessions/:id/output', pathQuery, async (req, reply) => {
   reply.header('cache-control', 'no-store');
-  return outputFile(hub.getSession(req.params.id).cwd, req.query.path);
+  const cwd = hub.getSession(req.params.id).cwd;
+  const file = await outputFile(cwd, req.query.path);
+  // 截断的内容保存会丢掉后半段，只允许完整读取的文本进入编辑。
+  return { ...file, editable: file.content !== null && !file.truncated && await editablePath(cwd, file.path) !== null };
 });
 app.get<{ Params: { id: string }; Querystring: { path: string; download?: string } }>('/api/sessions/:id/output/content', pathQuery, async (req, reply) => {
   const file = await outputFile(hub.getSession(req.params.id).cwd, req.query.path, false);
@@ -259,6 +262,15 @@ app.post<{ Params: { id: string }; Body: CreateProjectEntryBody }>('/api/session
 app.delete<{ Params: { id: string }; Body: DeleteProjectEntryBody }>('/api/sessions/:id/files', projectEntryBody, async (req) => {
   const cwd = hub.getSession(req.params.id).cwd;
   await hub.withIdleRepository(cwd, () => deleteProjectEntry(cwd, req.body), 'Deleting a file or folder');
+  return { ok: true };
+});
+
+app.put<{ Params: { id: string }; Body: SaveProjectFileBody }>('/api/sessions/:id/files/content', {
+  bodyLimit: 4 * 1024 * 1024,
+  schema: { body: { type: 'object', additionalProperties: false, required: ['path', 'content'], properties: { path: { type: 'string', minLength: 1 }, content: { type: 'string' } } } },
+}, async (req) => {
+  const cwd = hub.getSession(req.params.id).cwd;
+  await hub.withIdleRepository(cwd, () => saveProjectFile(cwd, req.body), 'Saving a file');
   return { ok: true };
 });
 
