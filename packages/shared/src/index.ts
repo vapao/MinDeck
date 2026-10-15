@@ -20,6 +20,8 @@ export type Session = {
   permissionMode: PermissionMode;
   /** 归档只是从侧栏隐藏，事件流与 Provider 原生记录都还在；再给它发消息会自动取消归档 */
   archivedAt: string | null;
+  /** 通过 MCP create_session 派生它的会话；用户手动新建为 null。创建后不变，父会话删掉后可能指向不存在的会话 */
+  parentId: string | null;
   createdAt: string;
   updatedAt: string;
   /** Agent 自己起的后台任务（如后台 Bash）还剩几个，不含常驻监听；不落库，随 Provider 进程消失，只有 Hub 返回的会话带 */

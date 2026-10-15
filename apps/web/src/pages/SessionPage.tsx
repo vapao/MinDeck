@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type UIEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronLeft, GitBranch, Trash2 } from 'lucide-react'
+import { ChevronLeft, CornerLeftUp, GitBranch, Trash2 } from 'lucide-react'
 import { Loading } from '../components/Loading'
 import { skillToken, type ProviderId, type Resolution } from '@agentdeck/shared'
 import { api } from '../api'
@@ -35,6 +35,7 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
   const listed = sessions.data?.find((s) => s.id === sessionId)
   const info = listed ?? session
   const title = info?.title ?? 'New session'
+  const parent = info?.parentId ? sessions.data?.find((s) => s.id === info.parentId) : undefined
   const send = useMutation({
     mutationFn: (body: { text: string; attachmentIds: string[] }) => api.sendMessage(sessionId, body),
     // 首条消息决定列表里的标题；归档中的会话发消息后服务端会自动取消归档
@@ -325,6 +326,11 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
           <ChevronLeft size={20} />
         </button>
         <span className={styles.title} title={session?.cwd}>{title}</span>
+        {parent && (
+          <button type="button" className={styles.iconButton} onClick={() => navigate(`/s/${parent.id}`)} aria-label="Open parent session" title={`Started by ${parent.title ?? 'New session'}`}>
+            <CornerLeftUp size={16} />
+          </button>
+        )}
         {desktop && (
           <button type="button" className={styles.iconButton} data-active={showChanges || undefined} onClick={toggleChanges} aria-label="Project panel" title="Show / hide changes and files">
             <GitBranch size={16} />

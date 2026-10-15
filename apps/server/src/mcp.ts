@@ -101,7 +101,7 @@ export function createMcpServer(hub: Hub, store: Store, services: Services, call
       if (resolution.decision === 'allow_session') hub.grantSpawn(callerId);
       signal.throwIfAborted();
     }
-    const session = hub.createSession(provider, cwd);
+    const session = hub.createSession(provider, cwd, { parentId: callerId });
     try {
       hub.sendMessage(session.id, prompt, [], 'agent');
     } catch (error) {

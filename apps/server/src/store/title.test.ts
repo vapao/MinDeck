@@ -13,7 +13,7 @@ test('AI titles survive migration and restart without changing activity or overw
   let store = openStore(path);
   const now = '2026-09-01T00:00:00.000Z';
   try {
-    store.createSession({ id: 's', provider: 'claude', cwd: dir, providerSessionId: null, status: 'idle', title: null, model: null, effort: null, permissionMode: 'approval', archivedAt: null, createdAt: now, updatedAt: now });
+    store.createSession({ id: 's', provider: 'claude', cwd: dir, providerSessionId: null, status: 'idle', title: null, model: null, effort: null, permissionMode: 'approval', archivedAt: null, parentId: null, createdAt: now, updatedAt: now });
     store.appendEvent('s', { type: 'message.user', payload: { text: '  \n\t ', attachments: [] } });
     assert.equal(store.hasUserText('s'), false);
     store.appendEvent('s', { type: 'message.user', payload: { text: '帮我增加 AI 会话标题', attachments: [] } });

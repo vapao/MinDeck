@@ -14,7 +14,7 @@ test('attachment path is server-generated and references are session-scoped', ()
     const store = openStore(':memory:');
     const now = new Date().toISOString();
     for (const id of ['a', 'b']) {
-      store.createSession({ id, provider: 'claude', cwd: '/tmp', providerSessionId: null, status: 'idle', title: null, model: null, effort: null, permissionMode: 'approval', archivedAt: null, createdAt: now, updatedAt: now });
+      store.createSession({ id, provider: 'claude', cwd: '/tmp', providerSessionId: null, status: 'idle', title: null, model: null, effort: null, permissionMode: 'approval', archivedAt: null, parentId: null, createdAt: now, updatedAt: now });
     }
     const attachments = createAttachmentStore(store, root);
 
@@ -40,7 +40,7 @@ test('deleting a session leaves no rows or files behind', () => {
     const store = openStore(':memory:');
     const now = new Date().toISOString();
     for (const id of ['gone', 'stays']) {
-      store.createSession({ id, provider: 'claude', cwd: '/tmp', providerSessionId: null, status: 'idle', title: null, model: null, effort: null, permissionMode: 'approval', archivedAt: null, createdAt: now, updatedAt: now });
+      store.createSession({ id, provider: 'claude', cwd: '/tmp', providerSessionId: null, status: 'idle', title: null, model: null, effort: null, permissionMode: 'approval', archivedAt: null, parentId: null, createdAt: now, updatedAt: now });
       store.appendEvent(id, { type: 'message.user', payload: { text: 'hi', attachments: [] } });
       store.createPending({ id: `p-${id}`, sessionId: id, kind: 'question', toolUseId: 't', questions: [], status: 'pending', createdAt: now, resolvedAt: null });
     }

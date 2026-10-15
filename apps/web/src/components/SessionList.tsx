@@ -83,23 +83,44 @@ export function SessionTabs({ sessions, activeId }: { sessions: Session[]; activ
           </button>
         ))}
       </div>
-      <SessionList sessions={sessions.filter((s) => (tab === 'active') !== Boolean(s.archivedAt))} activeId={activeId} onSelect={(id) => navigate(`/s/${id}`)} actions={actions} empty={tab === 'active' ? 'No active sessions' : 'No inactive sessions'} />
+      <SessionList all={sessions} sessions={sessions.filter((s) => (tab === 'active') !== Boolean(s.archivedAt))} activeId={activeId} onSelect={(id) => navigate(`/s/${id}`)} actions={actions} empty={tab === 'active' ? 'No active sessions' : 'No inactive sessions'} />
     </>
   )
 }
 
 type Action = { icon: ReactNode; label: string; danger?: boolean; onClick: () => void }
-type Props = { sessions: Session[]; activeId?: string; onSelect: (id: string) => void; actions: (s: Session) => Action[]; empty: string }
+type Props = { all: Session[]; sessions: Session[]; activeId?: string; onSelect: (id: string) => void; actions: (s: Session) => Action[]; empty: string }
 
 // 按工作区分组：分组按组内最近活动排；折叠后仍露出运行中、等待、未读完成和有草稿的会话
-function SessionList({ sessions, activeId, onSelect, actions, empty }: Props) {
+// 派生会话（MCP create_session）挂在父会话下缩进一级；父会话不在同一列表同一项目里（跨项目、只有一方归档）就照常排，行内注明来源
+function SessionList({ all, sessions, activeId, onSelect, actions, empty }: Props) {
   const collapsed = new Set<string>(JSON.parse(useSyncExternalStore(subscribeCollapsed, readCollapsed)))
   const seen = useSeen()
   const drafts = useDraftSessions(sessions)
   const needsAttention = (s: Session) => s.status === 'running' || s.status === 'waiting_user' || !!s.backgroundTasks || isUnread(s, seen) || drafts.has(s.id)
+  const byId = new Map(sessions.map((s) => [s.id, s]))
+  const parentOf = (s: Session) => {
+    const parent = s.parentId ? byId.get(s.parentId) : undefined
+    return parent?.cwd === s.cwd ? parent : undefined
+  }
+  const children = new Map<string, Session[]>()
+  for (const s of sessions) {
+    const parent = parentOf(s)
+    if (parent) children.set(parent.id, [...(children.get(parent.id) ?? []), s])
+  }
+  // 整棵树按其中最近的活动排，子会话更新时不会被单独顶到父会话前面
+  const latest = (s: Session): string => (children.get(s.id) ?? []).reduce((max, c) => { const t = latest(c); return t > max ? t : max }, s.updatedAt)
+  const attention = (s: Session): boolean => needsAttention(s) || (children.get(s.id) ?? []).some(attention)
+  // 孙会话也挂在直接父会话下，但缩进只到一级，免得侧栏越缩越窄
+  const flatten = (s: Session, depth: number): { s: Session; depth: number }[] => [{ s, depth }, ...(children.get(s.id) ?? []).flatMap((c) => flatten(c, 1))]
   const groups = new Map<string, Session[]>()
   // sessions 已按 updatedAt 倒序，首次出现的顺序就是分组顺序
-  for (const s of sessions) groups.set(s.cwd, [...(groups.get(s.cwd) ?? []), s])
+  for (const s of sessions) if (!parentOf(s)) groups.set(s.cwd, [...(groups.get(s.cwd) ?? []), s])
+  const origin = (s: Session) => {
+    if (!s.parentId || parentOf(s)) return undefined
+    const parent = all.find((p) => p.id === s.parentId)
+    return parent && (parent.title ?? 'New session')
+  }
   // 分组名优先用项目别名；已移除的工作区退回目录名
   const workspaces = useQuery({ queryKey: ['workspaces'], queryFn: api.listWorkspaces })
   const aliasOf = (cwd: string) => workspaces.data?.find((w) => w.path === cwd)?.alias ?? cwd.split('/').pop()
@@ -109,9 +130,10 @@ function SessionList({ sessions, activeId, onSelect, actions, empty }: Props) {
   if (groups.size === 0) return <div className={styles.empty}>{empty}</div>
   return (
     <div className={styles.list}>
-      {[...groups].map(([cwd, items]) => {
+      {[...groups].map(([cwd, roots]) => {
         const isCollapsed = collapsed.has(cwd)
-        const visible = isCollapsed ? items.filter(needsAttention) : items
+        const rows = roots.map((s) => [latest(s), s] as const).sort(([a], [b]) => (a < b ? 1 : a > b ? -1 : 0)).flatMap(([, s]) => flatten(s, 0))
+        const visible = isCollapsed ? rows.filter((r) => attention(r.s)) : rows
         return (
           <section key={cwd} className={styles.group}>
             <div className={styles.groupHeadRow}>
@@ -119,7 +141,7 @@ function SessionList({ sessions, activeId, onSelect, actions, empty }: Props) {
                 {isCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
                 <span className={styles.groupName} title={cwd}>{aliasOf(cwd)}</span>
                 {servicesRunning(cwd) && <span className={styles.serviceDot} title="Services running" />}
-                <code className={styles.groupCount}>{items.length}</code>
+                <code className={styles.groupCount}>{rows.length}</code>
               </button>
               {/* 已移除的项目不能再建会话 */}
               {workspaces.data?.some((w) => w.path === cwd) && (
@@ -128,8 +150,8 @@ function SessionList({ sessions, activeId, onSelect, actions, empty }: Props) {
                 </button>
               )}
             </div>
-            {visible.map((s) => (
-              <div key={s.id} className={styles.row}>
+            {visible.map(({ s, depth }) => (
+              <div key={s.id} className={styles.row} data-child={depth > 0 || undefined}>
                 <button type="button" className={styles.item} data-active={s.id === activeId || undefined} onClick={() => onSelect(s.id)}>
                   <span className={styles.body}>
                     <span className={styles.titleRow}>
@@ -139,6 +161,7 @@ function SessionList({ sessions, activeId, onSelect, actions, empty }: Props) {
                     </span>
                     <span className={styles.metaRow}>
                       <code className={styles.chip}>{s.provider}</code>
+                      {origin(s) && <span className={styles.origin} title={`Started by ${origin(s)}`}>↳ {origin(s)}</span>}
                       {s.status === 'idle' && s.backgroundTasks ? (
                         <span className={styles.status} data-status="running">Background</span>
                       ) : s.status === 'idle' ? (

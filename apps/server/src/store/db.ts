@@ -65,9 +65,9 @@ export function openStore(path: string) {
       value TEXT NOT NULL
     );
   `);
-  // 旧库没有就补上（SQLite 没有 ADD COLUMN IF NOT EXISTS）：model / effort 是切片 8 加的，permission_mode 是权限模式那次加的，archived_at 是切片 12 加的
+  // 旧库没有就补上（SQLite 没有 ADD COLUMN IF NOT EXISTS）：model / effort 是切片 8 加的，permission_mode 是权限模式那次加的，archived_at 是切片 12 加的，parent_id 是派生会话隶属关系那次加的
   const sessionCols = new Set((db.prepare(`PRAGMA table_info(sessions)`).all() as { name: string }[]).map((c) => c.name));
-  for (const col of ['model', 'effort', 'permission_mode', 'archived_at', 'title']) if (!sessionCols.has(col)) db.exec(`ALTER TABLE sessions ADD COLUMN ${col} TEXT`);
+  for (const col of ['model', 'effort', 'permission_mode', 'archived_at', 'title', 'parent_id']) if (!sessionCols.has(col)) db.exec(`ALTER TABLE sessions ADD COLUMN ${col} TEXT`);
 
   // 修正旧版下拉框保存的 Codex effort 拼写，不改变模型、会话排序或其他 Provider。
   for (const [oldEffort, effort] of [['light', 'low'], ['extra-high', 'xhigh']]) {
@@ -86,8 +86,8 @@ export function openStore(path: string) {
   }
 
   const insertSession = db.prepare(
-    `INSERT INTO sessions (id, provider, cwd, provider_session_id, status, model, effort, permission_mode, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO sessions (id, provider, cwd, provider_session_id, status, model, effort, permission_mode, parent_id, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
   // AI 标题独立保存；旧会话和生成失败时仍展示原来的首条消息。
   const sessionColumns = `sessions.*, (
@@ -165,6 +165,7 @@ export function openStore(path: string) {
     // 旧行没有这一列：一直以来的实际行为就是审批，落库时按这个兜底
     permissionMode: (r.permission_mode as PermissionMode | null) ?? 'approval',
     archivedAt: (r.archived_at as string | null) ?? null,
+    parentId: (r.parent_id as string | null) ?? null,
     createdAt: r.created_at as string,
     updatedAt: r.updated_at as string,
   });
@@ -209,7 +210,7 @@ export function openStore(path: string) {
     createSession(session: Session) {
       insertSession.run(
         session.id, session.provider, session.cwd, session.providerSessionId,
-        session.status, session.model, session.effort, session.permissionMode, session.createdAt, session.updatedAt,
+        session.status, session.model, session.effort, session.permissionMode, session.parentId, session.createdAt, session.updatedAt,
       );
     },
     getSession(id: string): Session | undefined {
@@ -235,7 +236,7 @@ export function openStore(path: string) {
       try {
         insertSession.run(
           session.id, session.provider, session.cwd, session.providerSessionId,
-          session.status, session.model, session.effort, session.permissionMode, session.createdAt, session.updatedAt,
+          session.status, session.model, session.effort, session.permissionMode, session.parentId, session.createdAt, session.updatedAt,
         );
         if (session.title) db.prepare('UPDATE sessions SET title = ? WHERE id = ?').run(session.title, session.id);
         for (const a of attachments) insertAttachment.run(a.id, a.sessionId, a.name, a.mimeType, a.size, a.createdAt);
