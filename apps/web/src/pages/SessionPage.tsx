@@ -391,7 +391,7 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
             </div>
           </footer>
         </div>
-        {desktop && <FilePreviewDock key={sessionId} version={changesVersion} />}
+        {desktop && <FilePreviewDock key={`preview:${sessionId}`} version={changesVersion} />}
         {desktop && showChanges && <ChangesPanel key={sessionId} sessionId={sessionId} cwd={info?.cwd ?? ''} version={changesVersion} busy={status === 'running' || status === 'waiting_user' || (info?.backgroundTasks ?? 0) > 0} />}
       </div>
     </div>

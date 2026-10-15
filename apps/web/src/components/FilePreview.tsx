@@ -14,8 +14,10 @@ import modal from './Dialog.module.css'
 
 // discard 存在表示从 Changes 打开：默认显示 diff，底部提供丢弃改动；返回 true 表示已丢弃
 type Selected = { sessionId: string; path: string; line?: number; image?: { url: string; name: string }; discard?: (path: string) => Promise<boolean> }
-// docked：桌面会话页挂着停靠预览栏，此时不再弹窗
-let state: { selected: Selected | null; docked: boolean } = { selected: null, docked: false }
+// docked：桌面会话页挂着停靠预览栏，此时 selected 停靠显示不再弹窗；
+// popup：从聊天、Changes 里打开的文件，即使停靠也用弹窗，叠在停靠栏之上互不替换
+type Slot = 'selected' | 'popup'
+let state: { selected: Selected | null; popup: Selected | null; docked: boolean } = { selected: null, popup: null, docked: false }
 const listeners = new Set<() => void>()
 function update(next: Partial<typeof state>) {
   state = { ...state, ...next }
@@ -24,21 +26,24 @@ function update(next: Partial<typeof state>) {
 const usePreviewState = () => useSyncExternalStore((l) => { listeners.add(l); return () => { listeners.delete(l) } }, () => state)
 const previewKey = (s: Selected) => `${s.sessionId}:${s.path}:${s.line}:${!!s.discard}`
 // 当前预览有未保存的编辑时，切到别的文件前先确认放弃
-let confirmLeave: (() => Promise<boolean>) | null = null
-async function select(next: Selected) {
-  if (state.selected && previewKey(state.selected) === previewKey(next)) return
-  if (confirmLeave && !(await confirmLeave())) return
-  update({ selected: next })
+const confirmLeave: Record<Slot, (() => Promise<boolean>) | null> = { selected: null, popup: null }
+async function select(next: Selected, popup = false) {
+  const slot: Slot = popup && state.docked ? 'popup' : 'selected'
+  const current = state[slot]
+  if (current && previewKey(current) === previewKey(next)) return
+  const leave = confirmLeave[slot]
+  if (leave && !(await leave())) return
+  update({ [slot]: next })
 }
-export function showFile(sessionId: string, path: string, line?: number) {
-  void select({ sessionId, path, line })
+export function showFile(sessionId: string, path: string, line?: number, popup?: boolean) {
+  void select({ sessionId, path, line }, popup)
 }
 export function showDiff(sessionId: string, path: string, discard: (path: string) => Promise<boolean>) {
-  void select({ sessionId, path, discard })
+  void select({ sessionId, path, discard }, true)
 }
 // 不属于会话输出目录的图片（聊天附件、待发送草稿）：直接给 URL，不走 output 接口
 export function showImage(url: string, name: string) {
-  void select({ sessionId: '', path: url, image: { url, name } })
+  void select({ sessionId: '', path: url, image: { url, name } }, true)
 }
 /** 正在预览的路径，供文件树高亮 */
 export function usePreviewPath(sessionId: string) {
@@ -88,9 +93,11 @@ export function openProjectTerminal(path: string) {
   window.location.href = `agentdeck-finder://terminal?host=${encodeURIComponent(host)}&path=${encodeURIComponent(path)}`
 }
 export function FilePreviewHost() {
-  const { selected, docked } = usePreviewState()
-  if (!selected || docked) return null
-  return <Preview key={previewKey(selected)} {...selected} />
+  const { selected, popup, docked } = usePreviewState()
+  return <>
+    {selected && !docked && <Preview key={previewKey(selected)} {...selected} slot="selected" />}
+    {popup && <Preview key={previewKey(popup)} {...popup} slot="popup" />}
+  </>
 }
 // 桌面会话页：预览停靠在对话与侧栏之间，不挡文件树，点别的文件直接替换内容。
 // 离开会话时关闭；version 变化（Agent 改了文件）时重新读取
@@ -99,13 +106,13 @@ export function FilePreviewDock({ version }: { version: number }) {
   const { width, handle } = useResizable('preview', 560, 320, 900, 'right')
   useEffect(() => {
     update({ docked: true })
-    return () => update({ docked: false, selected: null })
+    return () => update({ docked: false, selected: null, popup: null })
   }, [])
   if (!selected) return null
-  return <Preview key={previewKey(selected)} {...selected} dock={{ width, handle }} version={version} />
+  return <Preview key={previewKey(selected)} {...selected} slot="selected" dock={{ width, handle }} version={version} />
 }
 type Dock = { width: number; handle: ReturnType<typeof useResizable>['handle'] }
-function Preview({ sessionId, path, line, image, discard, dock, version }: Selected & { dock?: Dock; version?: number }) {
+function Preview({ sessionId, path, line, image, discard, slot, dock, version }: Selected & { slot: Slot; dock?: Dock; version?: number }) {
   const ref = useRef<HTMLDialogElement>(null)
   const [mode, setMode] = useState<'diff' | 'file'>(discard ? 'diff' : 'file')
   const [source, setSource] = useState(false)
@@ -174,7 +181,7 @@ function Preview({ sessionId, path, line, image, discard, dock, version }: Selec
       box.removeEventListener('gesturechange', gestureChange)
     }
   }, [natural])
-  const dismiss = () => dock ? update({ selected: null }) : ref.current!.close()
+  const dismiss = () => dock ? update({ [slot]: null }) : ref.current!.close()
   const content = q.data?.content?.replace(/\r\n/g, '\n')
   const dirty = draft !== null
   const edit = (value: string) => {
@@ -186,9 +193,9 @@ function Preview({ sessionId, path, line, image, discard, dock, version }: Selec
   const leave = useRef(confirmDiscard)
   useLayoutEffect(() => { leave.current = confirmDiscard })
   useEffect(() => {
-    confirmLeave = () => leave.current()
-    return () => { confirmLeave = null }
-  }, [])
+    confirmLeave[slot] = () => leave.current()
+    return () => { confirmLeave[slot] = null }
+  }, [slot])
   const requestClose = async () => { if (await confirmDiscard()) dismiss() }
   const save = async () => {
     if (draft === null || saving) return
@@ -246,7 +253,7 @@ function Preview({ sessionId, path, line, image, discard, dock, version }: Selec
           {file.kind === 'markdown' && !source && !dirty ? <div className={styles.markdown}><Markdown remarkPlugins={[remarkGfm]} urlTransform={(value) => fileReference(value) ? value : defaultUrlTransform(value)} components={{ code: ({ className, children }) => {
             const language = /language-([^\s]+)/.exec(className ?? '')?.[1]
             return language ? <PreviewCode text={String(children)} language={language} /> : <code className={className}>{children}</code>
-          }, img: ({ src, alt }) => { const f = fileReference(src ?? ''); return <img src={f ? api.outputUrl(sessionId, relativeToFile(f.path)) : src} alt={alt} loading="lazy" /> }, a: ({ href, children }) => <a href={href} onClick={(e) => { const f = fileReference(href ?? ''); if (f) { e.preventDefault(); showFile(sessionId, relativeToFile(f.path), f.line) } }} target="_blank" rel="noreferrer">{children}</a> }}>{file.content}</Markdown></div> : <CodeView className={styles.code} text={content!} path={file.name} line={line} editable={!!file.editable} dirty={dirty} onChange={edit} onSave={() => void save()} />}
+          }, img: ({ src, alt }) => { const f = fileReference(src ?? ''); return <img src={f ? api.outputUrl(sessionId, relativeToFile(f.path)) : src} alt={alt} loading="lazy" /> }, a: ({ href, children }) => <a href={href} onClick={(e) => { const f = fileReference(href ?? ''); if (f) { e.preventDefault(); showFile(sessionId, relativeToFile(f.path), f.line, slot === 'popup') } }} target="_blank" rel="noreferrer">{children}</a> }}>{file.content}</Markdown></div> : <CodeView className={styles.code} text={content!} path={file.name} line={line} editable={!!file.editable} dirty={dirty} onChange={edit} onSave={() => void save()} />}
           {file.truncated && <p>Showing the first 512 KB. Download for the complete file.</p>}
         </>}
         {file.kind === 'binary' && <p>No inline preview for this file. Open its location in Finder or download a copy.</p>}
@@ -265,7 +272,7 @@ function Preview({ sessionId, path, line, image, discard, dock, version }: Selec
   </>
   return dock
     ? <aside className={styles.dock} style={{ width: dock.width }} aria-label="File preview"><div {...dock.handle} />{body}</aside>
-    : <dialog ref={ref} className={`${modal.dialog} ${styles.preview}`} onClose={() => update({ selected: null })} onCancel={(e) => { if (dirty) { e.preventDefault(); void requestClose() } }} onClick={(e) => { if (e.target === ref.current) void requestClose() }} aria-label="File preview">{body}</dialog>
+    : <dialog ref={ref} className={`${modal.dialog} ${styles.preview}`} onClose={() => update({ [slot]: null })} onCancel={(e) => { if (dirty) { e.preventDefault(); void requestClose() } }} onClick={(e) => { if (e.target === ref.current) void requestClose() }} aria-label="File preview">{body}</dialog>
 }
 
 function DiffBody({ sessionId, path }: { sessionId: string; path: string }) {

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { FileDiff, Folder, RefreshCw, Server } from 'lucide-react'
 import type { ChangedFile } from '@agentdeck/shared'
-import { showDiff, usePreviewPath } from './FilePreview'
+import { showDiff } from './FilePreview'
 import { FilesPanel } from './FilesPanel'
 import { ServicesPanel, useServices } from './ServicesPanel'
 import { api } from '../api'
@@ -51,8 +51,8 @@ function FileStat({ f }: { f: ChangedFile }) {
   )
 }
 
-type TreeProps = { node: TreeNode; depth: number; previewing?: string; onSelect: (path: string) => void }
-function Tree({ node, depth, previewing, onSelect }: TreeProps) {
+type TreeProps = { node: TreeNode; depth: number; onSelect: (path: string) => void }
+function Tree({ node, depth, onSelect }: TreeProps) {
   return (
     <>
       {node.dirs.map((d) => (
@@ -61,11 +61,11 @@ function Tree({ node, depth, previewing, onSelect }: TreeProps) {
             <Folder size={14} />
             <span className={styles.dirName}>{d.name}</span>
           </div>
-          <Tree node={d} depth={depth + 1} previewing={previewing} onSelect={onSelect} />
+          <Tree node={d} depth={depth + 1} onSelect={onSelect} />
         </div>
       ))}
       {node.files.map((f) => (
-        <button key={f.path} type="button" className={styles.file} data-active={previewing === f.path || undefined} style={{ paddingLeft: 8 + depth * 14 }} onClick={() => onSelect(f.path)} title={f.path}>
+        <button key={f.path} type="button" className={styles.file} style={{ paddingLeft: 8 + depth * 14 }} onClick={() => onSelect(f.path)} title={f.path}>
           <span className={styles.fileName}>{f.path.split('/').pop()}</span>
           <FileStat f={f} />
         </button>
@@ -80,7 +80,6 @@ export function ChangesPanel({ sessionId, cwd, version, busy }: Props) {
   const sessions = useSessions()
   const activeSessions = sessions.data?.filter((s) => s.status === 'running' || s.status === 'waiting_user' || (s.backgroundTasks ?? 0) > 0).map((s) => s.id).sort().join(',')
   const [discarding, setDiscarding] = useState(false)
-  const previewing = usePreviewPath(sessionId)
   const [tab, setTab] = useState<'changes' | 'files' | 'services'>('changes')
   // 事件密集时（一轮里连着几十次 Edit）合并成 1.5s 一次
   const { refetch } = changes
@@ -145,7 +144,7 @@ export function ChangesPanel({ sessionId, cwd, version, busy }: Props) {
         ) : files.length === 0 ? (
           <div className={styles.empty}>{changes.data ? 'Working tree clean' : '…'}</div>
         ) : (
-          <Tree node={buildTree(files)} depth={0} previewing={previewing} onSelect={(path) => showDiff(sessionId, path, discard)} />
+          <Tree node={buildTree(files)} depth={0} onSelect={(path) => showDiff(sessionId, path, discard)} />
         )}
       </div>
       </section>

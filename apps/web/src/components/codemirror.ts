@@ -25,9 +25,10 @@ const theme = EditorView.theme({
   '.cm-tooltip': { backgroundColor: 'var(--surface-2)', border: '1px solid var(--border-2)' },
   '.cm-tooltip-autocomplete ul li[aria-selected]': { backgroundColor: 'var(--accent-bg-2)', color: 'var(--text-strong)' },
   '.cm-changedLine': { backgroundColor: 'var(--ok-bg) !important' },
-  '.cm-changedText': { background: 'none !important', backgroundColor: 'rgba(141, 187, 157, 0.18) !important' },
+  // 词级高亮是行内 span，背景只盖住字形高度，连续几行会露出行距缝；inline-block 让它撑满行高
+  '.cm-changedText': { display: 'inline-block', background: 'none !important', backgroundColor: 'rgba(141, 187, 157, 0.18) !important' },
   '.cm-deletedChunk': { backgroundColor: 'var(--danger-bg) !important' },
-  '.cm-deletedChunk .cm-deletedText': { background: 'none !important', backgroundColor: 'rgba(217, 141, 132, 0.2) !important' },
+  '.cm-deletedChunk .cm-deletedText': { display: 'inline-block', background: 'none !important', backgroundColor: 'rgba(217, 141, 132, 0.2) !important' },
   '.cm-collapsedLines': { background: 'var(--surface)', color: 'var(--text-3)' },
 }, { dark: true })
 
