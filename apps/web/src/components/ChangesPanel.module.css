@@ -70,12 +70,13 @@
   gap: 6px;
   height: 26px;
   padding-right: 8px;
-  color: var(--text-3);
+  color: var(--text-2);
 }
 .dirName {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-family: var(--font-mono);
   font-size: 12px;
 }
 .file {
@@ -94,6 +95,9 @@
 }
 .file:hover {
   background: var(--hover);
+}
+.file[data-active] {
+  background: var(--selected);
 }
 .fileRow { display: flex; align-items: center; }
 .fileRow .file { flex: 1; min-width: 0; }
@@ -160,5 +164,7 @@
 .resultText { display: flex; flex-direction: column; gap: 2px; min-width: 0; font-family: var(--font-mono); font-size: 12px; }
 .resultText span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .resultPath { color: var(--text-3); font-size: 11px; }
-.iconButton[hidden] { display: none; }
+.sectionHead { flex: none; display: flex; align-items: center; justify-content: space-between; height: 32px; padding: 0 6px 0 12px; border-bottom: 1px solid var(--border); }
+.sectionHead > span { color: var(--text-3); font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
+.sectionHead .iconButton { width: 24px; height: 24px; }
 .runningDot { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }

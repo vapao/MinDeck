@@ -1,4 +1,4 @@
-import { lstat, mkdir, readdir, realpath, rm, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { CreateProjectEntryBody, DeleteProjectEntryBody, ProjectFilesResponse, SaveProjectFileBody } from '@agentdeck/shared';
 import { HubError } from './hub';
@@ -93,5 +93,9 @@ export async function saveProjectFile(cwd: string, body: SaveProjectFileBody): P
   if (!rel) throw new HubError(400, 'Only files inside the workspace can be edited');
   const { abs, info } = await workspaceWritePath(cwd, rel);
   if (!info?.isFile()) throw new HubError(404, 'File no longer exists or is not a regular file');
+  // 与预览读取（output-files）同样用 TextDecoder 解码，BOM 处理一致，否则带 BOM 的文件永远判为冲突
+  if (body.expected !== undefined && new TextDecoder().decode(await readFile(abs)) !== body.expected) {
+    throw new HubError(409, 'This file changed on disk since you started editing');
+  }
   await writeFile(abs, body.content);
 }

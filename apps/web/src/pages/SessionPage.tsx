@@ -22,7 +22,7 @@ import { TurnRow, WorkingRow } from '../components/TurnRow'
 import { ConnectionBanner } from '../components/ConnectionBanner'
 import { ApprovalCard } from '../components/ApprovalCard'
 import { QuestionCard } from '../components/QuestionCard'
-import { openProjectFinder, openProjectTerminal } from '../components/FilePreview'
+import { FilePreviewDock, openProjectFinder, openProjectTerminal } from '../components/FilePreview'
 import { Composer } from '../components/Composer'
 import { dialog } from '../components/Dialog'
 import styles from './SessionPage.module.css'
@@ -385,6 +385,7 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
             </div>
           </footer>
         </div>
+        {desktop && <FilePreviewDock key={sessionId} version={changesVersion} />}
         {desktop && showChanges && <ChangesPanel key={sessionId} sessionId={sessionId} cwd={info?.cwd ?? ''} version={changesVersion} busy={status === 'running' || status === 'waiting_user' || (info?.backgroundTasks ?? 0) > 0} />}
       </div>
     </div>

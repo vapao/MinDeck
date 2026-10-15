@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef } from 'react'
 import type { CodeView as View } from './codemirror'
 
-type Props = { text: string; path: string; editable?: boolean; line?: number; className?: string; onChange?: (text: string) => void; onSave?: () => void }
+type Props = { text: string; path: string; editable?: boolean; dirty?: boolean; line?: number; className?: string; onChange?: (text: string) => void; onSave?: () => void }
 
 // CodeMirror 按需加载；只读预览与编辑共用一个实例，切换时保留滚动位置
 export function CodeView(props: Props) {
@@ -9,7 +9,7 @@ export function CodeView(props: Props) {
   const code = useRef<View | null>(null)
   const latest = useRef(props)
   useLayoutEffect(() => { latest.current = props })
-  const { text, path, editable = false } = props
+  const { text, path, editable = false, dirty = false } = props
   useEffect(() => {
     let disposed = false
     void import('./codemirror').then(async ({ createCodeView }) => {
@@ -24,8 +24,8 @@ export function CodeView(props: Props) {
     return () => { disposed = true; code.current?.view.destroy(); code.current = null }
   }, [path])
   useEffect(() => { code.current?.setEditable(editable) }, [editable])
-  // 编辑中不被外部刷新覆盖；回到只读（取消 / 保存后重新读取）时同步磁盘内容
-  useEffect(() => { if (!editable) code.current?.setText(text) }, [text, editable])
+  // 有未保存改动时不被外部刷新覆盖；没有改动（含取消 / 保存后）时同步磁盘内容
+  useEffect(() => { if (!dirty) code.current?.setText(text) }, [text, dirty])
   return <div ref={box} className={props.className} />
 }
 

@@ -267,7 +267,7 @@ app.delete<{ Params: { id: string }; Body: DeleteProjectEntryBody }>('/api/sessi
 
 app.put<{ Params: { id: string }; Body: SaveProjectFileBody }>('/api/sessions/:id/files/content', {
   bodyLimit: 4 * 1024 * 1024,
-  schema: { body: { type: 'object', additionalProperties: false, required: ['path', 'content'], properties: { path: { type: 'string', minLength: 1 }, content: { type: 'string' } } } },
+  schema: { body: { type: 'object', additionalProperties: false, required: ['path', 'content'], properties: { path: { type: 'string', minLength: 1 }, content: { type: 'string' }, expected: { type: 'string' } } } },
 }, async (req) => {
   const cwd = hub.getSession(req.params.id).cwd;
   await hub.withIdleRepository(cwd, () => saveProjectFile(cwd, req.body), 'Saving a file');

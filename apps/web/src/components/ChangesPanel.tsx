@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { FileDiff, Folder, RefreshCw, Server } from 'lucide-react'
 import type { ChangedFile } from '@agentdeck/shared'
-import { showDiff } from './FilePreview'
+import { showDiff, usePreviewPath } from './FilePreview'
 import { FilesPanel } from './FilesPanel'
 import { ServicesPanel, useServices } from './ServicesPanel'
 import { api } from '../api'
@@ -51,8 +51,8 @@ function FileStat({ f }: { f: ChangedFile }) {
   )
 }
 
-type TreeProps = { node: TreeNode; depth: number; onSelect: (path: string) => void }
-function Tree({ node, depth, onSelect }: TreeProps) {
+type TreeProps = { node: TreeNode; depth: number; previewing?: string; onSelect: (path: string) => void }
+function Tree({ node, depth, previewing, onSelect }: TreeProps) {
   return (
     <>
       {node.dirs.map((d) => (
@@ -61,11 +61,11 @@ function Tree({ node, depth, onSelect }: TreeProps) {
             <Folder size={14} />
             <span className={styles.dirName}>{d.name}</span>
           </div>
-          <Tree node={d} depth={depth + 1} onSelect={onSelect} />
+          <Tree node={d} depth={depth + 1} previewing={previewing} onSelect={onSelect} />
         </div>
       ))}
       {node.files.map((f) => (
-        <button key={f.path} type="button" className={styles.file} style={{ paddingLeft: 8 + depth * 14 }} onClick={() => onSelect(f.path)} title={f.path}>
+        <button key={f.path} type="button" className={styles.file} data-active={previewing === f.path || undefined} style={{ paddingLeft: 8 + depth * 14 }} onClick={() => onSelect(f.path)} title={f.path}>
           <span className={styles.fileName}>{f.path.split('/').pop()}</span>
           <FileStat f={f} />
         </button>
@@ -80,6 +80,7 @@ export function ChangesPanel({ sessionId, cwd, version, busy }: Props) {
   const sessions = useSessions()
   const activeSessions = sessions.data?.filter((s) => s.status === 'running' || s.status === 'waiting_user' || (s.backgroundTasks ?? 0) > 0).map((s) => s.id).sort().join(',')
   const [discarding, setDiscarding] = useState(false)
+  const previewing = usePreviewPath(sessionId)
   const [tab, setTab] = useState<'changes' | 'files' | 'services'>('changes')
   // 事件密集时（一轮里连着几十次 Edit）合并成 1.5s 一次
   const { refetch } = changes
@@ -128,12 +129,14 @@ export function ChangesPanel({ sessionId, cwd, version, busy }: Props) {
         <button type="button" className={styles.tab} aria-pressed={tab === 'changes'} onClick={() => setTab('changes')}><FileDiff size={14} />Changes{changes.data?.git && <code className={styles.count}>{files.length}</code>}</button>
         <button type="button" className={styles.tab} aria-pressed={tab === 'files'} onClick={() => setTab('files')}><Folder size={14} />Files</button>
         <button type="button" className={styles.tab} aria-pressed={tab === 'services'} onClick={() => setTab('services')}><Server size={14} />Services{services.data?.some((s) => s.running && workspaceId === s.workspaceId) && <span className={styles.runningDot} />}</button>
-        <span style={{ flex: 1 }} />
-        <button type="button" hidden={tab !== 'changes'} className={styles.iconButton} onClick={() => refetch()} disabled={changes.isFetching} aria-label="Refresh">
-          <RefreshCw size={14} className={changes.isFetching ? styles.spin : undefined} />
-        </button>
       </header>
       <section className={styles.filesPane} style={{ display: tab === 'changes' ? 'flex' : 'none' }}>
+      <div className={styles.sectionHead}>
+        <span>Working tree</span>
+        <button type="button" className={styles.iconButton} onClick={() => refetch()} disabled={changes.isFetching} aria-label="Refresh" title="Refresh changes">
+          <RefreshCw size={14} className={changes.isFetching ? styles.spin : undefined} />
+        </button>
+      </div>
       <div className={styles.body}>
         {changes.error ? (
           <div className={styles.empty}>{changes.error.message}</div>
@@ -142,7 +145,7 @@ export function ChangesPanel({ sessionId, cwd, version, busy }: Props) {
         ) : files.length === 0 ? (
           <div className={styles.empty}>{changes.data ? 'Working tree clean' : '…'}</div>
         ) : (
-          <Tree node={buildTree(files)} depth={0} onSelect={(path) => showDiff(sessionId, path, discard)} />
+          <Tree node={buildTree(files)} depth={0} previewing={previewing} onSelect={(path) => showDiff(sessionId, path, discard)} />
         )}
       </div>
       </section>

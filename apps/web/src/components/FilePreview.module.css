@@ -12,6 +12,11 @@
 .copyButton { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
 .action { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
 .markdown { overflow-wrap: anywhere; }
+.dock { position: relative; flex: none; display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--border); background: var(--surface); }
+.dock > header { min-height: 44px; }
+.dock .content { flex: 1; min-height: 0; max-height: none; }
+.dock .code, .dock .pdf { height: 100%; }
+.dock .code :global(.cm-editor) { height: 100%; max-height: none; }
 .markdown img { max-width: 100%; }
 @media (max-width: 600px) { .preview { width: 100vw; max-height: 100dvh; border-radius: 0; } .content { max-height: calc(100dvh - 220px); } .code :global(.cm-editor) { max-height: calc(100dvh - 252px); } }
 

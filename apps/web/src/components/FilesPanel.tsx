@@ -4,7 +4,7 @@ import { useQuery, useQueryClient, useIsFetching } from '@tanstack/react-query'
 import { ChevronDown, ChevronRight, File, FilePlus, Folder, FolderPlus, RefreshCw, Search, Trash2, X } from 'lucide-react'
 import type { DeleteProjectEntryBody as Entry } from '@agentdeck/shared'
 import { api } from '../api'
-import { showFile } from './FilePreview'
+import { showFile, usePreviewPath } from './FilePreview'
 import { dialog } from './Dialog'
 import styles from './ChangesPanel.module.css'
 
@@ -13,6 +13,7 @@ type Props = { sessionId: string; active: boolean; version: number; busy: boolea
 
 export function FilesPanel({ sessionId, active, version, busy, activity }: Props) {
   const client = useQueryClient()
+  const previewing = usePreviewPath(sessionId)
   const [hidden, setHidden] = useState(() => localStorage.getItem('files:showHidden') === 'true')
   const [search, setSearch] = useState('')
   const [query, setQuery] = useState('')
@@ -97,7 +98,7 @@ export function FilesPanel({ sessionId, active, version, busy, activity }: Props
     {searching && <div className={styles.body}>
       {query !== search.trim() || results.isPending ? <div className={styles.empty}>Searching…</div> : results.error ? <div className={styles.empty}>{results.error.message}</div> : <>
         {results.data.entries.map((file) => <div key={file.path} className={styles.fileRow}>
-          <button type="button" className={`${styles.file} ${styles.searchResult}`} title={file.path} onClick={() => showFile(sessionId, file.path)}>
+          <button type="button" className={`${styles.file} ${styles.searchResult}`} data-active={previewing === file.path || undefined} title={file.path} onClick={() => showFile(sessionId, file.path)}>
             <File size={14} /><span className={styles.resultText}><span>{file.name}</span><span className={styles.resultPath}>{file.path}</span></span>
           </button>
           <EntryActions {...file} {...actions} />
@@ -121,13 +122,14 @@ function EntryActions({ path, dir, disabled, onCreate, onDelete }: { path: strin
 
 type DirectoryProps = { sessionId: string; path: string; depth: number; hidden: boolean; active: boolean; expanded: Set<string>; toggle: (path: string) => void; actions: Actions }
 function Directory({ sessionId, path, depth, hidden, active, expanded, toggle, actions }: DirectoryProps) {
+  const previewing = usePreviewPath(sessionId)
   const q = useQuery({ queryKey: ['projectFiles', sessionId, 'dir', path, hidden], queryFn: () => api.listProjectFiles(sessionId, path, '', hidden), enabled: active })
   if (q.error) return <div className={styles.empty}>{q.error.message}</div>
   if (!q.data) return <div className={styles.empty}>Loading…</div>
   if (!q.data.entries.length) return <div className={styles.empty}>Empty folder</div>
   return <>{q.data.entries.map((file) => <div key={file.path}>
     <div className={styles.fileRow}>
-      <button type="button" className={styles.file} style={{ paddingLeft: 8 + depth * 14 }} title={file.path} aria-expanded={file.dir ? expanded.has(file.path) : undefined} onClick={() => file.dir ? toggle(file.path) : showFile(sessionId, file.path)}>
+      <button type="button" className={styles.file} data-active={previewing === file.path || undefined} style={{ paddingLeft: 8 + depth * 14 }} title={file.path} aria-expanded={file.dir ? expanded.has(file.path) : undefined} onClick={() => file.dir ? toggle(file.path) : showFile(sessionId, file.path)}>
         {file.dir ? <>{expanded.has(file.path) ? <ChevronDown size={12} /> : <ChevronRight size={12} />}<Folder size={14} /></> : <File size={14} style={{ marginLeft: 20 }} />}
         <span className={styles.fileName}>{file.name}</span>
       </button>

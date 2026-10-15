@@ -336,8 +336,9 @@ export type ProjectFilesResponse = EntriesResponse & { truncated: boolean; write
 export type CreateProjectEntryBody = { path: string; dir: boolean };
 /** DELETE /api/sessions/:id/files；永久删除，dir 用于校验确认后条目类型未变化 */
 export type DeleteProjectEntryBody = { path: string; dir: boolean };
-/** PUT /api/sessions/:id/files/content；path 为预览返回的绝对路径，只覆盖 cwd 内已存在的 UTF-8 文本文件 */
-export type SaveProjectFileBody = { path: string; content: string };
+/** PUT /api/sessions/:id/files/content；path 为预览返回的绝对路径，只覆盖 cwd 内已存在的 UTF-8 文本文件。
+ * expected 为开始编辑时读到的内容，磁盘内容已不同则 409；省略表示确认覆盖 */
+export type SaveProjectFileBody = { path: string; content: string; expected?: string };
 
 
 /** GET / PUT /api/settings */

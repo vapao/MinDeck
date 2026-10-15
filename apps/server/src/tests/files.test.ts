@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createProjectEntry, deleteProjectEntry, listProjectFiles } from '../files';
+import { createProjectEntry, deleteProjectEntry, listProjectFiles, saveProjectFile } from '../files';
 
 test('project directory browsing cannot escape cwd through paths or symlinks', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'agentdeck-files-'));
@@ -105,4 +105,19 @@ test('Files deletion leaves staged content intact for Git recovery', async (t) =
   await deleteProjectEntry(root, { path: 'file.txt', dir: false });
   assert.equal(execFileSync('git', ['show', ':file.txt'], { cwd: root, encoding: 'utf8' }), 'staged\n');
   assert.equal(execFileSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' }), 'AD file.txt\n');
+});
+
+test('saving never overwrites content that changed since editing began', async (t) => {
+  const { root } = await workspace(t);
+  const path = join(root, 'a.txt');
+  await writeFile(path, 'agent edit\n');
+  await assert.rejects(saveProjectFile(root, { path, content: 'mine\n', expected: 'opened\n' }), /changed on disk/);
+  assert.equal(await readFile(path, 'utf8'), 'agent edit\n');
+  await saveProjectFile(root, { path, content: 'mine\n', expected: 'agent edit\n' });
+  assert.equal(await readFile(path, 'utf8'), 'mine\n');
+  // 预览解码会去掉 BOM，比较时必须同样去掉
+  await writeFile(path, '﻿bom\n');
+  await saveProjectFile(root, { path, content: 'bom saved\n', expected: 'bom\n' });
+  await saveProjectFile(root, { path, content: 'forced\n' });
+  assert.equal(await readFile(path, 'utf8'), 'forced\n');
 });
