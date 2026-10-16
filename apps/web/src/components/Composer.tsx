@@ -505,7 +505,7 @@ export function Composer({ draftKey, disabled, sending, running, interrupting, o
             </span>
             {switchable ? (
               <button ref={switchButton} type="button" className={styles.provider} onClick={() => setSwitching((v) => !v)} aria-expanded={switching} title="Change agent, model or effort">
-                {[providerName[provider], meta].filter(Boolean).join(' · ')}
+                <span className={styles.providerLabel}>{[providerName[provider], meta].filter(Boolean).join(' · ')}</span>
                 <ChevronUp size={14} />
               </button>
             ) : (

@@ -288,11 +288,28 @@ button.provider:hover {
   cursor: default;
 }
 @media (max-width: 1023px) {
+  .bar {
+    display: grid;
+    grid-template-columns: 32px 32px minmax(0, 1fr) 40px 40px;
+    gap: 0;
+    margin-left: -8px;
+  }
   span.provider {
     display: none;
   }
   button.provider {
+    min-width: 0;
     height: 40px;
+    margin: 0;
+    padding: 0 4px 0 8px;
+  }
+  .providerLabel {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  button.provider > svg {
+    flex-shrink: 0;
   }
   .meta::before {
     content: none;
@@ -303,15 +320,37 @@ button.provider:hover {
   }
   .send,
   .stop,
-  .attach,
   .fresh {
     width: 40px;
     height: 40px;
   }
+  .attach {
+    width: 32px;
+    height: 32px;
+  }
+  .fresh {
+    grid-column: 4;
+  }
+  .send,
+  .stop {
+    grid-column: 5;
+  }
   .meta {
+    min-width: 0;
+    padding-left: 8px;
     overflow: hidden;
     text-overflow: ellipsis;
     flex: 0 1 auto;
+  }
+  .hint {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    padding: 4px 6px 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .hint::before {
+    content: none;
   }
 }
 
