@@ -229,7 +229,7 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
     const token = skillToken(text)
     return token !== undefined && skills.data?.skills.some((s) => s.name === token) ? token : undefined
   }
-  const canSwitchProvider = !!info && items.length === 0 && !info.providerSessionId && status === 'idle' && !send.isPending && !switchProvider.isPending && !switchModel.isPending
+  const canSwitchProvider = !!info && items.length === 0 && !info.providerSessionId && status === 'idle' && !send.isPending
   const mutationError = fresh.error ?? interrupt.error ?? switchProvider.error ?? switchModel.error
   const hint = mutationError
     ? mutationError.message
@@ -374,6 +374,7 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
                 provider={provider}
                 imagesAllowed={provider !== 'deepseek' || info?.model !== 'deepseek-v4-pro'}
                 onSwitchProvider={canSwitchProvider ? (p) => switchProvider.mutate(p) : undefined}
+                switchingPending={switchProvider.isPending || switchModel.isPending}
                 modelSelect={canSwitchProvider ? { model: info.model ?? '', effort: info.effort ?? '', onChange: (m, e) => switchModel.mutate({ model: m, effort: e }) } : undefined}
                 meta={meta}
                 hint={hint}

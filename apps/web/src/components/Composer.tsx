@@ -30,6 +30,7 @@ type Props = {
   imagesAllowed?: boolean
   /** 空会话可以换 Agent：传了就把 Provider 名字渲染成三选一下拉 */
   onSwitchProvider?: (provider: ProviderId) => void
+  switchingPending?: boolean
   /** 空会话可以换模型 / 思考等级：传了就在 Provider 后面渲染下拉；空字符串 = Provider 默认 */
   modelSelect?: { model: string; effort: string; onChange: (model: string, effort: string) => void }
   /** 状态区 Provider 名字后面的会话信息（模型、思考等级、上下文用量） */
@@ -64,7 +65,7 @@ type Draft = { key: string; file: File; previewUrl: string } & ({ status: 'uploa
 
 const maxPerMessage = 5
 
-export function Composer({ draftKey, disabled, sending, running, interrupting, onInterrupt, onFresh, canCompact, onTerminal, onFinder, provider, imagesAllowed = true, onSwitchProvider, modelSelect, meta, hint, hintError, placeholder, upload, search, listSkills, onSend }: Props) {
+export function Composer({ draftKey, disabled, sending, running, interrupting, onInterrupt, onFresh, canCompact, onTerminal, onFinder, provider, imagesAllowed = true, onSwitchProvider, switchingPending, modelSelect, meta, hint, hintError, placeholder, upload, search, listSkills, onSend }: Props) {
   const [text, setText] = useState(() => readDraft(draftKey))
   useEffect(() => {
     saveDraft(draftKey, text)
@@ -111,10 +112,11 @@ export function Composer({ draftKey, disabled, sending, running, interrupting, o
       if (!switcher.current?.contains(t) && !switchButton.current?.contains(t)) setSwitching(false)
     }
     const onKey = (e: globalThis.KeyboardEvent) => e.key === 'Escape' && setSwitching(false)
-    document.addEventListener('mousedown', onDown)
+    // 在下拉选项被选中并移除前判断，避免把弹层内点击误判成外部点击。
+    document.addEventListener('mousedown', onDown, true)
     document.addEventListener('keydown', onKey)
     return () => {
-      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('mousedown', onDown, true)
       document.removeEventListener('keydown', onKey)
     }
   }, [switching])
@@ -337,18 +339,18 @@ export function Composer({ draftKey, disabled, sending, running, interrupting, o
           <div ref={switcher} className={styles.switcher}>
             <div className={styles.switchField}>
               Agent
-              <Select ariaLabel="Agent" value={provider} onChange={(p) => onSwitchProvider(p as ProviderId)} options={(Object.keys(providerName) as ProviderId[]).map((p) => ({ value: p, label: providerName[p] }))} />
+              <Select ariaLabel="Agent" disabled={switchingPending} value={provider} onChange={(p) => onSwitchProvider(p as ProviderId)} options={(Object.keys(providerName) as ProviderId[]).map((p) => ({ value: p, label: providerName[p] }))} />
             </div>
             {modelSelect && (
               <>
                 <div className={styles.switchField}>
                   Model
-                  <Select ariaLabel="Model" value={modelSelect.model} onChange={(m) => modelSelect.onChange(m, modelSelect.effort)} options={[{ value: '', label: 'Default' }, ...modelOptions[provider]]} />
+                  <Select ariaLabel="Model" disabled={switchingPending} value={modelSelect.model} onChange={(m) => modelSelect.onChange(m, modelSelect.effort)} options={[{ value: '', label: 'Default' }, ...modelOptions[provider]]} />
                 </div>
                 {provider !== 'deepseek' && (
                   <div className={styles.switchField}>
                     Effort
-                    <Select ariaLabel="Effort" value={modelSelect.effort} onChange={(e) => modelSelect.onChange(modelSelect.model, e)} options={[{ value: '', label: 'Default' }, ...getEffortOptions(provider, modelSelect.model || null)]} />
+                    <Select ariaLabel="Effort" disabled={switchingPending} value={modelSelect.effort} onChange={(e) => modelSelect.onChange(modelSelect.model, e)} options={[{ value: '', label: 'Default' }, ...getEffortOptions(provider, modelSelect.model || null)]} />
                   </div>
                 )}
               </>
