@@ -74,3 +74,23 @@ test('legacy Codex efforts migrate without changing other session data', () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// 规则：派生授权跨 Hub 重启保留，且只属于被授权的会话（无人值守时重启不能让派生重新卡在审批上）。
+test('spawn grant survives reopening the store and stays with its session', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'agentdeck-spawn-'));
+  try {
+    const file = join(dir, 'hub.db');
+    const now = new Date().toISOString();
+    const store = openStore(file);
+    for (const id of ['a', 'b']) {
+      store.createSession({ id, provider: 'claude', cwd: '/tmp', providerSessionId: null, status: 'idle', title: null, model: null, effort: null, permissionMode: 'approval', archivedAt: null, parentId: null, createdAt: now, updatedAt: now });
+    }
+    store.grantSpawn('a');
+
+    const reopened = openStore(file);
+    assert.equal(reopened.canSpawn('a'), true);
+    assert.equal(reopened.canSpawn('b'), false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

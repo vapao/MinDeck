@@ -65,9 +65,9 @@ export function openStore(path: string) {
       value TEXT NOT NULL
     );
   `);
-  // 旧库没有就补上（SQLite 没有 ADD COLUMN IF NOT EXISTS）：model / effort 是切片 8 加的，permission_mode 是权限模式那次加的，archived_at 是切片 12 加的，parent_id 是派生会话隶属关系那次加的
+  // 旧库没有就补上（SQLite 没有 ADD COLUMN IF NOT EXISTS）：model / effort 是切片 8 加的，permission_mode 是权限模式那次加的，archived_at 是切片 12 加的，parent_id 是派生会话隶属关系那次加的，spawn_granted_at 是派生授权持久化那次加的
   const sessionCols = new Set((db.prepare(`PRAGMA table_info(sessions)`).all() as { name: string }[]).map((c) => c.name));
-  for (const col of ['model', 'effort', 'permission_mode', 'archived_at', 'title', 'parent_id']) if (!sessionCols.has(col)) db.exec(`ALTER TABLE sessions ADD COLUMN ${col} TEXT`);
+  for (const col of ['model', 'effort', 'permission_mode', 'archived_at', 'title', 'parent_id', 'spawn_granted_at']) if (!sessionCols.has(col)) db.exec(`ALTER TABLE sessions ADD COLUMN ${col} TEXT`);
 
   // 修正旧版下拉框保存的 Codex effort 拼写，不改变模型、会话排序或其他 Provider。
   for (const [oldEffort, effort] of [['light', 'low'], ['extra-high', 'xhigh']]) {
@@ -259,6 +259,13 @@ export function openStore(path: string) {
     },
     setSessionArchivedAt(id: string, archivedAt: string | null) {
       updateArchivedAt.run(archivedAt, id);
+    },
+    /** 派生授权落库：用户离开时 Hub 可能被 update-when-idle 重启，只放内存会让夜里的下一次 create_session 卡在审批上 */
+    grantSpawn(id: string) {
+      db.prepare('UPDATE sessions SET spawn_granted_at = ? WHERE id = ? AND spawn_granted_at IS NULL').run(new Date().toISOString(), id);
+    },
+    canSpawn(id: string): boolean {
+      return !!db.prepare('SELECT 1 FROM sessions WHERE id = ? AND spawn_granted_at IS NOT NULL').get(id);
     },
     setSessionProvider(id: string, provider: Session['provider'], model: string | null, effort: string | null) {
       updateProvider.run(provider, model, effort, id);
