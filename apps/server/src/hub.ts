@@ -457,9 +457,11 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
       parents.set(parentId, store.lastSeq(childId));
     },
 
-    /** 用户在派生审批卡上选了"本会话允许"：之后 create_session 免审批，用于用户离开时让监督会话自主派活 */
-    grantSpawn(sessionId: string) {
-      store.grantSpawn(sessionId);
+    /** 派生授权：之后 create_session 免审批，用于用户离开时让监督会话自主派活。来源是顶栏开关或派生审批卡上的"本会话允许" */
+    setSpawnGranted(sessionId: string, granted: boolean): Session {
+      getSession(sessionId);
+      store.setSpawnGranted(sessionId, granted);
+      return getSession(sessionId);
     },
 
     canSpawn(sessionId: string) {

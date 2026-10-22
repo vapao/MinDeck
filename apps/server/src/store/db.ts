@@ -166,6 +166,7 @@ export function openStore(path: string) {
     permissionMode: (r.permission_mode as PermissionMode | null) ?? 'approval',
     archivedAt: (r.archived_at as string | null) ?? null,
     parentId: (r.parent_id as string | null) ?? null,
+    spawnGranted: r.spawn_granted_at != null,
     createdAt: r.created_at as string,
     updatedAt: r.updated_at as string,
   });
@@ -261,8 +262,9 @@ export function openStore(path: string) {
       updateArchivedAt.run(archivedAt, id);
     },
     /** 派生授权落库：用户离开时 Hub 可能被 update-when-idle 重启，只放内存会让夜里的下一次 create_session 卡在审批上 */
-    grantSpawn(id: string) {
-      db.prepare('UPDATE sessions SET spawn_granted_at = ? WHERE id = ? AND spawn_granted_at IS NULL').run(new Date().toISOString(), id);
+    setSpawnGranted(id: string, granted: boolean) {
+      if (granted) db.prepare('UPDATE sessions SET spawn_granted_at = ? WHERE id = ? AND spawn_granted_at IS NULL').run(new Date().toISOString(), id);
+      else db.prepare('UPDATE sessions SET spawn_granted_at = NULL WHERE id = ?').run(id);
     },
     canSpawn(id: string): boolean {
       return !!db.prepare('SELECT 1 FROM sessions WHERE id = ? AND spawn_granted_at IS NOT NULL').get(id);

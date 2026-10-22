@@ -22,6 +22,8 @@ export type Session = {
   archivedAt: string | null;
   /** 通过 MCP create_session 派生它的会话；用户手动新建为 null。创建后不变，父会话删掉后可能指向不存在的会话 */
   parentId: string | null;
+  /** 该会话调 create_session 免审批：可在顶栏事先打开，也可在派生审批卡上选"本会话允许"。只有 Hub 返回的会话带 */
+  spawnGranted?: boolean;
   createdAt: string;
   updatedAt: string;
   /** Agent 自己起的后台任务（如后台 Bash）还剩几个，不含常驻监听；不落库，随 Provider 进程消失，只有 Hub 返回的会话带 */
@@ -268,7 +270,7 @@ export type InterruptResponse = { ok: true };
  * 或给还没发过消息的空会话换 Provider / 模型与思考等级（已有消息 / Provider 已启动则 409：上下文在 Provider 那边，换了等于丢光，不如新建）。
  * model / effort 空字符串 = Provider 默认；effort 不被新模型支持时服务端重置为默认
  */
-export type UpdateSessionBody = { archived: boolean } | { provider: ProviderId } | { model: string; effort: string };
+export type UpdateSessionBody = { archived: boolean } | { provider: ProviderId } | { model: string; effort: string } | { spawnGranted: boolean };
 export type UpdateSessionResponse = Session;
 
 /**

@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type UIEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronLeft, CornerLeftUp, GitBranch, Trash2 } from 'lucide-react'
+import { ChevronLeft, CornerLeftUp, GitBranch, Network, Trash2 } from 'lucide-react'
 import { Loading } from '../components/Loading'
 import { skillToken, type ProviderId, type Resolution } from '@agentdeck/shared'
 import { api } from '../api'
@@ -88,6 +88,23 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
     mutationFn: ({ model, effort }: { model: string; effort: string }) => api.updateSession(sessionId, { model, effort }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['sessions'] }),
   })
+  // 事先打开派生授权：用户离开前打开，Agent 之后调 create_session 不再停在审批卡上。打开要二次确认，关掉不用
+  const spawnGrant = useMutation({
+    mutationFn: (spawnGranted: boolean) => api.updateSession(sessionId, { spawnGranted }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['sessions'] }),
+    onError: (err) => dialog.alert({ title: 'Could not change the setting', message: err.message }),
+  })
+  const onToggleSpawnGrant = async () => {
+    if (!info?.spawnGranted) {
+      const ok = await dialog.confirm({
+        title: 'Auto-approve new sessions from this session?',
+        message: 'The agent in this session can start new sessions without asking you. New sessions run with the default permission mode from Settings. You can turn this off at any time.',
+        ok: 'Auto-approve',
+      })
+      if (!ok) return
+    }
+    spawnGrant.mutate(!info?.spawnGranted)
+  }
   const onFresh = async () => {
     // 运行中的不问，直接保留
     const canDiscard = status === 'idle' || status === 'error'
@@ -336,6 +353,9 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
             <GitBranch size={16} />
           </button>
         )}
+        <button type="button" className={styles.iconButton} data-active={info?.spawnGranted || undefined} onClick={onToggleSpawnGrant} disabled={!info || spawnGrant.isPending} aria-label="Auto-approve new sessions" aria-pressed={!!info?.spawnGranted} title={info?.spawnGranted ? 'New sessions started by this agent are auto-approved. Click to require approval again' : 'Auto-approve new sessions started by this agent'}>
+          <Network size={16} />
+        </button>
         <button type="button" className={styles.iconButton} data-danger onClick={onDelete} disabled={!session || remove.isPending} aria-label="Delete session" title="Delete the session and all its history">
           <Trash2 size={16} />
         </button>

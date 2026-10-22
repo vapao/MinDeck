@@ -102,7 +102,7 @@ export function createMcpServer(hub: Hub, store: Store, services: Services, call
         sessionAllowPatterns: ['create_session'], suggestions: [],
       }, signal);
       if (resolution?.kind !== 'approval' || resolution.decision === 'deny') throw new HubError(403, 'The user did not approve creating the session');
-      if (resolution.decision === 'allow_session') hub.grantSpawn(callerId);
+      if (resolution.decision === 'allow_session') hub.setSpawnGranted(callerId, true);
       signal.throwIfAborted();
     }
     const session = hub.createSession(provider, cwd, { model: config.model ?? '', effort: config.effort ?? '', parentId: callerId });

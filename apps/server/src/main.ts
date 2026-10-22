@@ -276,8 +276,12 @@ app.put<{ Params: { id: string }; Body: SaveProjectFileBody }>('/api/sessions/:i
 
 app.patch<{ Params: { id: string }; Body: UpdateSessionBody }>(
   '/api/sessions/:id',
-  { schema: { body: { type: 'object', properties: { archived: { type: 'boolean' }, provider: { enum: ['claude', 'codex', 'deepseek'] }, model: { type: 'string' }, effort: { type: 'string' } }, oneOf: [{ required: ['archived'] }, { required: ['provider'] }, { required: ['model', 'effort'] }] } } },
-  (req) => ('provider' in req.body ? hub.setProvider(req.params.id, req.body.provider) : 'model' in req.body ? hub.setModel(req.params.id, req.body.model, req.body.effort) : hub.setArchived(req.params.id, req.body.archived)),
+  { schema: { body: { type: 'object', properties: { archived: { type: 'boolean' }, provider: { enum: ['claude', 'codex', 'deepseek'] }, model: { type: 'string' }, effort: { type: 'string' }, spawnGranted: { type: 'boolean' } }, oneOf: [{ required: ['archived'] }, { required: ['provider'] }, { required: ['model', 'effort'] }, { required: ['spawnGranted'] }] } } },
+  (req) =>
+    'provider' in req.body ? hub.setProvider(req.params.id, req.body.provider)
+    : 'model' in req.body ? hub.setModel(req.params.id, req.body.model, req.body.effort)
+    : 'spawnGranted' in req.body ? hub.setSpawnGranted(req.params.id, req.body.spawnGranted)
+    : hub.setArchived(req.params.id, req.body.archived),
 );
 
 app.post<{ Params: { id: string }; Body: ForkSessionBody }>(

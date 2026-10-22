@@ -85,7 +85,7 @@ test('spawn grant survives reopening the store and stays with its session', () =
     for (const id of ['a', 'b']) {
       store.createSession({ id, provider: 'claude', cwd: '/tmp', providerSessionId: null, status: 'idle', title: null, model: null, effort: null, permissionMode: 'approval', archivedAt: null, parentId: null, createdAt: now, updatedAt: now });
     }
-    store.grantSpawn('a');
+    store.setSpawnGranted('a', true);
 
     const reopened = openStore(file);
     assert.equal(reopened.canSpawn('a'), true);
