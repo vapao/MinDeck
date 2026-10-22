@@ -3,7 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { z } from 'zod';
-import type { AgentEvent } from '@agentdeck/shared';
+import { effortOptions, modelOptions, type AgentEvent } from '@agentdeck/shared';
 import { HubError, type createHub } from './hub';
 import type { Store } from './store/db';
 import type { Services } from './services';
@@ -79,29 +79,33 @@ export function createMcpServer(hub: Hub, store: Store, services: Services, call
     .map((s) => ({ id: s.id, provider: s.provider, workspace: s.cwd, title: s.title, status: s.status, archived: !!s.archivedAt, updatedAt: s.updatedAt, ...(s.id === callerId ? { self: true } : {}) }))));
 
   server.registerTool('create_session', {
-    description: 'Delegate a task to a new AgentDeck session. Write the prompt as a handoff brief built from this conversation: the goal, the plan and decisions already agreed, scope boundaries, and open questions. Do not investigate the repository to write the prompt; the new session explores on its own. Do not restate project rules from AGENTS.md / CLAUDE.md; the new session loads them. Do not add work the user did not ask for. The user must approve in AgentDeck (unless they already allowed it for this session); the call blocks until they do. Model, effort and permission mode come from AgentDeck settings. Returns the new session id.',
+    description: 'Delegate a task to a new AgentDeck session. Write the prompt as a handoff brief built from this conversation: the goal, the plan and decisions already agreed, scope boundaries, and open questions. Do not investigate the repository to write the prompt; the new session explores on its own. Do not restate project rules from AGENTS.md / CLAUDE.md; the new session loads them. Do not add work the user did not ask for. The user must approve in AgentDeck (unless they already allowed it for this session); the call blocks until they do. Model and effort default to AgentDeck settings; permission mode always does. Returns the new session id.',
     inputSchema: {
       provider: z.enum(['claude', 'codex', 'deepseek']),
       prompt: z.string().min(1).describe('First message for the new session'),
       workspace: z.string().optional().describe('Project path from list_workspaces; defaults to your own project'),
+      model: z.string().optional().describe(`Only when the user asked for a specific model; defaults to AgentDeck settings. ${Object.entries(modelOptions).map(([p, options]) => `${p}: ${options.map((o) => o.value).join(', ')}`).join('; ')}`),
+      effort: z.string().optional().describe(`Only when the user asked for a specific thinking effort; defaults to AgentDeck settings. claude: ${effortOptions.claude.map((o) => o.value).join(', ')}; codex: ${effortOptions.codex.map((o) => o.value).join(', ')} (ultra not on every model); deepseek: none`),
       notify: z.boolean().optional().describe('Default false. Set true only when you need the result to continue your own work (e.g. the user asked you to compare, summarize, or build on it); the result then arrives later as a new message. Either way, do not wait or poll for the session — carry on with any remaining work.'),
     },
-  }, async ({ provider, prompt, workspace, notify = false }) => {
+  }, async ({ provider, prompt, workspace, model, effort, notify = false }) => {
     const cwd = workspace ?? hub.getSession(callerId).cwd;
     // 先校验再弹卡，不让人批一张注定失败的请求
     if (!store.getWorkspaceByPath(cwd)) throw new HubError(400, `${cwd} is not an AgentDeck project; see list_workspaces`);
     if (provider === 'deepseek' && !hub.settings().deepseek.apiKeyConfigured) throw new HubError(400, 'DeepSeek API Key is not configured in AgentDeck settings');
+    // 解析成具体值再上审批卡：批准的就是实际要用的，审批期间改设置也不会换掉
+    const config = hub.resolveSessionConfig(provider, { model, effort });
     if (!hub.canSpawn(callerId)) {
       const resolution = await hub.createPending(callerId, {
-        kind: 'approval', toolName: 'AgentDeck: create session', toolUseId: randomUUID(), input: { provider, workspace: cwd, prompt },
-        description: 'Start a new session with the default model and permission mode from Settings',
+        kind: 'approval', toolName: 'AgentDeck: create session', toolUseId: randomUUID(), input: { provider, workspace: cwd, model: config.model ?? 'Default', effort: config.effort ?? 'Default', prompt },
+        description: 'Start a new session with the permission mode from Settings',
         sessionAllowPatterns: ['create_session'], suggestions: [],
       }, signal);
       if (resolution?.kind !== 'approval' || resolution.decision === 'deny') throw new HubError(403, 'The user did not approve creating the session');
       if (resolution.decision === 'allow_session') hub.grantSpawn(callerId);
       signal.throwIfAborted();
     }
-    const session = hub.createSession(provider, cwd, { parentId: callerId });
+    const session = hub.createSession(provider, cwd, { model: config.model ?? '', effort: config.effort ?? '', parentId: callerId });
     try {
       hub.sendMessage(session.id, prompt, [], 'agent');
     } catch (error) {

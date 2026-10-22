@@ -292,18 +292,24 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
     return { seq, steered };
   }
 
+  /** model / effort 省略时取设置里的默认值；空字符串 = 交给 Provider 默认，结果为 null。permissionMode 省略时也取默认值，没有"交给 Provider 默认"这一说 */
+  function resolveSessionConfig(provider: Session['provider'], override: { model?: string; effort?: string; permissionMode?: PermissionMode }) {
+    if (!(provider in providers)) throw new HubError(400, `Unknown provider ${provider}`);
+    const defaults = settings()[provider];
+    const model = normalizeModel(provider, override.model ?? defaults.model);
+    const effort = (override.effort ?? defaults.effort).trim() || null;
+    const permissionMode = override.permissionMode ?? defaults.permissionMode;
+    if (effort && !getEffortOptions(provider, model).some((o) => o.value === effort)) throw new HubError(400, `${provider} model ${model ?? 'Default'} does not support effort ${effort}`);
+    if (!permissionModeOptions.some((o) => o.value === permissionMode)) throw new HubError(400, `Unsupported permission mode ${permissionMode}`);
+    return { model, effort, permissionMode };
+  }
+
   return {
-    /** model / effort 省略时取设置里的默认值；空字符串 = 交给 Provider 默认，落库为 null。permissionMode 省略时也取默认值，没有"交给 Provider 默认"这一说 */
+    resolveSessionConfig,
     createSession(provider: Session['provider'], cwd: string, override: { model?: string; effort?: string; permissionMode?: PermissionMode; parentId?: string } = {}): Session {
-      if (!(provider in providers)) throw new HubError(400, `Unknown provider ${provider}`);
       // cwd 只能是 UI 里添加过的工作区（方案 §11.3 allowlist）
       if (!store.getWorkspaceByPath(cwd)) throw new HubError(400, `cwd is not a registered workspace`);
-      const defaults = settings()[provider];
-      const model = normalizeModel(provider, override.model ?? defaults.model);
-      const effort = (override.effort ?? defaults.effort).trim() || null;
-      const permissionMode = override.permissionMode ?? defaults.permissionMode;
-      if (effort && !getEffortOptions(provider, model).some((o) => o.value === effort)) throw new HubError(400, `${provider} model ${model ?? 'Default'} does not support effort ${effort}`);
-      if (!permissionModeOptions.some((o) => o.value === permissionMode)) throw new HubError(400, `Unsupported permission mode ${permissionMode}`);
+      const { model, effort, permissionMode } = resolveSessionConfig(provider, override);
       const now = new Date().toISOString();
       const session: Session = { id: randomUUID(), provider, cwd, providerSessionId: null, status: 'idle', title: null, model, effort, permissionMode, archivedAt: null, parentId: override.parentId ?? null, createdAt: now, updatedAt: now };
       store.createSession(session);
