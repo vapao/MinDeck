@@ -1,7 +1,7 @@
-import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type PointerEvent } from 'react'
 import { flushSync } from 'react-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Check, Copy } from 'lucide-react'
+import { Check, ChevronLeft, ChevronRight, Copy } from 'lucide-react'
 import Markdown, { defaultUrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { api, type OutputFile } from '../api'
@@ -112,16 +112,45 @@ export function FilePreviewDock({ version }: { version: number }) {
   return <Preview key={previewKey(selected)} {...selected} slot="selected" dock={{ width, handle }} version={version} />
 }
 type Dock = { width: number; handle: ReturnType<typeof useResizable>['handle'] }
-function Preview({ sessionId, path, line, image, discard, slot, dock, version }: Selected & { slot: Slot; dock?: Dock; version?: number }) {
+type ImageNavigation = { index: number; count: number; step: (offset: number) => void }
+function Preview({ sessionId, path, line, image, discard, slot, dock, version, onDismiss, navigation }: Selected & { slot: Slot; dock?: Dock; version?: number; onDismiss?: () => void; navigation?: ImageNavigation }) {
   const ref = useRef<HTMLDialogElement>(null)
   const [mode, setMode] = useState<'diff' | 'file'>(discard ? 'diff' : 'file')
-  const [source, setSource] = useState(false)
+  const [source, setSource] = useState(!!line)
+  const [gallery, setGallery] = useState<{ images: NonNullable<Selected['image']>[]; index: number } | null>(null)
   // null = fit to the preview; otherwise a multiple of the image's natural size
   const [scale, setScale] = useState<number | null>(null)
   const [natural, setNatural] = useState(0)
   const [imageError, setImageError] = useState(false)
   const [copied, setCopied] = useState(false)
   const imageRef = useRef<HTMLImageElement>(null)
+  const [dragging, setDragging] = useState(false)
+  const drag = useRef<{ id: number; x: number; y: number; left: number; top: number } | null>(null)
+  const dragged = useRef(false)
+  const endDrag = () => { drag.current = null; setDragging(false) }
+  const pan = {
+    onPointerDown(e: PointerEvent<HTMLDivElement>) {
+      if (e.pointerType !== 'mouse' || e.button !== 0 || e.target !== imageRef.current) return
+      dragged.current = false
+      const box = e.currentTarget
+      if (box.scrollWidth <= box.clientWidth && box.scrollHeight <= box.clientHeight) return
+      e.preventDefault()
+      imageRef.current!.setPointerCapture(e.pointerId)
+      drag.current = { id: e.pointerId, x: e.clientX, y: e.clientY, left: box.scrollLeft, top: box.scrollTop }
+      setDragging(true)
+    },
+    onPointerMove(e: PointerEvent<HTMLDivElement>) {
+      const start = drag.current
+      if (!start || start.id !== e.pointerId) return
+      const dx = e.clientX - start.x, dy = e.clientY - start.y
+      if (Math.abs(dx) + Math.abs(dy) > 4) dragged.current = true
+      e.currentTarget.scrollLeft = start.left - dx
+      e.currentTarget.scrollTop = start.top - dy
+    },
+    onPointerUp: endDrag,
+    onPointerCancel: endDrag,
+    onLostPointerCapture: endDrag,
+  }
   // 可编辑文件直接可输入：null = 没有未保存改动；否则是编辑器文本。
   // base 是开始改动时读到的磁盘内容，保存时交给服务端做冲突检查
   const [draft, setDraft] = useState<string | null>(null)
@@ -147,8 +176,10 @@ function Preview({ sessionId, path, line, image, discard, slot, dock, version }:
     const img = imageRef.current!
     const box = img.parentElement!
     const view = box.getBoundingClientRect()
-    x ??= view.left + view.width / 2
-    y ??= view.top + view.height / 2
+    if (x === undefined || y === undefined || x < view.left || x > view.right || y < view.top || y > view.bottom) {
+      x = view.left + box.clientWidth / 2
+      y = view.top + box.clientHeight / 2
+    }
     const before = img.getBoundingClientRect()
     flushSync(() => setScale(next === null ? null : Math.min(10, Math.max(0.1, next))))
     const after = img.getBoundingClientRect()
@@ -157,8 +188,8 @@ function Preview({ sessionId, path, line, image, discard, slot, dock, version }:
   }
   const currentScale = () => imageRef.current!.getBoundingClientRect().width / imageRef.current!.naturalWidth
   useEffect(() => {
-    const box = imageRef.current?.parentElement
-    if (!natural || !box) return
+    const surface = imageRef.current?.closest('dialog, aside')
+    if (!natural || !surface) return
     // Trackpad pinch arrives as ctrl+wheel in Chrome / Firefox and as gesture events in Safari
     const wheel = (e: WheelEvent) => {
       if (!e.ctrlKey && !e.metaKey) return
@@ -172,15 +203,19 @@ function Preview({ sessionId, path, line, image, discard, slot, dock, version }:
       const g = e as Event & { scale: number; clientX: number; clientY: number }
       zoomTo(start * g.scale, g.clientX, g.clientY)
     }
-    box.addEventListener('wheel', wheel, { passive: false })
-    box.addEventListener('gesturestart', gestureStart)
-    box.addEventListener('gesturechange', gestureChange)
+    const gestureEnd = (e: Event) => e.preventDefault()
+    // 包括工具栏与遮罩，避免指针离开图片时缩放整页；不拦截普通滚动。
+    surface.addEventListener('wheel', wheel as EventListener, { passive: false, capture: true })
+    surface.addEventListener('gesturestart', gestureStart, { passive: false, capture: true })
+    surface.addEventListener('gesturechange', gestureChange, { passive: false, capture: true })
+    surface.addEventListener('gestureend', gestureEnd, { passive: false, capture: true })
     return () => {
-      box.removeEventListener('wheel', wheel)
-      box.removeEventListener('gesturestart', gestureStart)
-      box.removeEventListener('gesturechange', gestureChange)
+      surface.removeEventListener('wheel', wheel as EventListener, true)
+      surface.removeEventListener('gesturestart', gestureStart, true)
+      surface.removeEventListener('gesturechange', gestureChange, true)
+      surface.removeEventListener('gestureend', gestureEnd, true)
     }
-  }, [natural])
+  }, [natural, mode, imageError])
   const dismiss = () => dock ? update({ [slot]: null }) : ref.current!.close()
   const content = q.data?.content?.replace(/\r\n/g, '\n')
   const dirty = draft !== null
@@ -193,9 +228,10 @@ function Preview({ sessionId, path, line, image, discard, slot, dock, version }:
   const leave = useRef(confirmDiscard)
   useLayoutEffect(() => { leave.current = confirmDiscard })
   useEffect(() => {
+    if (onDismiss) return
     confirmLeave[slot] = () => leave.current()
     return () => { confirmLeave[slot] = null }
-  }, [slot])
+  }, [slot, onDismiss])
   const requestClose = async () => { if (await confirmDiscard()) dismiss() }
   const save = async () => {
     if (draft === null || saving) return
@@ -219,17 +255,51 @@ function Preview({ sessionId, path, line, image, discard, slot, dock, version }:
     }
   }
   const file: OutputFile | undefined = image ? { path: image.name, name: image.name, size: 0, mime: '', kind: 'image', content: null, truncated: false } : q.data
+  const html = file?.kind === 'text' && /\.html?$/i.test(file.name)
+  const htmlUrl = html ? api.previewUrl(sessionId, file!.path) : undefined
   const local = file && !image && mappedPath(file.path)
   const url = image?.url ?? api.outputUrl(sessionId, path)
   const relativeToFile = (target: string) => target.startsWith('/') || target.startsWith('~/') ? target : `${file!.path.slice(0, file!.path.lastIndexOf('/') + 1)}${target}`
+  const bindHtmlImages = (frame: HTMLIFrameElement) => {
+    const doc = frame.contentDocument
+    if (!doc) return
+    const isImageLink = (link: HTMLAnchorElement) => /\.(png|jpe?g|gif|webp|avif|svg|bmp|ico)$/i.test(new URL(link.href).pathname)
+    const imageUrl = (img: HTMLImageElement) => {
+      const link = img.closest<HTMLAnchorElement>('a[href]')
+      return link && isImageLink(link) ? link.href : img.currentSrc || img.src
+    }
+    // 接管图片链接的默认新窗口行为，报告本身和滚动位置留在下面。
+    doc.addEventListener('click', (event) => {
+      if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.defaultPrevented) return
+      const target = event.target as Element
+      const link = target.closest<HTMLAnchorElement>('a[href]')
+      const img = target.closest<HTMLImageElement>('img')
+      if (link ? !isImageLink(link) : !img || img.closest('button, [role="button"]')) return
+      const url = link ? link.href : imageUrl(img!)
+      const images = [...doc.images]
+        .filter((item) => !item.closest('button, [role="button"]') && (!item.closest('a[href]') || isImageLink(item.closest<HTMLAnchorElement>('a[href]')!)))
+        .map((item) => ({ url: imageUrl(item), name: item.alt || 'Image' }))
+        .filter((item, index, items) => item.url && items.findIndex((other) => other.url === item.url) === index)
+      let index = images.findIndex((item) => item.url === url)
+      if (index < 0) index = images.push({ url, name: link?.textContent?.trim() || 'Image' }) - 1
+      event.preventDefault()
+      event.stopPropagation()
+      setGallery({ images, index })
+    }, true)
+  }
   const body = <>
     <header className={modal.head}>
       <strong className={`${modal.title} ${styles.fileTitle}`} title={file?.path ?? path}>{file?.name ?? (discard ? path.split('/').pop() : 'File')}</strong>
+      {navigation && navigation.count > 1 && <div className={styles.imageNavigation}>
+        <button className={`${modal.secondary} ${styles.viewButton}`} disabled={navigation.index === 0} onClick={() => navigation.step(-1)} aria-label="Previous image" title="Previous image (←)"><ChevronLeft size={16} /></button>
+        <span aria-live="polite">{navigation.index + 1} / {navigation.count}</span>
+        <button className={`${modal.secondary} ${styles.viewButton}`} disabled={navigation.index === navigation.count - 1} onClick={() => navigation.step(1)} aria-label="Next image" title="Next image (→)"><ChevronRight size={16} /></button>
+      </div>}
       {discard && !dirty && <button className={`${modal.secondary} ${styles.viewButton}`} onClick={() => setMode(mode === 'diff' ? 'file' : 'diff')}>{mode === 'diff' ? 'File' : 'Diff'}</button>}
-      {mode === 'file' && file?.kind === 'markdown' && !dirty && <button className={`${modal.secondary} ${styles.viewButton}`} onClick={() => setSource(!source)}>{source ? 'Preview' : 'Source'}</button>}
+      {mode === 'file' && (file?.kind === 'markdown' || html) && !dirty && <button className={`${modal.secondary} ${styles.viewButton}`} onClick={() => setSource(!source)}>{source ? 'Preview' : 'Source'}</button>}
       {file?.kind === 'image' && natural > 0 && <>
         <button className={`${modal.secondary} ${styles.viewButton}`} onClick={() => zoomTo(currentScale() / 1.25)} aria-label="Zoom out">−</button>
-        <button className={`${modal.secondary} ${styles.viewButton}`} onClick={() => zoomTo(null)} title="Fit image">{scale === null ? 'Fit' : `${Math.round(scale * 100)}%`}</button>
+        <button className={`${modal.secondary} ${styles.viewButton} ${styles.zoomValue}`} onClick={() => zoomTo(null)} title="Fit image">{scale === null ? 'Fit' : `${Math.round(scale * 100)}%`}</button>
         <button className={`${modal.secondary} ${styles.viewButton}`} onClick={() => zoomTo(currentScale() * 1.25)} aria-label="Zoom in">+</button>
       </>}
       <button className={modal.close} onClick={() => void requestClose()} aria-label="Close">×</button>
@@ -241,15 +311,16 @@ function Preview({ sessionId, path, line, image, discard, slot, dock, version }:
         <button className={modal.primary} data-danger onClick={() => { void discard!(path).then((done) => { if (done) dismiss() }) }}>Discard changes</button>
       </footer>
     </>}
-    {mode === 'file' && <><div className={styles.content}>
+    {mode === 'file' && <><div className={`${styles.content} ${file?.kind === 'image' ? styles.imageContent : ''}`} onClick={(e) => { if (navigation && e.target === e.currentTarget) dismiss() }}>
       {q.error && <p role="alert">{q.error.message}</p>}
       {!file && !q.error && <p>Loading…</p>}
       {file && <>
-        {file.kind === 'image' && <>{imageError ? <p>Image preview unavailable. Use Finder or download the file.</p> : <div className={styles.image}><img ref={imageRef} style={scale === null ? undefined : { width: natural * scale, maxWidth: 'none', maxHeight: 'none' }} src={url} alt={file.name} onLoad={(e) => setNatural(e.currentTarget.naturalWidth)} onDoubleClick={(e) => zoomTo(scale === null ? 1 : null, e.clientX, e.clientY)} onError={() => setImageError(true)} /></div>}</>}
+        {file.kind === 'image' && <>{imageError ? <p>Image preview unavailable. Use Finder or download the file.</p> : <div className={styles.image} {...pan} data-dragging={dragging || undefined} onClickCapture={(e) => { if (dragged.current) { dragged.current = false; e.preventDefault(); e.stopPropagation() } }} onClick={(e) => { if (navigation && e.target === e.currentTarget) dismiss() }}><img ref={imageRef} draggable={false} style={scale === null ? undefined : { width: natural * scale, maxWidth: 'none', maxHeight: 'none' }} src={url} alt={file.name} onLoad={(e) => setNatural(e.currentTarget.naturalWidth)} onDoubleClick={(e) => zoomTo(scale === null ? 1 : null, e.clientX, e.clientY)} onError={() => setImageError(true)} /></div>}</>}
         {file.kind === 'pdf' && <><object className={styles.pdf} data={url} type="application/pdf"><p>PDF preview is unavailable on this device.</p></object></>}
         {file.kind === 'audio' && <audio controls src={url} />}
         {file.kind === 'video' && <video className={styles.video} controls src={url} />}
-        {file.content !== null && <>
+        {html && !source && !dirty && <iframe key={q.dataUpdatedAt} className={styles.html} src={htmlUrl} title={file.name} onLoad={(e) => bindHtmlImages(e.currentTarget)} />}
+        {file.content !== null && (!html || source || dirty) && <>
           {file.kind === 'markdown' && !source && !dirty ? <div className={styles.markdown}><Markdown remarkPlugins={[remarkGfm]} urlTransform={(value) => fileReference(value) ? value : defaultUrlTransform(value)} components={{ code: ({ className, children }) => {
             const language = /language-([^\s]+)/.exec(className ?? '')?.[1]
             return language ? <PreviewCode text={String(children)} language={language} /> : <code className={className}>{children}</code>
@@ -264,15 +335,24 @@ function Preview({ sessionId, path, line, image, discard, slot, dock, version }:
       <button className={modal.primary} onClick={() => void save()} disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
     </footer>}
     {file && !dirty && <footer className={`${modal.actions} ${styles.footer}`}>
+      {html && <a className={`${modal.secondary} ${styles.action}`} href={htmlUrl} target="_blank" rel="noreferrer">Open in new tab</a>}
       {file.content !== null && <button className={`${modal.secondary} ${styles.copyButton}`} onClick={() => { void navigator.clipboard.writeText(file.content!).then(() => setCopied(true)) }}>{copied ? <Check size={14} /> : <Copy size={14} />}{copied ? 'Copied' : 'Copy text'}</button>}
       {local && <a className={`${modal.primary} ${styles.action}`} onClick={dock ? undefined : dismiss} href={`agentdeck-finder://reveal?path=${encodeURIComponent(local)}`}>Show in Finder</a>}
       {file.kind !== 'directory' && <a className={`${modal.secondary} ${styles.action}`} onClick={dock ? undefined : dismiss} href={image?.url ?? api.outputUrl(sessionId, path, true)} download={file.name}>Download to this device</a>}
     </footer>}
     </>}
   </>
-  return dock
+  const preview = dock
     ? <aside className={styles.dock} style={{ width: dock.width }} aria-label="File preview"><div {...dock.handle} />{body}</aside>
-    : <dialog ref={ref} className={`${modal.dialog} ${styles.preview}`} onClose={() => update({ [slot]: null })} onCancel={(e) => { if (dirty) { e.preventDefault(); void requestClose() } }} onClick={(e) => { if (e.target === ref.current) void requestClose() }} aria-label="File preview">{body}</dialog>
+    : <dialog ref={ref} className={`${modal.dialog} ${styles.preview} ${mode === 'file' && file?.kind === 'image' ? styles.imagePreview : ''}`} onClose={() => onDismiss ? onDismiss() : update({ [slot]: null })} onCancel={(e) => { if (dirty) { e.preventDefault(); void requestClose() } }} onClick={(e) => { if (e.target === ref.current) void requestClose() }} onKeyDown={(e) => {
+      if (!navigation || e.altKey || e.ctrlKey || e.metaKey || !['ArrowLeft', 'ArrowRight'].includes(e.key)) return
+      e.preventDefault()
+      navigation.step(e.key === 'ArrowLeft' ? -1 : 1)
+    }} aria-label={navigation ? 'Image preview' : 'File preview'}>{body}</dialog>
+  return <>{preview}{gallery && <Preview key={gallery.images[gallery.index].url} sessionId="" path={gallery.images[gallery.index].url} image={gallery.images[gallery.index]} slot={slot} onDismiss={() => setGallery(null)} navigation={{
+    index: gallery.index, count: gallery.images.length,
+    step: (offset) => setGallery((current) => current && ({ ...current, index: Math.max(0, Math.min(current.images.length - 1, current.index + offset)) })),
+  }} />}</>
 }
 
 function DiffBody({ sessionId, path }: { sessionId: string; path: string }) {

@@ -147,7 +147,9 @@ Files 工具栏提供 `FilePlus` / `FolderPlus` 图标，在项目根新建文�
 ## 会话文件预览（2026-09-21）
 
 - 界面新增文案使用英文。消息内本地文件链接打开原地预览弹层；图片链接显示限高缩略图。桌面宽弹层，手机适配视口；Escape / 关闭按钮 / 遮罩关闭。
-- 图片支持 Fit image / Actual size；文本带行号；Markdown 支持 Source / Preview；PDF 与音视频使用浏览器原生能力。文件预览标题栏下方显示 Mac Mini 上的完整路径，使用等宽字体，支持选中复制和长路径换行；聊天上传图片与待发送图片不展示路径。无法预览的文件展示名称、路径与操作。
+- 图片支持 Fit image / Actual size；文本带行号；Markdown 与 HTML 支持 Source / Preview，HTML 默认在 iframe 中展示页面，带行号时默认源码，底部提供 Open in new tab；PDF 与音视频使用浏览器原生能力。文件预览标题栏下方显示 Mac Mini 上的完整路径，使用等宽字体，支持选中复制和长路径换行；聊天上传图片与待发送图片不展示路径。无法预览的文件展示名称、路径与操作。
+- HTML 内嵌预览中的图片和图片文件链接打开上层图片弹窗；点遮罩、图片周围空白或按 Escape 返回报告并保留滚动位置。标题栏提供上一张 / 下一张、序号及原有缩放控件，左右方向键切换，首尾按钮禁用。
+- 图片弹窗的视口高度和工具栏位置不随图片缩放变化，Fit / 百分比占用固定宽度。支持触控板双指缩放及放大后按住图片拖动，普通滚动平移图片，不带动底层报告。
 - 操作为 Show in Finder / Download to this device，点击任一操作后立即关闭预览弹层，不等待外部应用或下载完成。Finder 按当前浏览器的目录映射交给 Mac 本地辅助应用，路径不存在时由辅助应用提示。Changes 面板点击文件即打开同一个预览弹窗。
 - Settings 增加 Finder on this Mac，映射仍只存于当前浏览器，与 Provider 设置共用页尾 Save changes。详细使用说明见 `docs/file-preview.md`。
 - 桌面 Composer 底部在 Start fresh 左侧紧邻放置 SquareTerminal 图标（符号自带外框），tooltip / aria-label 为 Open in iTerm2；手机不显示。点击使用当前会话 cwd 打开 SSH 终端，未配置主机时使用统一提示弹窗。Settings 的 iTerm2 on this Mac 也通过页尾 Save changes 保存 SSH host 到当前浏览器，不应用 Finder 路径映射。

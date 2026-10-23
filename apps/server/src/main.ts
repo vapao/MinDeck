@@ -48,12 +48,15 @@ app.setErrorHandler((err: Error & { statusCode?: number }, _req, reply) => {
   return reply.code(err.statusCode ?? 500).send({ message: err.message });
 });
 
+await app.register(fastifyStatic, {
+  root: webDist,
+  serve: existsSync(webDist),
+  // 预览文件自行设置 no-store；只有 vite 的哈希产物可永久缓存。
+  setHeaders: (reply, path) => {
+    if (!reply.hasHeader('cache-control')) reply.header('cache-control', path.includes('/assets/') ? 'public, max-age=31536000, immutable' : 'no-cache');
+  },
+});
 if (existsSync(webDist)) {
-  await app.register(fastifyStatic, {
-    root: webDist,
-    // vite 产物按内容哈希命名可永久缓存；index.html / sw.js / manifest 必须每次回源，否则 PWA 更新不到
-    setHeaders: (reply, path) => reply.header('cache-control', path.includes('/assets/') ? 'public, max-age=31536000, immutable' : 'no-cache'),
-  });
   // SPA 路由（/new、/s/:id）直接打开或刷新时回 index.html
   app.setNotFoundHandler((req, reply) => {
     if (req.method === 'GET' && !req.url.startsWith('/api/') && !req.url.startsWith('/ws')) return reply.sendFile('index.html');
@@ -234,6 +237,14 @@ app.get<{ Params: { id: string }; Querystring: { path: string; download?: string
     .header('content-security-policy', "sandbox; default-src 'none'")
     .header('content-disposition', `${inline ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(file.name).replace(/'/g, '%27')}`);
   return reply.type(inline ? file.mime : 'application/octet-stream').send(createReadStream(file.path));
+});
+
+// URL 保留绝对路径的目录层级，让 HTML、CSS 和 JS 中的相对资源引用由浏览器自然解析。
+app.get<{ Params: { id: string; '*': string } }>('/api/sessions/:id/preview/*', async (req, reply) => {
+  const file = await outputFile(hub.getSession(req.params.id).cwd, `/${req.params['*']}`, false);
+  if (file.kind === 'directory') throw new HubError(400, 'Directories cannot be previewed');
+  reply.header('cache-control', 'no-store').header('x-content-type-options', 'nosniff');
+  return reply.sendFile(file.name, dirname(file.path), { cacheControl: false, etag: false, lastModified: false });
 });
 
 app.get<{ Params: { id: string }; Querystring: { q?: string } }>('/api/sessions/:id/entries', (req) => listEntries(hub.getSession(req.params.id).cwd, req.query.q ?? ''));

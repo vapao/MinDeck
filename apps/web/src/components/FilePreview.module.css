@@ -4,9 +4,19 @@
 .filePath { padding: 8px 16px; border-bottom: 1px solid var(--border); color: var(--text-2); font-family: var(--font-mono); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; user-select: text; }
 .preview .viewButton { flex: none; width: auto; height: 30px; align-self: center; }
 .footer { margin-top: 0; }
-.image { overflow: auto; max-height: 65dvh; }
-.image img { display: block; max-width: 100%; max-height: 65dvh; margin: auto; }
+.imagePreview[open] { display: flex; flex-direction: column; height: min(800px, calc(100dvh - 32px)); overflow: hidden; }
+.imagePreview > header, .imagePreview > footer, .imagePreview > .filePath { flex: none; }
+.content.imageContent { flex: 1; min-height: 0; max-height: none; display: flex; overflow: hidden; }
+.image { flex: 1; min-width: 0; min-height: 0; display: flex; overflow: auto; overscroll-behavior: contain; }
+.image img { flex: none; display: block; max-width: 100%; max-height: 100%; margin: auto; user-select: none; cursor: grab; }
+.image[data-dragging] img { cursor: grabbing; }
+.preview .zoomValue, .dock .zoomValue { width: 68px; font-variant-numeric: tabular-nums; }
+.imageNavigation { display: flex; align-items: center; gap: 6px; flex: none; color: var(--text-2); font-family: var(--font-mono); font-size: 12px; }
+.imageNavigation button { display: grid; place-items: center; padding: 0 6px; }
+.imageNavigation button:disabled { opacity: 0.4; cursor: default; }
+.imageNavigation span { min-width: 7ch; text-align: center; }
 .pdf { width: 100%; height: 65dvh; border: 0; }
+.html { display: block; width: 100%; height: 65dvh; border: 0; background: white; color-scheme: normal; }
 .video { max-width: 100%; max-height: 65dvh; }
 .code :global(.cm-editor) { max-height: calc(100dvh - 212px); border: 1px solid var(--border); border-radius: var(--radius-control); }
 .copyButton { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
@@ -15,7 +25,7 @@
 .dock { position: relative; flex: none; display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--border); background: var(--surface); }
 .dock > header { min-height: 44px; }
 .dock .content { flex: 1; min-height: 0; max-height: none; }
-.dock .code, .dock .pdf { height: 100%; }
+.dock .code, .dock .pdf, .dock .html { height: 100%; }
 .dock .code :global(.cm-editor) { height: 100%; max-height: none; }
 .markdown img { max-width: 100%; }
 @media (max-width: 600px) { .preview { width: 100vw; max-height: 100dvh; border-radius: 0; } .content { max-height: calc(100dvh - 220px); } .code :global(.cm-editor) { max-height: calc(100dvh - 252px); } }
