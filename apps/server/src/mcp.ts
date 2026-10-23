@@ -22,8 +22,8 @@ const maxEntries = 40;
 const defaultLogLines = 100;
 const maxLogLines = 1000;
 
-/** Provider 侧免审批的工具：只读的，以及 create_session（它由 Hub 自己弹审批卡，不再让 Provider 先审一次） */
-const autoApprove = ['list_workspaces', 'list_sessions', 'get_session', 'create_session', 'list_services', 'get_service_log'];
+/** Provider 侧免审批的工具：只读的，create_session（它由 Hub 自己弹审批卡，不再让 Provider 先审一次），以及只影响自己会话的 compact_after_turn */
+const autoApprove = ['list_workspaces', 'list_sessions', 'get_session', 'create_session', 'list_services', 'get_service_log', 'compact_after_turn'];
 
 export function agentdeckMcpFor(url: string, sessionId: string): AgentdeckMcp {
   return { url, headers: { [callerHeader]: sessionId }, timeoutSec: toolTimeoutSec, autoApprove };
@@ -154,6 +154,16 @@ export function createMcpServer(hub: Hub, store: Store, services: Services, call
     const result = hub.sendMessage(id, text, [], 'agent');
     if (notify) hub.notifyWhenDone(id, callerId);
     return json(result);
+  });
+
+  server.registerTool('compact_after_turn', {
+    description: 'Compact your own conversation context once your current turn ends, to drop exploration that is no longer needed. End your turn right after calling this. Results of sessions you are notified about that arrive during compaction are delivered after it. Claude and DeepSeek sessions only.',
+    inputSchema: {
+      instructions: z.string().min(1).describe('What the summary must keep verbatim (e.g. session IDs you will message later, the original request, decisions, changed files, pending steps) and what it may drop'),
+    },
+  }, ({ instructions }) => {
+    hub.compactAfterTurn(callerId, instructions);
+    return json({ scheduled: true });
   });
 
   server.registerTool('interrupt', {
