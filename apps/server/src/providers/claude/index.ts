@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { forkSession, importSessionToStore, query, type CanUseTool, type EffortLevel, type PermissionResult, type PermissionUpdate, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
+import { forkSession, importSessionToStore, query, type CanUseTool, type EffortLevel, type PermissionResult, type PermissionUpdate, type Query, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import { skillToken, type QuestionSpec } from '@agentdeck/shared';
 import type { ProviderSession, StartOptions } from '../types';
 import { createNormalizer } from './normalize';
@@ -93,7 +93,7 @@ export function startClaudeSession({ cwd, resume, model, effort, permissionMode,
       sending = sending
         .then(async () => {
           // 界面统一用 $ 触发 skill，SDK 只认消息开头的 /name；不是已知 skill 的 $xxx 原样发
-          const body = skill && (await q.reloadSkills()).skills.some((s) => s.name === skill) ? `/${text.slice(1)}` : text;
+          const body = skill && (await reloadClaudeSkills(q)).some((s) => s.name === skill) ? `/${text.slice(1)}` : text;
           if (epoch !== sentAt) return;
           const content: SDKUserMessage['message']['content'] = [...imageBlocks, ...(body ? [{ type: 'text' as const, text: body }] : [])];
           // 一轮进行中 push 的消息由 SDK 在下一个工具边界并入当前轮；带 uuid 才能被 interrupt 的 cancelQueued 撤回
@@ -141,11 +141,18 @@ export async function listClaudeSkills(cwd: string) {
   return cached.skills;
 }
 
+export async function reloadClaudeSkills(q: Pick<Query, 'reloadSkills' | 'supportedCommands'>) {
+  const { skills } = await q.reloadSkills();
+  // reloadSkills 漏掉仅允许手动调用的 skill；补入用户命令，但不引入 /clear、/model 等内置命令。
+  const commands = (await q.supportedCommands()).filter((s) => !s.builtin);
+  return [...new Map([...skills, ...commands].map((s) => [s.name, s])).values()];
+}
+
 /** 起一个空的 Streaming Input 会话只发控制请求，不调模型 */
 async function fetchClaudeSkills(cwd: string) {
   const q = query({ prompt: createInbox(), options: { cwd, env: childEnv(), settingSources: ['user', 'project'], systemPrompt: { type: 'preset', preset: 'claude_code' }, persistSession: false } });
   try {
-    return (await q.reloadSkills()).skills;
+    return await reloadClaudeSkills(q);
   } finally {
     q.close();
   }
