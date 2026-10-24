@@ -1,5 +1,4 @@
 import { spawn } from 'node:child_process';
-import { createInterface } from 'node:readline';
 import type { ClientRequest, ServerNotification, ServerRequest } from './schema';
 
 // codex app-server 的 stdio JSONL 传输（方案 §2.1）：一行一条 JSON-RPC 2.0 消息，双向都能发 request。
@@ -31,7 +30,7 @@ export function spawnAppServer({ onNotification, onRequest, onExit }: RpcHandler
     if (!exited) child.stdin.write(JSON.stringify({ jsonrpc: '2.0', ...m }) + '\n');
   };
 
-  createInterface({ input: child.stdout }).on('line', (line) => {
+  const onLine = (line: string) => {
     const m = JSON.parse(line);
     if (m.id !== undefined && m.method === undefined) {
       const p = pending.get(m.id);
@@ -45,6 +44,17 @@ export function spawnAppServer({ onNotification, onRequest, onExit }: RpcHandler
       );
     } else {
       onNotification(m);
+    }
+  };
+
+  // 不用 readline：它把 U+2028/U+2029 也当换行，而 JSON 不转义这两个字符，网页快照里出现就会切断 JSON 让 Hub 崩溃
+  let buf = '';
+  child.stdout.setEncoding('utf8').on('data', (chunk: string) => {
+    buf += chunk;
+    for (let i; (i = buf.indexOf('\n')) >= 0; ) {
+      const line = buf.slice(0, i);
+      buf = buf.slice(i + 1);
+      onLine(line);
     }
   });
 
