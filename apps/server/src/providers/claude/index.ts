@@ -48,8 +48,13 @@ export function startClaudeSession({ cwd, resume, model, effort, permissionMode,
       // session_state_changed: idle 是"插入的消息全部处理完"的唯一可靠信号（一轮里插入的消息可能被并入该轮，也可能在其后自成一轮）
       env: { ...childEnv(), ...connectionEnv, CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: '1' },
       permissionMode: sdkPermissionMode,
-      // 不设 systemPrompt 时 SDK 只给"最小提示词"，跟 CLI 不一样；用 preset 对齐
-      systemPrompt: { type: 'preset', preset: 'claude_code' },
+      // 不设 systemPrompt 时 SDK 只给"最小提示词"，跟 CLI 不一样；用 preset 对齐。
+      // append：Claude 习惯把截图等输出文件写成行内代码路径，前端只把 Markdown 图片 / 链接渲染成可预览的文件
+      systemPrompt: {
+        type: 'preset',
+        preset: 'claude_code',
+        append: 'Your replies are rendered as Markdown in a web UI that can display local files. When you mention a local image you produced or want the user to look at (screenshots, charts), embed it with `![name](/absolute/path.png)`; link other output files as `[name](/absolute/path)`. Do not put these file paths in backticks.',
+      },
       includePartialMessages: true,
       // 加载 user 是为了拿 ~/.claude/CLAUDE.md、个人 skill 和插件；但本机 settings.json 的 defaultMode 是 bypassPermissions，
       // 会压过 permissionMode 选项，所以用 flag 层（最高优先级）把它按会话强制回来，并在 init 回包里复核（AGENTS.md 规则 2）
