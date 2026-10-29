@@ -135,6 +135,22 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
     return session;
   }
 
+  function removeSession(sessionId: string) {
+    // 空闲会话的 Provider 进程可能还活着（等下一条消息），先关掉
+    live.get(sessionId)?.close();
+    live.delete(sessionId);
+    watchers.delete(sessionId);
+    autoWakes.delete(sessionId);
+    pendingCompacts.delete(sessionId);
+    titleJobs.get(sessionId)?.abort();
+    store.deleteSession(sessionId);
+    // 表已一致，目录删失败也不回滚；残留会在下次删除同 id 时被 force 覆盖
+    attachments.removeAll(sessionId);
+    for (const fn of deletedListeners.get(sessionId) ?? []) fn();
+    listeners.delete(sessionId);
+    deletedListeners.delete(sessionId);
+  }
+
   const withBackground = (session: Session): Session => ({ ...session, backgroundTasks: background.get(session.id) ?? 0 });
 
   function requestedEvent(request: PendingRequest): ProviderEvent {
@@ -445,23 +461,21 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
       return getSession(session.id);
     },
 
-    /** 只删 idle / error 的会话：运行中的让用户先中断或等结束，Hub 不处理关 Provider 的时序 */
-    deleteSession(sessionId: string) {
-      const session = getSession(sessionId);
-      if (session.status === 'running' || session.status === 'waiting_user') throw new HubError(409, 'Session is running; stop it or wait for it to finish before deleting');
-      // 空闲会话的 Provider 进程可能还活着（等下一条消息），先关掉
-      live.get(sessionId)?.close();
-      live.delete(sessionId);
-      watchers.delete(sessionId);
-      autoWakes.delete(sessionId);
-      pendingCompacts.delete(sessionId);
-      titleJobs.get(sessionId)?.abort();
-      store.deleteSession(sessionId);
-      // 表已一致，目录删失败也不回滚；残留会在下次删除同 id 时被 force 覆盖
-      attachments.removeAll(sessionId);
-      for (const fn of deletedListeners.get(sessionId) ?? []) fn();
-      listeners.delete(sessionId);
-      deletedListeners.delete(sessionId);
+    /**
+     * 只删 idle / error 的会话：运行中的让用户先中断或等结束，Hub 不处理关 Provider 的时序。
+     * withDescendants 连同整棵子树（含孙会话、子会话的分叉）一起删；先整体检查，有一个在跑就全不删，不留半截
+     */
+    deleteSession(sessionId: string, withDescendants = false) {
+      const root = getSession(sessionId);
+      const doomed = [root];
+      if (withDescendants) {
+        const all = store.listSessions();
+        for (let i = 0; i < doomed.length; i++) doomed.push(...all.filter((s) => s.parentId === doomed[i].id));
+      }
+      const running = doomed.filter((s) => s.status === 'running' || s.status === 'waiting_user');
+      if (running.includes(root)) throw new HubError(409, 'Session is running; stop it or wait for it to finish before deleting');
+      if (running.length) throw new HubError(409, `Sub-sessions still running: ${running.map((s) => s.title ?? 'New session').join(', ')}. Stop them or wait for them to finish before deleting`);
+      for (const s of doomed) removeSession(s.id);
     },
 
     sendMessage,

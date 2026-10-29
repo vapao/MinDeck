@@ -31,6 +31,8 @@
 
 只允许 idle / error（否则 409）。级联删 events / pending_requests / attachments 及 `data/uploads/<id>/`；Provider 原生记录（`~/.claude/projects`、Codex thread）不动。
 
+有子会话（按 `parent_id` 递归，含孙会话、子会话的分叉，不分 Active / Inactive）时，确认框选「Delete this only」（主按钮，子会话留作独立会话）或「Delete with N sub-sessions」（`DELETE ?descendants=true`）；× / Esc 取消。整棵树先整体检查，任一会话 running / waiting_user 即 409 并列出标题，一个都不删。
+
 删除当前会话后，手机布局（< 1024px）返回会话列表；桌面优先进入同项目最近活跃的 Active 会话，其次任意 Active 会话，没有其他会话才回首页。在别处删除当前会话时也遵循此规则。
 
 ## 切片 10：改动侧栏（桌面）

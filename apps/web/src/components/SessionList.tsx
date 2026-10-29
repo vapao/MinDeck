@@ -9,7 +9,7 @@ import { openNewSession } from './NewSessionDialog'
 import { dialog } from './Dialog'
 import { isUnread, useSeen } from '../session/seen'
 import { useDraftSessions } from '../session/drafts'
-import { leaveSession } from '../session/useSessions'
+import { confirmDeleteSession, leaveSession } from '../session/useSessions'
 import { useMediaQuery } from '../session/useMediaQuery'
 import { useServices } from './ServicesPanel'
 import styles from './SessionList.module.css'
@@ -54,15 +54,16 @@ export function SessionTabs({ sessions, activeId }: { sessions: Session[]; activ
     onError: (err) => dialog.alert({ title: 'Archive failed', message: err.message }),
   })
   const remove = useMutation({
-    mutationFn: api.deleteSession,
-    onSuccess: (_, id) => {
+    mutationFn: ({ id, descendants }: { id: string; descendants: boolean }) => api.deleteSession(id, descendants),
+    onSuccess: (_, { id }) => {
       invalidate()
       if (id === activeId) leaveSession(sessions, id)
     },
     onError: (err) => dialog.alert({ title: 'Delete failed', message: err.message }),
   })
   const onRemove = async (id: string) => {
-    if (await dialog.confirm({ title: 'Delete this session?', message: 'The session and all its history will be deleted permanently.', ok: 'Delete', danger: true })) remove.mutate(id)
+    const choice = await confirmDeleteSession(sessions, id)
+    if (choice) remove.mutate({ id, ...choice })
   }
   const actions = (s: Session): Action[] =>
     tab === 'active'

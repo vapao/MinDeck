@@ -48,7 +48,7 @@ export const api = {
   readFile: (sessionId: string, path: string) => request<FileResponse>(`/api/sessions/${sessionId}/file?path=${encodeURIComponent(path)}`),
   updateSession: (sessionId: string, body: UpdateSessionBody) => request<UpdateSessionResponse>(`/api/sessions/${sessionId}`, { method: 'PATCH', body: JSON.stringify(body) }),
   forkSession: (sessionId: string, body: ForkSessionBody) => request<ForkSessionResponse>(`/api/sessions/${sessionId}/fork`, { method: 'POST', body: JSON.stringify(body) }),
-  deleteSession: (sessionId: string) => request<DeleteSessionResponse>(`/api/sessions/${sessionId}`, { method: 'DELETE' }),
+  deleteSession: (sessionId: string, descendants = false) => request<DeleteSessionResponse>(`/api/sessions/${sessionId}${descendants ? '?descendants=true' : ''}`, { method: 'DELETE' }),
   interrupt: (sessionId: string) => request<InterruptResponse>(`/api/sessions/${sessionId}/interrupt`, { method: 'POST' }),
   createSession: (body: CreateSessionBody) =>
     request<CreateSessionResponse>('/api/sessions', { method: 'POST', body: JSON.stringify(body) }),

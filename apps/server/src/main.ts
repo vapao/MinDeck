@@ -301,10 +301,14 @@ app.post<{ Params: { id: string }; Body: ForkSessionBody }>(
   (req): Promise<ForkSessionResponse> => hub.forkSession(req.params.id, req.body.beforeSeq, req.body.rewind),
 );
 
-app.delete<{ Params: { id: string } }>('/api/sessions/:id', (req) => {
-  hub.deleteSession(req.params.id);
-  return { ok: true };
-});
+app.delete<{ Params: { id: string }; Querystring: { descendants?: boolean } }>(
+  '/api/sessions/:id',
+  { schema: { querystring: { type: 'object', properties: { descendants: { type: 'boolean' } } } } },
+  (req) => {
+    hub.deleteSession(req.params.id, req.query.descendants);
+    return { ok: true };
+  },
+);
 
 app.post<{ Params: { id: string } }>('/api/sessions/:id/interrupt', async (req) => {
   await hub.interrupt(req.params.id);

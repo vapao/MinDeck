@@ -280,7 +280,7 @@ export type UpdateSessionResponse = Session;
 export type ForkSessionBody = { beforeSeq: number; rewind: boolean };
 export type ForkSessionResponse = Session;
 
-/** DELETE /api/sessions/:id：连同事件、待处理请求、附件（含文件）一起删；running / waiting_user 时 409 */
+/** DELETE /api/sessions/:id[?descendants=true]：连同事件、待处理请求、附件（含文件）一起删；带 descendants 时整棵子会话树一起删。任一要删的会话 running / waiting_user 时 409，一个都不删 */
 export type DeleteSessionResponse = { ok: true };
 
 export type ListWorkspacesResponse = Workspace[];

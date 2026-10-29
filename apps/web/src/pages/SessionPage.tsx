@@ -11,7 +11,7 @@ import { saveDraft } from '../session/drafts'
 import { groupTools, layout, type Entry } from '../session/layout'
 import { useMediaQuery } from '../session/useMediaQuery'
 import { useAutoHideScrollbar } from '../session/useAutoHideScrollbar'
-import { leaveSession, useSessions } from '../session/useSessions'
+import { confirmDeleteSession, leaveSession, useSessions } from '../session/useSessions'
 import { ChangesPanel } from '../components/ChangesPanel'
 import { UserMessage } from '../components/UserMessage'
 import { AssistantMessage } from '../components/AssistantMessage'
@@ -129,7 +129,7 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
   })
   // 删除：运行中的服务端会 409，消息原样给用户看；成功后手机回列表，桌面跳到邻居会话。移到 Inactive / 移回在侧栏行上操作
   const remove = useMutation({
-    mutationFn: () => api.deleteSession(sessionId),
+    mutationFn: (descendants: boolean) => api.deleteSession(sessionId, descendants),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sessions'] })
       leaveSession(sessions.data, sessionId)
@@ -137,7 +137,8 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
     onError: (err) => dialog.alert({ title: 'Delete failed', message: err.message }),
   })
   const onDelete = async () => {
-    if (await dialog.confirm({ title: 'Delete this session?', message: 'The session and all its history will be deleted permanently.', ok: 'Delete', danger: true })) remove.mutate()
+    const choice = await confirmDeleteSession(sessions.data, sessionId)
+    if (choice) remove.mutate(choice.descendants)
   }
   // 在别处被删了：离开页面
   useEffect(() => {
