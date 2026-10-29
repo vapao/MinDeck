@@ -261,6 +261,9 @@ export function openStore(path: string) {
     setSessionArchivedAt(id: string, archivedAt: string | null) {
       updateArchivedAt.run(archivedAt, id);
     },
+    setSessionParent(id: string, parentId: string | null) {
+      db.prepare('UPDATE sessions SET parent_id = ? WHERE id = ?').run(parentId, id);
+    },
     /** 派生授权落库：用户离开时 Hub 可能被 update-when-idle 重启，只放内存会让夜里的下一次 create_session 卡在审批上 */
     setSpawnGranted(id: string, granted: boolean) {
       if (granted) db.prepare('UPDATE sessions SET spawn_granted_at = ? WHERE id = ? AND spawn_granted_at IS NULL').run(new Date().toISOString(), id);

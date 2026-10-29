@@ -156,6 +156,17 @@ export function createMcpServer(hub: Hub, store: Store, services: Services, call
     return json(result);
   });
 
+  server.registerTool('move_session', {
+    description: 'Move a session under another parent session, or to the top level when parent is omitted. To split off a separate line of work: create_session for it (its brief names the sessions it will take over and that their results will come to it), move it to the top level, then move those sessions under it. A result its old parent was waiting for (notify) goes to the new parent instead, or is dropped at the top level.',
+    inputSchema: {
+      id: z.string(),
+      parent: z.string().optional().describe('New parent session id; omit to make it a top-level session'),
+    },
+  }, ({ id, parent }) => {
+    const session = hub.moveSession(id, parent ?? null);
+    return json({ id: session.id, parentId: session.parentId });
+  });
+
   server.registerTool('compact_after_turn', {
     description: 'Compact your own conversation context once your current turn ends, to drop exploration that is no longer needed. End your turn right after calling this. Results of sessions you are notified about that arrive during compaction are delivered after it. Claude and DeepSeek sessions only.',
     inputSchema: {

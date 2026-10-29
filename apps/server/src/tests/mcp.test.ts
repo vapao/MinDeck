@@ -56,3 +56,30 @@ test('create_session needs approval and leaves no empty session', async () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// 规则：move_session 不能让隶属关系成环（挂到自己或后代下），否则侧栏展开和连子树删除会死循环。
+test('move_session rejects cycles', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'agentdeck-mcp-'));
+  const store = openStore(':memory:');
+  const hub = createHub(store, createAttachmentStore(store, join(dir, 'uploads')), (id) => agentdeckMcpFor('http://127.0.0.1:0/mcp', id));
+  try {
+    store.createWorkspace({ id: 'workspace', path: dir, alias: 'test', createdAt: new Date().toISOString() });
+    const a = hub.createSession('claude', dir);
+    const child = hub.createSession('claude', dir, { parentId: a.id });
+    const grandchild = hub.createSession('claude', dir, { parentId: child.id });
+    for (const [id, parent] of [[a.id, a.id], [a.id, child.id], [a.id, grandchild.id], [child.id, grandchild.id]]) {
+      assert.throws(() => hub.moveSession(id, parent), /under itself/);
+    }
+    assert.deepEqual(hub.listSessions().map((s) => [s.id, s.parentId]).sort(), [[a.id, null], [child.id, a.id], [grandchild.id, child.id]].sort());
+
+    const b = hub.createSession('claude', dir);
+    hub.moveSession(grandchild.id, b.id);
+    hub.moveSession(child.id, null);
+    assert.equal(hub.getSession(grandchild.id).parentId, b.id);
+    assert.equal(hub.getSession(child.id).parentId, null);
+  } finally {
+    hub.close();
+    store.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

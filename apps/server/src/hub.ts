@@ -487,6 +487,31 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
       parents.set(parentId, store.lastSeq(childId));
     },
 
+    /**
+     * 改隶属关系（MCP move_session），parentId 为 null 即移到顶层。汇报对象跟着父级走：原父会话登记、还没触发的回调转给新父会话，移到顶层则丢弃；
+     * 其他会话自己登记的回调不动
+     */
+    moveSession(sessionId: string, parentId: string | null): Session {
+      const session = getSession(sessionId);
+      if (parentId) {
+        getSession(parentId);
+        // 挂到自己或后代下面会成环：侧栏展开和连子树删除都会死循环
+        for (let id: string | null = parentId; id; id = store.getSession(id)?.parentId ?? null) {
+          if (id === sessionId) throw new HubError(400, 'Cannot move a session under itself or its own sub-session');
+        }
+      }
+      if (session.parentId === parentId) return session;
+      store.setSessionParent(sessionId, parentId);
+      const parents = watchers.get(sessionId);
+      const since = session.parentId ? parents?.get(session.parentId) : undefined;
+      if (parents && since !== undefined) {
+        parents.delete(session.parentId!);
+        if (parentId) parents.set(parentId, Math.min(since, parents.get(parentId) ?? since));
+        if (!parents.size) watchers.delete(sessionId);
+      }
+      return getSession(sessionId);
+    },
+
     /** 当前轮结束后压缩上下文；Codex 的 /compact 不接受压缩指示，不支持 */
     compactAfterTurn(sessionId: string, instructions: string) {
       if (getSession(sessionId).provider === 'codex') throw new HubError(400, 'Codex sessions do not support compaction instructions');
