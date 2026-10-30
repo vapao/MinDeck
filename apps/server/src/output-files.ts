@@ -25,7 +25,7 @@ export async function outputFile(cwd: string, input: string, readText = true) {
         try {
           if (!bytes.includes(0)) {
             content = new TextDecoder('utf-8', { fatal: true }).decode(bytes, { stream: info.size > bytesRead });
-            kind = /\.(md|markdown|mdown)$/i.test(path) ? 'markdown' : 'text';
+            kind = /\.(md|mdx|markdown|mdown)$/i.test(path) ? 'markdown' : 'text';
             truncated = info.size > bytesRead;
           }
         } catch (error) {

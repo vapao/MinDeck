@@ -33,7 +33,9 @@ const theme = EditorView.theme({
 }, { dark: true })
 
 async function language(path: string): Promise<Extension> {
-  const match = LanguageDescription.matchFilename(languages, path.split('/').pop() ?? '')
+  const name = path.split('/').pop() ?? ''
+  // language-data 没有 MDX，按 Markdown 高亮
+  const match = /\.mdx$/i.test(name) ? LanguageDescription.matchLanguageName(languages, 'markdown') : LanguageDescription.matchFilename(languages, name)
   return match ? await match.load() : []
 }
 
