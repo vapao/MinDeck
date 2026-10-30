@@ -171,9 +171,10 @@ export function createMcpServer(hub: Hub, store: Store, services: Services, call
     description: 'Compact your own conversation context once your current turn ends, to drop exploration that is no longer needed. End your turn right after calling this. Results of sessions you are notified about that arrive during compaction are delivered after it. Claude and DeepSeek sessions only.',
     inputSchema: {
       instructions: z.string().min(1).describe('What the summary must keep verbatim (e.g. session IDs you will message later, the original request, decisions, changed files, pending steps) and what it may drop'),
+      continueWith: z.string().min(1).optional().describe('Message sent to you right after compaction so you resume on your own, e.g. the next step to take. Omit it when a notified sub-session or the user will wake you'),
     },
-  }, ({ instructions }) => {
-    hub.compactAfterTurn(callerId, instructions);
+  }, ({ instructions, continueWith }) => {
+    hub.compactAfterTurn(callerId, instructions, continueWith);
     return json({ scheduled: true });
   });
 

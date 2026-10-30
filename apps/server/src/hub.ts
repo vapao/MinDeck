@@ -45,8 +45,11 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
   // 父会话在用户没插话的情况下被自动回调唤醒的次数：两个 Agent 可能互相派活、来回唤醒，bypass 下没人拦
   const autoWakes = new Map<string, number>();
   const maxAutoWakes = 5;
-  // Agent 经 MCP compact_after_turn 预约的压缩：会话 id → 压缩指示。本轮正常结束时发出，中断 / 失败作废；只在内存里
-  const pendingCompacts = new Map<string, string>();
+  // Agent 经 MCP compact_after_turn 预约的压缩：会话 id → 压缩指示和压缩后的续跑指令。本轮正常结束时发出，中断 / 失败作废；只在内存里
+  const pendingCompacts = new Map<string, { instructions: string; continueWith?: string }>();
+  // 各会话最近一次上报的上下文 token 数。Agent 看不到自己的用量，超过阈值时由 Hub 在发给它的消息末尾提示；压缩一开始就清掉，等压缩后的新值
+  const contextTokens = new Map<string, number>();
+  const compactHintTokens = 150_000;
   // 各会话 Agent 自己起的后台任务数：Hub 重启时子进程连同后台任务一起没了，所以只放内存
   const background = new Map<string, number>();
   const repositoryWrites = new Map<string, string>();
@@ -142,6 +145,7 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
     watchers.delete(sessionId);
     autoWakes.delete(sessionId);
     pendingCompacts.delete(sessionId);
+    contextTokens.delete(sessionId);
     titleJobs.get(sessionId)?.abort();
     store.deleteSession(sessionId);
     // 表已一致，目录删失败也不回滚；残留会在下次删除同 id 时被 force 覆盖
@@ -219,6 +223,7 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
         if (!store.getSession(session.id)) return;
         if (event.type === 'session.started') store.setProviderSessionId(session.id, event.payload.providerSessionId);
         if (event.type === 'usage.updated') usage[event.payload.rateLimitType] = event.payload;
+        if (event.type === 'context.updated') contextTokens.set(session.id, event.payload.tokens);
         if (event.type === 'background.changed') {
           if (event.count) background.set(session.id, event.count);
           else background.delete(session.id);
@@ -253,14 +258,23 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
 
   // 压缩期间到达的回调照常插入：SDK 会把它排在压缩之后，在新上下文里处理
   function runPendingCompact(sessionId: string, completed: boolean) {
-    const instructions = pendingCompacts.get(sessionId);
+    const pending = pendingCompacts.get(sessionId);
     pendingCompacts.delete(sessionId);
-    if (instructions === undefined || !completed) return;
+    if (!pending || !completed) return;
     try {
-      sendMessage(sessionId, `/compact ${instructions}`, [], 'agent');
+      sendMessage(sessionId, `/compact ${pending.instructions}`, [], 'agent');
+      // 压缩已在跑，这条走插入路径排在压缩之后；用户中断压缩时随 cancelQueued 一起丢弃
+      if (pending.continueWith) sendMessage(sessionId, pending.continueWith, [], 'agent');
     } catch (err) {
       emit(sessionId, { type: 'error', payload: { message: `Skipped the scheduled compaction: ${(err as Error).message}` } });
     }
+  }
+
+  // 只提示 Claude / DeepSeek：Codex 不支持 compact_after_turn
+  function withCompactHint(session: Session, text: string): string {
+    const tokens = contextTokens.get(session.id);
+    if (session.provider === 'codex' || tokens === undefined || tokens < compactHintTokens || pendingCompacts.has(session.id)) return text;
+    return `${text}\n\n[AgentDeck: your context is ${Math.round(tokens / 1000)}K tokens. If work remains after this turn (more steps, waiting for a sub-session, or the user's next instruction), call compact_after_turn before ending it; skip it if the task is finished.]`;
   }
 
   function dispatch(sessionId: string, provider: ProviderSession, { text, files }: { text: string; files: Attachment[] }) {
@@ -300,14 +314,16 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
       if (session.provider === 'codex' && text.trim() !== '/compact') throw new HubError(400, "Codex's /compact doesn't take instructions");
     }
     const provider = ensureProvider(session);
+    if (isCompactCommand(text)) contextTokens.delete(sessionId);
+    const sent = withCompactHint(session, text);
     // 从归档里点进来继续聊：一旦又活起来就得回到侧栏，否则会在看不见的地方跑
     if (session.archivedAt) store.setSessionArchivedAt(sessionId, null);
     const firstText = !!text.trim() && !store.hasUserText(sessionId);
     const { seq } = emit(sessionId, { type: 'message.user', payload: { text, attachments: files } });
     // 一轮进行中直接交给 Provider 插入当前轮，Agent 下一步就能看到，不等这一轮结束
     const steered = session.status === 'running' || session.status === 'waiting_user';
-    if (steered) provider.send({ text, images: files.map((a) => ({ mimeType: a.mimeType, path: attachments.pathOf(a) })) });
-    else dispatch(sessionId, provider, { text, files });
+    if (steered) provider.send({ text: sent, images: files.map((a) => ({ mimeType: a.mimeType, path: attachments.pathOf(a) })) });
+    else dispatch(sessionId, provider, { text: sent, files });
     const config = settings();
     if (firstText && config.titles.enabled) {
       const controller = new AbortController();
@@ -513,9 +529,9 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
     },
 
     /** 当前轮结束后压缩上下文；Codex 的 /compact 不接受压缩指示，不支持 */
-    compactAfterTurn(sessionId: string, instructions: string) {
+    compactAfterTurn(sessionId: string, instructions: string, continueWith?: string) {
       if (getSession(sessionId).provider === 'codex') throw new HubError(400, 'Codex sessions do not support compaction instructions');
-      pendingCompacts.set(sessionId, instructions);
+      pendingCompacts.set(sessionId, { instructions, continueWith });
     },
 
     /** 派生授权：之后 create_session 免审批，用于用户离开时让监督会话自主派活。来源是顶栏开关或派生审批卡上的"本会话允许" */
