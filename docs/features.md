@@ -31,7 +31,7 @@
 
 只允许 idle / error（否则 409）。级联删 events / pending_requests / attachments 及 `data/uploads/<id>/`；Provider 原生记录（`~/.claude/projects`、Codex thread）不动。
 
-有子会话（按 `parent_id` 递归，含孙会话、子会话的分叉，不分 Active / Inactive）时，确认框选「Delete this only」（主按钮，子会话留作独立会话）或「Delete with N sub-sessions」（`DELETE ?descendants=true`）；× / Esc 取消。整棵树先整体检查，任一会话 running / waiting_user 即 409 并列出标题，一个都不删。
+有子会话（按 `parent_id` 递归，含孙会话、子会话的分叉，不分 Active / Inactive）时，确认框选「Delete with N sub-sessions」（主按钮，`DELETE ?descendants=true`）或「Delete this only」（子会话留作独立会话）；× / Esc 取消。整棵树先整体检查，任一会话 running / waiting_user 即 409 并列出标题，一个都不删。
 
 删除当前会话后，手机布局（< 1024px）返回会话列表；桌面优先进入同项目最近活跃的 Active 会话，其次任意 Active 会话，没有其他会话才回首页。在别处删除当前会话时也遵循此规则。
 
@@ -57,7 +57,7 @@ diff 弹窗底部提供 `Discard changes`；列表不显示回退按钮，必须
 
 ## 切片 12：Active / Inactive
 
-`sessions.archived_at`、`PATCH /api/sessions/:id { archived }`（running / waiting_user 409；给归档会话发消息自动取消归档）。侧栏两个页签共用分组列表：分组按组内最近活动排、可折叠（localStorage），折叠后仍露出 running / waiting_user 会话。Active 行 hover 可移到 Inactive；Inactive 行 hover 可移回 / 永久删除。会话页头部固定为「删除」；「新开一轮」在发送按钮左侧。图标 `EyeOff` / `Eye`。
+`sessions.archived_at`、`PATCH /api/sessions/:id { archived }`（running / waiting_user 409；给归档会话发消息自动取消归档）。侧栏两个页签共用分组列表：分组按组内最近活动排、可折叠（localStorage），折叠后仍露出 running / waiting_user 会话。Active 行 hover 可移到 Inactive / 永久删除（仅桌面、idle / error）；Inactive 行 hover 可移回 / 永久删除。会话页头部固定为「删除」；「新开一轮」在发送按钮左侧。图标 `EyeOff` / `Eye`。
 
 **未做**：侧栏过滤框。
 

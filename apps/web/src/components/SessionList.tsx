@@ -36,11 +36,11 @@ function toggleCollapsed(cwd: string) {
 
 type Tab = 'active' | 'inactive'
 
-// 「Active / Inactive」两个页签，同一套分组列表：Active 是日常工作区，行上可归档；Inactive 是归档区，行上可恢复 / 永久删除。
+// 「Active / Inactive」两个页签，同一套分组列表：Active 是日常工作区，行上可归档 / 永久删除；Inactive 是归档区，行上可恢复 / 永久删除。
 // 桌面侧栏与移动端列表页共用（UI 规范 §4）
 export function SessionTabs({ sessions, activeId }: { sessions: Session[]; activeId?: string }) {
   const [tab, setTab] = useState<Tab>('active')
-  // 手机端行操作是常显的：Active 行上的「移到 Inactive」只是噪音，手机只做看与回复，收纳在桌面做
+  // 手机端行操作是常显的：Active 行上的「移到 Inactive」/ 删除只是噪音，手机只做看与回复，收纳在桌面做
   const desktop = useMediaQuery('(min-width: 1024px)')
   const queryClient = useQueryClient()
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['sessions'] })
@@ -68,7 +68,10 @@ export function SessionTabs({ sessions, activeId }: { sessions: Session[]; activ
   const actions = (s: Session): Action[] =>
     tab === 'active'
       ? desktop && (s.status === 'idle' || s.status === 'error')
-        ? [{ icon: <EyeOff size={14} />, label: 'Move to inactive', onClick: () => setArchived.mutate({ id: s.id, archived: true }) }]
+        ? [
+            { icon: <EyeOff size={14} />, label: 'Move to inactive', onClick: () => setArchived.mutate({ id: s.id, archived: true }) },
+            { icon: <Trash2 size={14} />, label: 'Delete permanently', danger: true, onClick: () => onRemove(s.id) },
+          ]
         : []
       : [
           { icon: <Eye size={14} />, label: 'Move back to active', onClick: () => setArchived.mutate({ id: s.id, archived: false }) },

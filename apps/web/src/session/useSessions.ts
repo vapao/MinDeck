@@ -27,12 +27,12 @@ export async function confirmDeleteSession(sessions: Session[] | undefined, id: 
   const count = tree.length - 1
   const message = 'The session and all its history will be deleted permanently.'
   if (!count) return (await dialog.confirm({ title: 'Delete this session?', message, ok: 'Delete', danger: true })) ? { descendants: false } : null
-  const only = await dialog.confirm({
+  const descendants = await dialog.confirm({
     title: 'Delete this session?',
     message: `${message} It has ${count} sub-session${count > 1 ? 's' : ''} (including inactive ones); if kept, they stay as standalone sessions.`,
-    ok: 'Delete this only',
-    cancel: `Delete with ${count} sub-session${count > 1 ? 's' : ''}`,
+    ok: `Delete with ${count} sub-session${count > 1 ? 's' : ''}`,
+    cancel: 'Delete this only',
     danger: true,
   })
-  return only === null ? null : { descendants: !only }
+  return descendants === null ? null : { descendants }
 }
