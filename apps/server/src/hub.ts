@@ -47,9 +47,11 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
   const maxAutoWakes = 5;
   // Agent 经 MCP compact_after_turn 预约的压缩：会话 id → 压缩指示和压缩后的续跑指令。本轮正常结束时发出，中断 / 失败作废；只在内存里
   const pendingCompacts = new Map<string, { instructions: string; continueWith?: string }>();
-  // 各会话最近一次上报的上下文 token 数。Agent 看不到自己的用量，超过阈值时由 Hub 在发给它的消息末尾提示；压缩一开始就清掉，等压缩后的新值
+  // 各会话最近一次上报的上下文 token 数。Agent 看不到自己的用量，一轮结束时超过阈值由 Hub 提示它预约压缩；压缩一开始就清掉，等压缩后的新值
   const contextTokens = new Map<string, number>();
   const compactHintTokens = 150_000;
+  // 刚发过压缩提示的会话：提示那一轮结束时不再提示，否则 Agent 没预约、上下文不降就会一直循环
+  const compactHinted = new Set<string>();
   // 各会话 Agent 自己起的后台任务数：Hub 重启时子进程连同后台任务一起没了，所以只放内存
   const background = new Map<string, number>();
   const repositoryWrites = new Map<string, string>();
@@ -146,6 +148,7 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
     autoWakes.delete(sessionId);
     pendingCompacts.delete(sessionId);
     contextTokens.delete(sessionId);
+    compactHinted.delete(sessionId);
     titleJobs.get(sessionId)?.abort();
     store.deleteSession(sessionId);
     // 表已一致，目录删失败也不回滚；残留会在下次删除同 id 时被 force 覆盖
@@ -260,21 +263,29 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
   function runPendingCompact(sessionId: string, completed: boolean) {
     const pending = pendingCompacts.get(sessionId);
     pendingCompacts.delete(sessionId);
-    if (!pending || !completed) return;
+    const hinted = compactHinted.delete(sessionId);
+    if (!completed) return;
     try {
-      sendMessage(sessionId, `/compact ${pending.instructions}`, [], 'agent');
-      // 压缩已在跑，这条走插入路径排在压缩之后；用户中断压缩时随 cancelQueued 一起丢弃
-      if (pending.continueWith) sendMessage(sessionId, pending.continueWith, [], 'agent');
+      if (pending) {
+        sendMessage(sessionId, `/compact ${pending.instructions}`, [], 'agent');
+        // 压缩已在跑，这条走插入路径排在压缩之后；用户中断压缩时随 cancelQueued 一起丢弃
+        if (pending.continueWith) sendMessage(sessionId, pending.continueWith, [], 'agent');
+      } else if (!hinted) {
+        hintCompact(sessionId);
+      }
     } catch (err) {
-      emit(sessionId, { type: 'error', payload: { message: `Skipped the scheduled compaction: ${(err as Error).message}` } });
+      emit(sessionId, { type: 'error', payload: { message: `Skipped the compaction: ${(err as Error).message}` } });
     }
   }
 
-  // 只提示 Claude / DeepSeek：Codex 不支持 compact_after_turn
-  function withCompactHint(session: Session, text: string): string {
-    const tokens = contextTokens.get(session.id);
-    if (session.provider === 'codex' || tokens === undefined || tokens < compactHintTokens || pendingCompacts.has(session.id)) return text;
-    return `${text}\n\n[AgentDeck: your context is ${Math.round(tokens / 1000)}K tokens. If work remains after this turn (more steps, waiting for a sub-session, or the user's next instruction), call compact_after_turn before ending it; skip it if the task is finished.]`;
+  // 压缩约等于多跑一个请求，之后每个请求都少带十几万 token，所以不让 Agent 判断要不要压，只让它写保留什么。
+  // 只提示 Claude / DeepSeek：Codex 不支持 compact_after_turn。有后台任务时 Agent 之后会被唤醒继续干，等那一轮结束再提示
+  function hintCompact(sessionId: string) {
+    const session = getSession(sessionId);
+    const tokens = contextTokens.get(sessionId);
+    if (session.provider === 'codex' || tokens === undefined || tokens < compactHintTokens || background.has(sessionId)) return;
+    compactHinted.add(sessionId);
+    sendMessage(sessionId, `[AgentDeck] Your context is ${Math.round(tokens / 1000)}K tokens. Call compact_after_turn now with instructions on what to keep for whatever comes next in this session, then end your turn without doing anything else. Pass continueWith only if you stopped with unfinished steps to resume on your own.`, [], 'agent');
   }
 
   function dispatch(sessionId: string, provider: ProviderSession, { text, files }: { text: string; files: Attachment[] }) {
@@ -315,15 +326,14 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
     }
     const provider = ensureProvider(session);
     if (isCompactCommand(text)) contextTokens.delete(sessionId);
-    const sent = withCompactHint(session, text);
     // 从归档里点进来继续聊：一旦又活起来就得回到侧栏，否则会在看不见的地方跑
     if (session.archivedAt) store.setSessionArchivedAt(sessionId, null);
     const firstText = !!text.trim() && !store.hasUserText(sessionId);
     const { seq } = emit(sessionId, { type: 'message.user', payload: { text, attachments: files } });
     // 一轮进行中直接交给 Provider 插入当前轮，Agent 下一步就能看到，不等这一轮结束
     const steered = session.status === 'running' || session.status === 'waiting_user';
-    if (steered) provider.send({ text: sent, images: files.map((a) => ({ mimeType: a.mimeType, path: attachments.pathOf(a) })) });
-    else dispatch(sessionId, provider, { text: sent, files });
+    if (steered) provider.send({ text, images: files.map((a) => ({ mimeType: a.mimeType, path: attachments.pathOf(a) })) });
+    else dispatch(sessionId, provider, { text, files });
     const config = settings();
     if (firstText && config.titles.enabled) {
       const controller = new AbortController();
