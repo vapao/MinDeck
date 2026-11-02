@@ -1,5 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
-import type { AgentEvent, Attachment, EventType, PendingRequest, PendingRequestBody, PermissionMode, ProviderEvent, Resolution, ServiceConfig, Session, SessionStatus, Settings, Workspace } from '@agentdeck/shared';
+import type { AgentEvent, Attachment, EventType, PendingRequest, PendingRequestBody, PermissionMode, ProviderEvent, Resolution, Schedule, ScheduleConfig, ServiceConfig, Session, SessionStatus, Settings, Workspace } from '@agentdeck/shared';
 
 export type Store = ReturnType<typeof openStore>;
 /** pid 是服务进程组的组长；startedAt 是它在 ps 里的启动时间，用来识别 pid 是否已被别的进程复用 */
@@ -63,6 +63,15 @@ export function openStore(path: string) {
     CREATE TABLE IF NOT EXISTS settings (
       key   TEXT PRIMARY KEY,
       value TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS schedules (
+      id              TEXT PRIMARY KEY,
+      config          TEXT NOT NULL,
+      next_run_at     TEXT,
+      last_run_at     TEXT,
+      last_session_id TEXT,
+      last_error      TEXT,
+      created_at      TEXT NOT NULL
     );
   `);
   // 旧库没有就补上（SQLite 没有 ADD COLUMN IF NOT EXISTS）：model / effort 是切片 8 加的，permission_mode 是权限模式那次加的，archived_at 是切片 12 加的，parent_id 是派生会话隶属关系那次加的，spawn_granted_at 是派生授权持久化那次加的
@@ -198,7 +207,18 @@ export function openStore(path: string) {
     startedAt: (r.started_at as string | null) ?? null,
     createdAt: r.created_at as string,
   });
-  const rowToEvent = (r: Record<string, unknown>): AgentEvent =>
+  const scheduleConfig = ({ name, provider, workspaceId, model, effort, permissionMode, prompt, kind, time, enabled }: ScheduleConfig): ScheduleConfig =>
+    ({ name, provider, workspaceId, model, effort, permissionMode, prompt, kind, time, enabled });
+  const rowToSchedule = (r: Record<string, unknown>): Schedule => ({
+    ...(JSON.parse(r.config as string) as ScheduleConfig),
+    id: r.id as string,
+    nextRunAt: (r.next_run_at as string | null) ?? null,
+    lastRunAt: (r.last_run_at as string | null) ?? null,
+    lastSessionId: (r.last_session_id as string | null) ?? null,
+    lastError: (r.last_error as string | null) ?? null,
+    createdAt: r.created_at as string,
+  });
+  const rowToEvent =(r: Record<string, unknown>): AgentEvent =>
     ({
       sessionId: r.session_id,
       seq: r.seq,
@@ -355,6 +375,30 @@ export function openStore(path: string) {
     },
     deleteService(id: string): boolean {
       return deleteService.run(id).changes === 1;
+    },
+    createSchedule(s: Schedule) {
+      db.prepare(`INSERT INTO schedules (id, config, next_run_at, created_at) VALUES (?, ?, ?, ?)`).run(s.id, JSON.stringify(scheduleConfig(s)), s.nextRunAt, s.createdAt);
+    },
+    listSchedules(): Schedule[] {
+      return db.prepare(`SELECT * FROM schedules ORDER BY created_at`).all().map(rowToSchedule);
+    },
+    getSchedule(id: string): Schedule | undefined {
+      const row = db.prepare(`SELECT * FROM schedules WHERE id = ?`).get(id);
+      return row && rowToSchedule(row);
+    },
+    updateSchedule(id: string, config: ScheduleConfig, nextRunAt: string | null): boolean {
+      return db.prepare(`UPDATE schedules SET config = ?, next_run_at = ? WHERE id = ?`).run(JSON.stringify(config), nextRunAt, id).changes === 1;
+    },
+    /** 只有 next_run_at 仍是 expected 时才推进：先认领再执行，同一次到期最多执行一次 */
+    claimScheduleRun(id: string, expected: string, nextRunAt: string | null, enabled: boolean): boolean {
+      return db.prepare(`UPDATE schedules SET next_run_at = ?, config = json_set(config, '$.enabled', json(?)) WHERE id = ? AND next_run_at = ?`)
+        .run(nextRunAt, String(enabled), id, expected).changes === 1;
+    },
+    recordScheduleRun(id: string, at: string, sessionId: string | null, error: string | null) {
+      db.prepare(`UPDATE schedules SET last_run_at = ?, last_session_id = COALESCE(?, last_session_id), last_error = ? WHERE id = ?`).run(at, sessionId, error, id);
+    },
+    deleteSchedule(id: string): boolean {
+      return db.prepare(`DELETE FROM schedules WHERE id = ?`).run(id).changes === 1;
     },
     /** 应用级默认值整份存一行 JSON；没存过时返回 null */
     getSettings(): Settings | null {

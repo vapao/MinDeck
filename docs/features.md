@@ -160,3 +160,12 @@ Files 支持在项目根目录或指定子目录新建空文件 / 文件夹，�
 - Hub 前置校验：运行中 / 等待中 409（压缩独占一轮，不插入）；空会话 409；不能带附件；Codex 不接受附带指示（`/compact 其余文本` 400），Claude / DeepSeek 原样透传给 SDK 作为压缩指示。
 - Claude / DeepSeek：原文推入 Streaming Input，SDK 依次发 `status: compacting` → `compact_boundary` → `result: success` → `idle`；`compact_boundary.compact_metadata.post_tokens` 映射为 `context.updated`（自动压缩同样生效）。
 - Codex：改调 `thread/compact/start`（回包为空），随后 `turn/started` → `contextCompaction` item → `turn/completed`；turnId 从 `turn/started` 取，压缩中可中断。压缩那轮 `tokenUsage.last.inputTokens` 为 0，忽略，上下文数字等下一轮更新。
+
+## 定时任务
+
+- 侧栏 / 手机顶栏 Scheduled 页：到点在指定项目新建一个会话并发出 prompt。周期三选一：一次性（本机时区的日期时间）、每天、工作日（周一到周五，**不处理法定假日和调休**）。每次执行都新建会话，标题为"任务名 · 日期"（先占住标题，AI 标题不覆盖）。
+- 调度在 Hub 进程内：`schedules` 表 + 每 30 秒检查一次，启动时立即检查一次。先用条件更新推进 `next_run_at`（认领）再建会话，同一次到期最多执行一次；下一次从当前时间算，不逐次补跑。
+- 错过（Hub 重启、宕机）：过期 1 小时内的启动后补跑一次；更久的只在 `last_error` 记一条 Missed，不执行。执行失败（项目被移除、Key 未配等）也记在 `last_error`，不重试。一次性任务执行或错过后自动关闭。
+- model / effort 保存具体值（空 = Provider 默认）；权限模式存在任务上、不跟设置走，默认 approval，选 bypass 时前端二次确认。approval 模式下首个审批会停住等人，此时会话是 waiting_user，`update-when-idle` 会一直等它。
+- Run now 立即执行一次，不影响下次执行时间。
+- 未做：任意 cron 表达式、自选星期、MCP 创建定时任务、完成推送。

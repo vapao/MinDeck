@@ -1,5 +1,5 @@
 import { useRef } from 'react'
-import { Bell, FolderOpen, MessageSquare, Plus, Settings } from 'lucide-react'
+import { Bell, CalendarClock, FolderOpen, MessageSquare, Plus, Settings } from 'lucide-react'
 import { useAutoHideScrollbar } from './session/useAutoHideScrollbar'
 import { navigate, usePathname } from './router'
 import { useMediaQuery } from './session/useMediaQuery'
@@ -17,9 +17,10 @@ import { SessionListPage } from './pages/SessionListPage'
 import { SessionPage } from './pages/SessionPage'
 import { WorkspacesPage } from './pages/WorkspacesPage'
 import { SettingsPage } from './pages/SettingsPage'
+import { SchedulesPage } from './pages/SchedulesPage'
 import styles from './App.module.css'
 
-// 新建会话是全局弹窗，不占路由。路由：/ 列表（桌面为侧栏 + 空态）、/s/:id 会话页、/workspaces 项目、/settings 设置
+// 新建会话是全局弹窗，不占路由。路由：/ 列表（桌面为侧栏 + 空态）、/s/:id 会话页、/workspaces 项目、/schedules 定时任务、/settings 设置
 export default function App() {
   const pathname = usePathname()
   const desktop = useMediaQuery('(min-width: 1024px)')
@@ -28,7 +29,7 @@ export default function App() {
   const notifications = useNotifications(sessions.data, sessionId)
   useMarkSeen(sessions.data, sessionId)
 
-  const page = sessionId ? <SessionPage sessionId={sessionId} /> : pathname === '/workspaces' ? <WorkspacesPage /> : pathname === '/settings' ? <SettingsPage /> : null
+  const page = sessionId ? <SessionPage sessionId={sessionId} /> : pathname === '/workspaces' ? <WorkspacesPage /> : pathname === '/schedules' ? <SchedulesPage /> : pathname === '/settings' ? <SettingsPage /> : null
 
   return (
     <>
@@ -93,6 +94,10 @@ function Sidebar({ activeId }: { activeId?: string }) {
         <button type="button" className={styles.navButton} onClick={() => navigate('/workspaces')}>
           <FolderOpen size={14} />
           Projects
+        </button>
+        <button type="button" className={styles.navButton} onClick={() => navigate('/schedules')}>
+          <CalendarClock size={14} />
+          Scheduled
         </button>
         <button type="button" className={styles.navButton} onClick={() => navigate('/settings')}>
           <Settings size={14} />

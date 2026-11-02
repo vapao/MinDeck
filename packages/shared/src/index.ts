@@ -306,6 +306,19 @@ export type UpdateServiceBody = ServiceConfig;
  */
 export type ServiceLogResponse = { text: string; cursor: string; reset: boolean };
 
+// ---- 定时任务：到点在指定项目新建一个会话并发出 prompt ----
+
+/** once：time 为本机时区的 'YYYY-MM-DDTHH:mm'；daily / weekdays：time 为 'HH:mm'。weekdays 只算周一到周五，不处理法定假日和调休 */
+export type ScheduleKind = 'once' | 'daily' | 'weekdays';
+/** model / effort 空字符串 = Provider 默认，与新建会话里的 Default 一致；permissionMode 存在任务上，不跟设置走 */
+export type ScheduleConfig = { name: string; provider: ProviderId; workspaceId: string; model: string; effort: string; permissionMode: PermissionMode; prompt: string; kind: ScheduleKind; time: string; enabled: boolean };
+/** nextRunAt 为 null 表示已停用或一次性任务已执行；lastError 记最近一次失败或错过 */
+export type Schedule = ScheduleConfig & { id: string; nextRunAt: string | null; lastRunAt: string | null; lastSessionId: string | null; lastError: string | null; createdAt: string };
+/** GET /api/schedules，按创建时间排；POST /api/schedules、PATCH /api/schedules/:id 都传完整 ScheduleConfig */
+export type ListSchedulesResponse = Schedule[];
+/** POST /api/schedules/:id/run：立即执行一次，不影响下次执行时间 */
+export type RunScheduleResponse = { sessionId: string };
+
 /** GET /api/fs/dirs?path=：列出 path 下的子目录（跳过隐藏目录），只允许家目录内；path 省略 = 家目录 */
 export type ListDirsResponse = { path: string; parent: string | null; dirs: { name: string; path: string }[] };
 

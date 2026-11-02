@@ -8,7 +8,7 @@ import Fastify from 'fastify';
 import websocket from '@fastify/websocket';
 import multipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
-import type { ClientMessage, CreateServiceBody, CreateSessionBody, CreateWorkspaceBody, ForkSessionBody, ForkSessionResponse, ListDirsResponse, ResolvePendingBody, SendMessageBody, ServerMessage, SkillsResponse, UpdateServiceBody, UpdateSessionBody, UpdateSettingsBody, UpdateWorkspaceBody, UsageResponse, Workspace } from '@agentdeck/shared';
+import type { ClientMessage, CreateServiceBody, CreateSessionBody, CreateWorkspaceBody, ForkSessionBody, ForkSessionResponse, ListDirsResponse, ResolvePendingBody, ScheduleConfig, SendMessageBody, ServerMessage, SkillsResponse, UpdateServiceBody, UpdateSessionBody, UpdateSettingsBody, UpdateWorkspaceBody, UsageResponse, Workspace } from '@agentdeck/shared';
 import { openStore } from './store/db';
 import { createAttachmentStore, isImageMime, maxAttachmentBytes, maxAttachmentsPerMessage } from './store/attachments';
 import { createHub, HubError } from './hub';
@@ -19,6 +19,7 @@ import type { CreateProjectEntryBody, DeleteProjectEntryBody, DiscardChangeBody,
 import { createServices } from './services';
 import { agentdeckMcpFor, registerMcpRoute } from './mcp';
 import { readUpdateStatus } from './update-status';
+import { createScheduler } from './schedules';
 
 const repoRoot = resolve(import.meta.dirname, '../../..');
 // 端口分配见 ~/Workspace/mac-mini-tailscale-web-ports.md：8004 只监听本机；开发时由 vite dev server 代理，生产由 Tailscale Serve 8450 映射到这里
@@ -35,6 +36,7 @@ const store = openStore(dbPath);
 const attachments = createAttachmentStore(store, uploadsDir);
 const hub = createHub(store, attachments, (sessionId) => agentdeckMcpFor(`http://127.0.0.1:${port}/mcp`, sessionId));
 const services = createServices(store, resolve(repoRoot, 'data/logs/services'));
+const scheduler = createScheduler(store, hub);
 // 首次启动把本仓库种进去，否则新建会话页是空的
 if (store.listWorkspaces().length === 0) store.createWorkspace({ id: randomUUID(), path: repoRoot, alias: basename(repoRoot), createdAt: new Date().toISOString() });
 
@@ -127,6 +129,19 @@ for (const action of ['start', 'stop', 'restart'] as const) {
   });
 }
 app.get<{ Params: { id: string }; Querystring: { cursor?: string } }>('/api/services/:id/log', (req, reply) => reply.header('cache-control', 'no-store').send(services.log(req.params.id, req.query.cursor)));
+
+const scheduleBody = { schema: { body: { type: 'object', additionalProperties: false, required: ['name', 'provider', 'workspaceId', 'model', 'effort', 'permissionMode', 'prompt', 'kind', 'time', 'enabled'], properties: {
+  name: { type: 'string' }, provider: { enum: ['claude', 'codex', 'deepseek'] }, workspaceId: { type: 'string' }, model: { type: 'string' }, effort: { type: 'string' },
+  permissionMode: { type: 'string' }, prompt: { type: 'string' }, kind: { enum: ['once', 'daily', 'weekdays'] }, time: { type: 'string' }, enabled: { type: 'boolean' },
+} } } };
+app.get('/api/schedules', () => scheduler.list());
+app.post<{ Body: ScheduleConfig }>('/api/schedules', scheduleBody, (req, reply) => reply.code(201).send(scheduler.create(req.body)));
+app.patch<{ Params: { id: string }; Body: ScheduleConfig }>('/api/schedules/:id', scheduleBody, (req) => scheduler.update(req.params.id, req.body));
+app.delete<{ Params: { id: string } }>('/api/schedules/:id', (req) => {
+  scheduler.remove(req.params.id);
+  return { ok: true };
+});
+app.post<{ Params: { id: string } }>('/api/schedules/:id/run', (req) => ({ sessionId: scheduler.runNow(req.params.id) }));
 
 // 目录浏览（给添加工作区用）：只列家目录内的子目录，跳过隐藏目录；读不了的目录（权限）直接跳过
 app.get<{ Querystring: { path?: string } }>('/api/fs/dirs', (req): ListDirsResponse => {
@@ -392,8 +407,11 @@ app.get('/ws', { websocket: true, preValidation: (req, reply, done) => (checkOri
 });
 
 app.addHook('onClose', () => {
+  stopScheduler();
   hub.close();
   store.close();
 });
 
 await app.listen({ port, host: '127.0.0.1' });
+// 监听起来再开始执行：定时会话要连 /mcp
+const stopScheduler = scheduler.start();

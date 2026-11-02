@@ -1,5 +1,5 @@
 import { useRef } from 'react'
-import { AlertTriangle, FolderOpen, Plus, Settings } from 'lucide-react'
+import { AlertTriangle, CalendarClock, FolderOpen, Plus, Settings } from 'lucide-react'
 import { useAutoHideScrollbar } from '../session/useAutoHideScrollbar'
 import { navigate } from '../router'
 import { useSessions } from '../session/useSessions'
@@ -29,6 +29,9 @@ export function SessionListPage() {
           </button>
           <button type="button" className={styles.navButton} onClick={() => navigate('/workspaces')} aria-label="Projects">
             <FolderOpen size={24} />
+          </button>
+          <button type="button" className={styles.navButton} onClick={() => navigate('/schedules')} aria-label="Scheduled">
+            <CalendarClock size={24} />
           </button>
           <button type="button" className={styles.navButton} onClick={() => navigate('/settings')} aria-label="Settings">
             <Settings size={24} />

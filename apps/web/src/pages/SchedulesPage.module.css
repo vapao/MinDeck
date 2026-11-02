@@ -1,0 +1,37 @@
+/* 列表行沿用项目页；一行三段：名称、周期与目标、执行时间（错误另起一行） */
+.main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 0;
+}
+.meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--text-3);
+}
+:global([data-disabled]) > .main {
+  opacity: 0.55;
+}
+.hint {
+  font-size: 12px;
+  color: var(--text-4);
+}
+.prompt {
+  height: auto;
+  padding: 8px 9px;
+  resize: vertical;
+  line-height: 1.5;
+}
+.power[data-active] {
+  color: var(--accent);
+}
+/* 项目页的 .name 是横排里的定宽列，竖排里会变成 200px 高 */
+.name {
+  flex: none;
+  max-width: 100%;
+}

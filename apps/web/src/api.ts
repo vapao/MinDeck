@@ -1,5 +1,5 @@
 import type { ProjectFilesResponse, CreateServiceBody, ListServicesResponse, Service, ServiceLogResponse, UpdateServiceBody, CreateSessionBody, CreateSessionResponse, CreateWorkspaceBody, DeleteSessionResponse, DiffResponse, EntriesResponse, ForkSessionBody, ForkSessionResponse, FileResponse, InterruptResponse, ListChangesResponse, ListDirsResponse, ListSessionsResponse, ListWorkspacesResponse, ResolvePendingBody, ResolvePendingResponse, SendMessageBody, SendMessageResponse, SettingsResponse, SkillsResponse, UpdateSessionBody, UpdateSessionResponse, UpdateSettingsBody, UpdateWorkspaceBody, UploadAttachmentResponse, UsageResponse, Workspace } from '@agentdeck/shared'
-import type { UpdateStatusResponse } from '@agentdeck/shared'
+import type { ListSchedulesResponse, RunScheduleResponse, Schedule, ScheduleConfig, UpdateStatusResponse } from '@agentdeck/shared'
 import type { CreateProjectEntryBody, DeleteProjectEntryBody, DiscardChangeBody, SaveProjectFileBody } from '@agentdeck/shared'
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -29,6 +29,11 @@ export const api = {
   deleteService: (id: string) => request<{ ok: true }>(`/api/services/${id}`, { method: 'DELETE' }),
   serviceAction: (id: string, action: 'start' | 'stop' | 'restart') => request<{ ok: true }>(`/api/services/${id}/${action}`, { method: 'POST' }),
   serviceLog: (id: string, cursor: string) => request<ServiceLogResponse>(`/api/services/${id}/log?cursor=${encodeURIComponent(cursor)}`),
+  listSchedules: () => request<ListSchedulesResponse>('/api/schedules'),
+  createSchedule: (body: ScheduleConfig) => request<Schedule>('/api/schedules', { method: 'POST', body: JSON.stringify(body) }),
+  updateSchedule: (id: string, body: ScheduleConfig) => request<Schedule>(`/api/schedules/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  deleteSchedule: (id: string) => request<{ ok: true }>(`/api/schedules/${id}`, { method: 'DELETE' }),
+  runSchedule: (id: string) => request<RunScheduleResponse>(`/api/schedules/${id}/run`, { method: 'POST' }),
   listDirs: (path?: string) => request<ListDirsResponse>(`/api/fs/dirs${path ? `?path=${encodeURIComponent(path)}` : ''}`),
   getSettings: () => request<SettingsResponse>('/api/settings'),
   updateSettings: (body: UpdateSettingsBody) => request<SettingsResponse>('/api/settings', { method: 'PUT', body: JSON.stringify(body) }),
