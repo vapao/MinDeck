@@ -354,7 +354,7 @@ app.post<{ Params: { id: string }; Body: ResolvePendingBody }>(
   (req) => ({ seq: hub.resolvePending(req.params.id, req.body) }),
 );
 
-registerMcpRoute(app, hub, store, services);
+registerMcpRoute(app, hub, store, services, scheduler);
 
 // 浏览器允许任意站点跨站发起 WebSocket（§11.3 Origin 检查）：Origin 存在时必须与访问的 Host 一致；非浏览器客户端没有 Origin，放行
 const checkOrigin = (req: { headers: { origin?: string; host?: string } }) => !req.headers.origin || req.headers.origin.endsWith(`//${req.headers.host}`);

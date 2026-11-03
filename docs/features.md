@@ -168,4 +168,5 @@ Files 支持在项目根目录或指定子目录新建空文件 / 文件夹，�
 - 错过（Hub 重启、宕机）：过期 1 小时内的启动后补跑一次；更久的只在 `last_error` 记一条 Missed，不执行。执行失败（项目被移除、Key 未配等）也记在 `last_error`，不重试。一次性任务执行或错过后自动关闭。
 - model / effort 保存具体值（空 = Provider 默认）；权限模式存在任务上、不跟设置走，默认 approval，选 bypass 时前端二次确认。approval 模式下首个审批会停住等人，此时会话是 waiting_user，`update-when-idle` 会一直等它。
 - Run now 立即执行一次，不影响下次执行时间。
-- 未做：任意 cron 表达式、自选星期、MCP 创建定时任务、完成推送。
+- MCP（`src/mcp.ts`）：`list_schedules` / `create_schedule(name, provider, prompt, kind, time, workspace?, model?, effort?)` / `update_schedule(id, …)`（只改传入字段）/ `delete_schedule(id)`。写操作先校验再由 Hub 在调用方会话弹审批卡，**每次都弹，不提供"本会话允许"**（任务会无人值守执行）；Provider 侧免审。model / effort 省略取设置默认值并存成具体值；权限模式创建时取该 Provider 设置里的默认值，卡上展示，MCP 不能改（换 Provider 也保留原值），要改只能在页面上。不暴露 Run now。
+- 未做：任意 cron 表达式、自选星期、完成推送。

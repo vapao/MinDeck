@@ -10,6 +10,7 @@ import { openStore } from '../store/db';
 import { createAttachmentStore } from '../store/attachments';
 import { createHub } from '../hub';
 import { createServices } from '../services';
+import { createScheduler } from '../schedules';
 import { agentdeckMcpFor, createMcpServer } from '../mcp';
 
 // 规则（2026-09-23 与开发者确认）：Agent 经 MCP 派生会话必须由用户在调用方会话的审批卡上批准；拒绝或审批作废都不能建出会话。
@@ -29,7 +30,7 @@ test('create_session needs approval and leaves no empty session', async () => {
     for (const outcome of ['deny', 'abort', 'already-aborted', 'deepseek-without-key'] as const) {
       const controller = new AbortController();
       const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
-      await createMcpServer(hub, store, services, caller.id, controller.signal).connect(serverSide);
+      await createMcpServer(hub, store, services, createScheduler(store, hub), caller.id, controller.signal).connect(serverSide);
       const client = new Client({ name: 'test', version: '0' });
       await client.connect(clientSide);
 

@@ -85,6 +85,7 @@ export function createScheduler(store: Store, hub: Hub, now = () => new Date()) 
 
   return {
     list: () => store.listSchedules(),
+    validate: (config: ScheduleConfig) => void validate(config),
     create(config: ScheduleConfig): Schedule {
       const schedule: Schedule = { ...config, id: randomUUID(), nextRunAt: validate(config), lastRunAt: null, lastSessionId: null, lastError: null, createdAt: now().toISOString() };
       store.createSchedule(schedule);

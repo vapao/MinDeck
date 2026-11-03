@@ -3,16 +3,18 @@ import type { FastifyInstance } from 'fastify';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { z } from 'zod';
-import { effortOptions, modelOptions, type AgentEvent } from '@agentdeck/shared';
+import { effortOptions, modelOptions, type AgentEvent, type ScheduleConfig } from '@agentdeck/shared';
 import { HubError, type createHub } from './hub';
 import type { Store } from './store/db';
 import type { Services } from './services';
+import type { createScheduler } from './schedules';
 import type { AgentdeckMcp } from './providers/types';
 
 // 会话编排 MCP：只给 Hub 自己拉起的 Provider 会话用，调用方靠按会话注入的请求头识别（外部客户端不支持，没有会话可挂派生审批卡）。
 // 请求头不是安全边界：REST 本身无鉴权，bypass 会话照样能 curl。派生审批拦的是 Agent 经由这个工具自主派生。
 
 type Hub = ReturnType<typeof createHub>;
+type Scheduler = ReturnType<typeof createScheduler>;
 
 const callerHeader = 'x-agentdeck-session';
 // 派生要等人审批，可能挂很久；超时由 Provider 侧断开请求，审批卡随之作废
@@ -22,21 +24,21 @@ const maxEntries = 40;
 const defaultLogLines = 100;
 const maxLogLines = 1000;
 
-/** Provider 侧免审批的工具：只读的，create_session（它由 Hub 自己弹审批卡，不再让 Provider 先审一次），以及只影响自己会话的 compact_after_turn */
-const autoApprove = ['list_workspaces', 'list_sessions', 'get_session', 'create_session', 'list_services', 'get_service_log', 'compact_after_turn'];
+/** Provider 侧免审批的工具：只读的，create_session 与定时任务写操作（它们由 Hub 自己弹审批卡，不再让 Provider 先审一次），以及只影响自己会话的 compact_after_turn */
+const autoApprove = ['list_workspaces', 'list_sessions', 'get_session', 'create_session', 'list_services', 'get_service_log', 'compact_after_turn', 'list_schedules', 'create_schedule', 'update_schedule', 'delete_schedule'];
 
 export function agentdeckMcpFor(url: string, sessionId: string): AgentdeckMcp {
   return { url, headers: { [callerHeader]: sessionId }, timeoutSec: toolTimeoutSec, autoApprove };
 }
 
-export function registerMcpRoute(app: FastifyInstance, hub: Hub, store: Store, services: Services) {
+export function registerMcpRoute(app: FastifyInstance, hub: Hub, store: Store, services: Services, scheduler: Scheduler) {
   app.post('/mcp', async (req, reply) => {
     const callerId = req.headers[callerHeader];
     if (typeof callerId !== 'string' || !store.getSession(callerId)) return reply.code(403).send({ message: 'AgentDeck MCP is only available to AgentDeck sessions' });
     // 调用方断开（工具超时、轮被中断）时作废还在等的审批 / 等待
     const controller = new AbortController();
     reply.raw.on('close', () => controller.abort());
-    const server = createMcpServer(hub, store, services, callerId, controller.signal);
+    const server = createMcpServer(hub, store, services, scheduler, callerId, controller.signal);
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
     reply.raw.on('close', () => void server.close());
     reply.hijack();
@@ -50,7 +52,7 @@ export function registerMcpRoute(app: FastifyInstance, hub: Hub, store: Store, s
 
 const json = (value: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(value, null, 2) }] });
 
-export function createMcpServer(hub: Hub, store: Store, services: Services, callerId: string, signal: AbortSignal): McpServer {
+export function createMcpServer(hub: Hub, store: Store, services: Services, scheduler: Scheduler, callerId: string, signal: AbortSignal): McpServer {
   const server = new McpServer({ name: 'agentdeck', version: '0.0.0' });
   const notSelf = (id: string) => {
     if (id === callerId) throw new HubError(400, 'This is your own session; target another session');
@@ -61,6 +63,13 @@ export function createMcpServer(hub: Hub, store: Store, services: Services, call
     if (!workspace) throw new HubError(400, `${cwd} is not an AgentDeck project; see list_workspaces`);
     return workspace;
   };
+  // 定时任务会在无人值守时执行，写操作每次都由 Hub 弹卡，不提供"本会话允许"
+  const approve = async (toolName: string, input: Record<string, unknown>, description: string) => {
+    const resolution = await hub.createPending(callerId, { kind: 'approval', toolName, toolUseId: randomUUID(), input, description, sessionAllowPatterns: [], suggestions: [] }, signal);
+    if (resolution?.kind !== 'approval' || resolution.decision === 'deny') throw new HubError(403, 'The user did not approve this change');
+    signal.throwIfAborted();
+  };
+  const scheduleView = ({ workspaceId, ...s }: ScheduleConfig & Record<string, unknown>) => ({ ...s, workspace: store.getWorkspace(workspaceId)?.path ?? null, model: s.model || 'Default', effort: s.effort || 'Default' });
 
   server.registerTool('list_workspaces', {
     description: 'List AgentDeck projects. New sessions can only be created in one of these paths.',
@@ -256,6 +265,73 @@ export function createMcpServer(hub: Hub, store: Store, services: Services, call
     const byteOffset = Number(log.cursor.slice(log.cursor.lastIndexOf(':') + 1));
     const truncated = parts.length > lines || (log.reset && byteOffset > 64 * 1024);
     return json({ ...log, text: parts.slice(-lines).join('\n') + (trailingNewline ? '\n' : ''), truncated });
+  });
+
+  const timeDesc = "once: YYYY-MM-DDTHH:mm; daily / weekdays (Mon–Fri, public holidays not skipped): HH:mm. Local time of the AgentDeck host";
+
+  server.registerTool('list_schedules', {
+    description: 'List scheduled tasks. Each run starts a new session in the project and sends the prompt.',
+    inputSchema: {},
+  }, () => json(scheduler.list().map(scheduleView)));
+
+  server.registerTool('create_schedule', {
+    description: 'Create a scheduled task that, at each run, starts a new session in a project and sends the prompt. Only when the user asked for it. Write the prompt as a self-contained brief: the run has no access to this conversation. The user must approve in AgentDeck. Model and effort default to AgentDeck settings; permission mode always does.',
+    inputSchema: {
+      name: z.string().min(1),
+      provider: z.enum(['claude', 'codex', 'deepseek']),
+      prompt: z.string().min(1).describe('First message of each run'),
+      kind: z.enum(['once', 'daily', 'weekdays']),
+      time: z.string().describe(timeDesc),
+      workspace: z.string().optional().describe('Project path from list_workspaces; defaults to your own project'),
+      model: z.string().optional().describe(`Only when the user asked for a specific model. ${Object.entries(modelOptions).map(([p, options]) => `${p}: ${options.map((o) => o.value).join(', ')}`).join('; ')}`),
+      effort: z.string().optional().describe(`Only when the user asked for a specific thinking effort. claude: ${effortOptions.claude.map((o) => o.value).join(', ')}; codex: ${effortOptions.codex.map((o) => o.value).join(', ')}; deepseek: none`),
+    },
+  }, async ({ name, provider, prompt, kind, time, workspace, model, effort }) => {
+    const resolved = hub.resolveSessionConfig(provider, { model, effort });
+    const config: ScheduleConfig = { name, provider, workspaceId: project(workspace).id, model: resolved.model ?? '', effort: resolved.effort ?? '', permissionMode: resolved.permissionMode, prompt, kind, time, enabled: true };
+    scheduler.validate(config);
+    await approve('AgentDeck: create scheduled task', scheduleView(config), 'Create a scheduled task that runs unattended with the permission mode shown');
+    return json(scheduleView(scheduler.create(config)));
+  });
+
+  server.registerTool('update_schedule', {
+    description: 'Update only the supplied fields of a scheduled task. The user must approve in AgentDeck. Changing provider resets model and effort to that provider\'s AgentDeck settings unless supplied. Permission mode cannot be changed here.',
+    inputSchema: {
+      id: z.string(),
+      name: z.string().min(1).optional(),
+      provider: z.enum(['claude', 'codex', 'deepseek']).optional(),
+      prompt: z.string().min(1).optional(),
+      kind: z.enum(['once', 'daily', 'weekdays']).optional(),
+      time: z.string().optional().describe(`Required when kind changes. ${timeDesc}`),
+      workspace: z.string().optional().describe('Project path from list_workspaces'),
+      model: z.string().optional(),
+      effort: z.string().optional(),
+      enabled: z.boolean().optional(),
+    },
+  }, async ({ id, workspace, provider, model, effort, ...rest }) => {
+    const current = scheduler.list().find((s) => s.id === id);
+    if (!current) throw new HubError(404, 'Scheduled task not found');
+    const switched = provider !== undefined && provider !== current.provider;
+    const resolved = hub.resolveSessionConfig(provider ?? current.provider, { model: model ?? (switched ? undefined : current.model), effort: effort ?? (switched ? undefined : current.effort) });
+    const config: ScheduleConfig = {
+      name: rest.name ?? current.name, provider: provider ?? current.provider, workspaceId: workspace ? project(workspace).id : current.workspaceId,
+      model: resolved.model ?? '', effort: resolved.effort ?? '', permissionMode: current.permissionMode,
+      prompt: rest.prompt ?? current.prompt, kind: rest.kind ?? current.kind, time: rest.time ?? current.time, enabled: rest.enabled ?? current.enabled,
+    };
+    scheduler.validate(config);
+    await approve('AgentDeck: update scheduled task', scheduleView(config), `Update scheduled task "${current.name}"`);
+    return json(scheduleView(scheduler.update(id, config)));
+  });
+
+  server.registerTool('delete_schedule', {
+    description: 'Delete a scheduled task. The user must approve in AgentDeck.',
+    inputSchema: { id: z.string() },
+  }, async ({ id }) => {
+    const current = scheduler.list().find((s) => s.id === id);
+    if (!current) throw new HubError(404, 'Scheduled task not found');
+    await approve('AgentDeck: delete scheduled task', scheduleView(current), `Delete scheduled task "${current.name}"`);
+    scheduler.remove(id);
+    return json({ ok: true });
   });
 
   return server;
