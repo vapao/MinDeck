@@ -24,8 +24,8 @@ const maxEntries = 40;
 const defaultLogLines = 100;
 const maxLogLines = 1000;
 
-/** Provider 侧免审批的工具：只读的，create_session 与定时任务写操作（它们由 Hub 自己弹审批卡，不再让 Provider 先审一次），以及只影响自己会话或只是交给用户看的 compact_after_turn / ask_user / report_to_user / wake_later */
-const autoApprove = ['list_workspaces', 'list_sessions', 'get_session', 'create_session', 'list_services', 'get_service_log', 'compact_after_turn', 'ask_user', 'report_to_user', 'wake_later', 'list_schedules', 'create_schedule', 'update_schedule', 'delete_schedule'];
+/** Provider 侧免审批的工具：只读的，create_session 与定时任务写操作（它们由 Hub 自己弹审批卡，不再让 Provider 先审一次），以及只影响自己会话或只是交给用户看的 compact_after_turn / ask_user / report_to_user / wake_later / add_todo */
+const autoApprove = ['list_workspaces', 'list_sessions', 'get_session', 'create_session', 'list_services', 'get_service_log', 'compact_after_turn', 'ask_user', 'report_to_user', 'wake_later', 'add_todo', 'list_schedules', 'create_schedule', 'update_schedule', 'delete_schedule'];
 
 export function agentdeckMcpFor(url: string, sessionId: string): AgentdeckMcp {
   return { url, headers: { [callerHeader]: sessionId }, timeoutSec: toolTimeoutSec, autoApprove };
@@ -220,6 +220,15 @@ export function createMcpServer(hub: Hub, store: Store, services: Services, sche
     const wakeup = hub.setWakeup(callerId, when, note);
     return json({ id: wakeup.id, at: new Date(wakeup.at).toLocaleString('en-GB') });
   });
+
+  server.registerTool('add_todo', {
+    description: "Add an item to the user's AgentDeck to-do list, for something the user should come back to later rather than decide now: e.g. the user asks you to note something down, or a follow-up that is not due yet. It is linked to this session and project. With remindOn it shows up in the user's Inbox from that date. For a decision needed now use ask_user; for something you will check yourself use wake_later.",
+    inputSchema: {
+      title: z.string().min(1).describe('The task, short enough for a list row'),
+      note: z.string().optional().describe('Context needed to pick it up again'),
+      remindOn: z.string().optional().describe('YYYY-MM-DD, local date of the AgentDeck host'),
+    },
+  }, ({ title, note, remindOn }) => json({ id: hub.createTodo({ title, note, remindOn: remindOn ?? null, cwd: store.getSession(callerId)!.cwd, sessionId: callerId }).id }));
 
   server.registerTool('interrupt', {
     description: 'Stop the running turn of another session; messages it has not picked up yet are dropped.',

@@ -192,3 +192,17 @@ Files 支持在项目根目录或指定子目录新建空文件 / 文件夹，�
 - MCP `wake_later(note, inMinutes | at)`（二选一，`at` 为本机时区 `YYYY-MM-DDTHH:mm`，须晚于现在；Provider 侧免审）：存 `wakeups` 表，到点由调度器（30 秒一次的 tick）把 `[AgentDeck] Wake-up you scheduled at …: <note>` 作为消息发回同一会话（运行中则插入当前轮）。先删后发，同一个最多发一次；Hub 停机期间到点的启动后照发；发不出去（如项目正在做文件操作）在会话里记一条 error，不重试。用户中断某一轮时，这一轮预约的唤醒作废；会话删除时一起删。
 - Automations 页的 Upcoming wake-ups 列出全部待触发唤醒（时间、note、会话），可取消（`GET /api/wakeups`、`DELETE /api/wakeups/:id`）。Agent 侧没有取消工具。
 - 未做：自动唤醒的次数上限（bypass 会话可以无限续约，靠 Upcoming 列表人工发现）。
+
+## 没收尾提醒与待办（2026-11-04）
+
+解决"做到一半的事被忘掉"。用户习惯是验证没问题也不会回会话说一声，所以宁可多提醒，由用户在 Inbox 里删或忽略。
+
+- **没收尾判断**：调度器每次 tick（30 秒）判断一个会话，用 AI 标题的 Provider / 模型（AI 标题关闭时不做）。对象是空闲（idle / error）满 24 小时、没归档、不是定时任务运行、不是子会话（父会话已删的算顶层）、有过 Agent 回复、这次活动还没判断过的会话，新近空闲的优先。输入是最近 12 条消息（单条超 1500 字留头尾，总长不超过 8000 字），输出 `done` / `open` + 一句"下一步"。只有明确收尾（问题答完无后续、用户确认 / 关闭 / 放弃）才算 done；做到一半、stash 暂停、等用户验证或预览、等用户拍板、等外部都算 open。
+- 结果存在会话上（`review_for` / `review_state` / `review_next`），**只对判断时那次活动有效**：会话再有活动（`updated_at` 变了）结论即失效，再空闲满 24 小时重新判断。请求失败（网络、额度、超时）整体暂停 30 分钟、不记结果；模型答非所问记为失败、这次活动不再重试。
+- open 的进 Inbox（Unfinished work 段）：Continue（进会话）/ Later…（以会话标题和下一步预填，转成关联该会话、默认一周后提醒的待办）/ Done, delete session（走会话删除确认，可连子会话）/ Dismiss（保留会话，直到有新活动）。`POST /api/sessions/:id/review/dismiss`。
+- **自动归档**：判为 done、之后再没活动、空闲满 7 天的会话移到 Inactive（随时可移回，发消息也会自动回到 Active）。这是"只有用户手动归档"之外唯一的自动归档。
+- **待办**（`todos` 表，`/todos` 页，侧栏主导航与手机 tab）：标题、备注、项目（存路径，可空）、提醒日期（本机本地日期，可空）、关联会话（可空）；状态只有未完成 / 完成。到提醒日期当天起进 Inbox（Reminders 段），可 Done / 推到明天 / 推一周 / 编辑。删除关联会话时待办保留、关联置空。
+  - 来源：Todos 页输入框回车即加，New todo 填全字段；会话页顶栏 Create todo 用 AI 标题模型从最近对话起草标题和备注（`POST /api/sessions/:id/todo-draft`，AI 标题关闭时 400，弹窗留空手填）；Inbox 的 Later…；Agent 经 MCP `add_todo(title, note?, remindOn?)`（关联调用方会话与项目，Provider 侧免审）。
+  - 带关联会话新建待办时，该会话的 Unfinished 一并从 Inbox 移除。
+  - REST：`GET /api/todos?done=`（未完成按提醒日期、没日期的在后；完成的按完成时间倒序最近 100 条）、`POST /api/todos`、`PATCH /api/todos/:id`（只改传入字段，`done` 切换完成）、`DELETE /api/todos/:id`。
+- 未做：待办的排序 / 分组 / 优先级、重复提醒、到点推送。

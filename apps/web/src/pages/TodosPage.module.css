@@ -1,0 +1,172 @@
+/* Todos（UI 规范 §4）：版式沿用 Automations，内容列窄一些 */
+.column {
+  max-width: 760px;
+  gap: 4px;
+}
+.filters {
+  display: flex;
+  gap: 4px;
+  margin-left: 8px;
+}
+.chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-control);
+  background: none;
+  color: var(--text-2);
+  font-size: 12px;
+  cursor: pointer;
+}
+.chip:hover {
+  border-color: var(--border-3);
+  color: var(--text-strong);
+}
+.chip[data-on] {
+  border-color: var(--accent-border);
+  background: var(--accent-bg-2);
+  color: var(--text-strong);
+}
+.chip b {
+  font: 500 11px var(--font-mono);
+  color: var(--text-3);
+}
+.chip[data-on] b {
+  color: var(--accent);
+}
+.add {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 42px;
+  margin: 12px 0 8px;
+  padding: 0 12px;
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  color: var(--text-3);
+}
+.add:focus-within {
+  border-color: var(--accent-ring);
+}
+.addInput {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  background: none;
+  color: var(--text-strong);
+  font: inherit;
+  font-size: 14px;
+  outline: none;
+}
+.row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-card);
+}
+.row:hover {
+  background: var(--hover);
+}
+.check {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  display: grid;
+  place-items: center;
+  border: 1.5px solid var(--text-3);
+  border-radius: 50%;
+  background: none;
+  color: var(--on-accent);
+  cursor: pointer;
+}
+.check:hover {
+  border-color: var(--accent);
+}
+.row[data-done] .check {
+  border-color: var(--ok);
+  background: var(--ok);
+}
+.body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.title {
+  color: var(--text-strong);
+  font-size: 14px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.row[data-done] .title {
+  color: var(--text-3);
+  text-decoration: line-through;
+}
+.note {
+  font-size: 12px;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+  color: var(--text-3);
+}
+.project {
+  padding: 0 6px;
+  border-radius: 4px;
+  background: var(--surface-3);
+  color: var(--text-2);
+  font-size: 11px;
+  line-height: 18px;
+}
+.day {
+  font: 11px var(--font-mono);
+}
+.day[data-due] {
+  color: var(--accent);
+}
+.session {
+  flex: none;
+  max-width: 200px;
+  margin-top: 1px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: none;
+  color: var(--text-3);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.session:hover {
+  border-color: var(--border-3);
+  color: var(--text-strong);
+}
+@media (max-width: 1023px) {
+  .session {
+    display: none;
+  }
+}

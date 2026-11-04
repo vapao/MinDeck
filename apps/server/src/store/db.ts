@@ -1,5 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
-import type { AgentEvent, Attachment, EventType, PendingRequest, PendingRequestBody, PermissionMode, ProviderEvent, Report, Resolution, Schedule, ScheduleConfig, ServiceConfig, Session, SessionStatus, Settings, Wakeup, Workspace } from '@agentdeck/shared';
+import type { AgentEvent, Attachment, EventType, PendingRequest, PendingRequestBody, PermissionMode, ProviderEvent, Report, Resolution, Schedule, ScheduleConfig, ServiceConfig, Session, SessionStatus, Settings, Todo, UnfinishedSession, Wakeup, Workspace } from '@agentdeck/shared';
 
 export type Store = ReturnType<typeof openStore>;
 /** pid 是服务进程组的组长；startedAt 是它在 ps 里的启动时间，用来识别 pid 是否已被别的进程复用 */
@@ -89,10 +89,20 @@ export function openStore(path: string) {
       created_at TEXT NOT NULL,
       read_at    TEXT
     );
+    CREATE TABLE IF NOT EXISTS todos (
+      id         TEXT PRIMARY KEY,
+      title      TEXT NOT NULL,
+      note       TEXT NOT NULL,
+      cwd        TEXT,
+      session_id TEXT,
+      remind_on  TEXT,
+      created_at TEXT NOT NULL,
+      done_at    TEXT
+    );
   `);
-  // 旧库没有就补上（SQLite 没有 ADD COLUMN IF NOT EXISTS）：model / effort 是切片 8 加的，permission_mode 是权限模式那次加的，archived_at 是切片 12 加的，parent_id 是派生会话隶属关系那次加的，spawn_granted_at 是派生授权持久化那次加的，schedule_id 是 Automations 运行记录那次加的
+  // 旧库没有就补上（SQLite 没有 ADD COLUMN IF NOT EXISTS）：model / effort 是切片 8 加的，permission_mode 是权限模式那次加的，archived_at 是切片 12 加的，parent_id 是派生会话隶属关系那次加的，spawn_granted_at 是派生授权持久化那次加的，schedule_id 是 Automations 运行记录那次加的，review_* 是没收尾判断那次加的
   const sessionCols = new Set((db.prepare(`PRAGMA table_info(sessions)`).all() as { name: string }[]).map((c) => c.name));
-  for (const col of ['model', 'effort', 'permission_mode', 'archived_at', 'title', 'parent_id', 'spawn_granted_at', 'schedule_id']) if (!sessionCols.has(col)) db.exec(`ALTER TABLE sessions ADD COLUMN ${col} TEXT`);
+  for (const col of ['model', 'effort', 'permission_mode', 'archived_at', 'title', 'parent_id', 'spawn_granted_at', 'schedule_id', 'review_for', 'review_state', 'review_next']) if (!sessionCols.has(col)) db.exec(`ALTER TABLE sessions ADD COLUMN ${col} TEXT`);
 
   // 修正旧版下拉框保存的 Codex effort 拼写，不改变模型、会话排序或其他 Provider。
   for (const [oldEffort, effort] of [['light', 'low'], ['extra-high', 'xhigh']]) {
@@ -139,8 +149,9 @@ export function openStore(path: string) {
     `SELECT * FROM events WHERE session_id = ? AND seq > ? ORDER BY seq`,
   );
   const selectLastSeq = db.prepare(`SELECT COALESCE(MAX(seq), 0) AS seq FROM events WHERE session_id = ?`);
-  // 删除会话连同它的全部记录；六张表在一个事务里，不留半截
+  // 删除会话连同它的全部记录；几张表在一个事务里，不留半截
   const deleteSessionRows = [
+    db.prepare(`UPDATE todos SET session_id = NULL WHERE session_id = ?`),
     db.prepare(`DELETE FROM wakeups WHERE session_id = ?`),
     db.prepare(`DELETE FROM events WHERE session_id = ?`),
     db.prepare(`DELETE FROM reports WHERE session_id = ?`),
@@ -216,6 +227,18 @@ export function openStore(path: string) {
     createdAt: r.created_at as string,
     readAt: (r.read_at as string | null) ?? null,
   });
+  const rowToTodo = (r: Record<string, unknown>): Todo => ({
+    id: r.id as string,
+    title: r.title as string,
+    note: r.note as string,
+    cwd: (r.cwd as string | null) ?? null,
+    sessionId: (r.session_id as string | null) ?? null,
+    remindOn: (r.remind_on as string | null) ?? null,
+    createdAt: r.created_at as string,
+    doneAt: (r.done_at as string | null) ?? null,
+  });
+  // 判断结果只对 review_for 那次活动有效；会话再有活动 updated_at 就变了，结果自动失效
+  const currentReview = `review_for = updated_at`;
   const rowToAttachment = (r: Record<string, unknown>): Attachment => ({
     id: r.id as string,
     sessionId: r.session_id as string,
@@ -383,6 +406,62 @@ export function openStore(path: string) {
     getReport(id: string): Report | undefined {
       const row = db.prepare(`SELECT * FROM reports WHERE id = ?`).get(id);
       return row && rowToReport(row);
+    },
+    /**
+     * 下一个该判断是否收尾的会话：空闲满 cutoff、没归档、不是定时任务运行或子会话（父会话已删的算顶层）、
+     * 有过 Agent 回复、当前这次活动还没判断过。新近空闲的优先
+     */
+    nextSessionToReview(cutoff: string): { id: string; updatedAt: string } | undefined {
+      const row = db.prepare(`SELECT id, updated_at FROM sessions s WHERE status IN ('idle', 'error') AND archived_at IS NULL AND schedule_id IS NULL
+        AND (parent_id IS NULL OR NOT EXISTS (SELECT 1 FROM sessions p WHERE p.id = s.parent_id))
+        AND updated_at <= ? AND (review_for IS NULL OR NOT ${currentReview})
+        AND EXISTS (SELECT 1 FROM events WHERE session_id = s.id AND type = 'message.completed')
+        ORDER BY updated_at DESC LIMIT 1`).get(cutoff);
+      return row && { id: row.id as string, updatedAt: row.updated_at as string };
+    },
+    /** 最近 limit 条用户消息与 Agent 回复，旧的在前 */
+    recentMessages(sessionId: string, limit: number): { role: 'user' | 'agent'; text: string }[] {
+      return db.prepare(`SELECT type, json_extract(payload, '$.text') AS text FROM events WHERE session_id = ? AND type IN ('message.user', 'message.completed') ORDER BY seq DESC LIMIT ?`)
+        .all(sessionId, limit).reverse().map((r) => ({ role: r.type === 'message.user' ? 'user' as const : 'agent' as const, text: (r.text as string | null) ?? '' }));
+    },
+    /** state 为 null 表示判断失败：这次活动不再重试 */
+    setReview(sessionId: string, reviewedFor: string, state: 'done' | 'open' | null, next: string) {
+      db.prepare(`UPDATE sessions SET review_for = ?, review_state = ?, review_next = ? WHERE id = ?`).run(reviewedFor, state, next, sessionId);
+    },
+    /** 返回 false 表示它已不在 Inbox 里（有了新活动或已处理） */
+    dismissReview(sessionId: string): boolean {
+      return db.prepare(`UPDATE sessions SET review_state = 'dismissed' WHERE id = ? AND review_state = 'open' AND ${currentReview}`).run(sessionId).changes === 1;
+    },
+    unfinishedSessions(): UnfinishedSession[] {
+      return db.prepare(`SELECT id, review_next, updated_at FROM sessions WHERE review_state = 'open' AND ${currentReview} AND archived_at IS NULL ORDER BY updated_at DESC`).all()
+        .map((r) => ({ sessionId: r.id as string, next: r.review_next as string, idleSince: r.updated_at as string }));
+    },
+    /** 判为已收尾、之后再没活动、空闲早于 cutoff 的会话移到 Inactive */
+    archiveFinished(cutoff: string) {
+      db.prepare(`UPDATE sessions SET archived_at = ? WHERE archived_at IS NULL AND status IN ('idle', 'error') AND review_state = 'done' AND ${currentReview} AND updated_at <= ?`)
+        .run(new Date().toISOString(), cutoff);
+    },
+    createTodo(t: Todo) {
+      db.prepare(`INSERT INTO todos (id, title, note, cwd, session_id, remind_on, created_at, done_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(t.id, t.title, t.note, t.cwd, t.sessionId, t.remindOn, t.createdAt, t.doneAt);
+    },
+    getTodo(id: string): Todo | undefined {
+      const row = db.prepare(`SELECT * FROM todos WHERE id = ?`).get(id);
+      return row && rowToTodo(row);
+    },
+    updateTodo(t: Todo) {
+      db.prepare(`UPDATE todos SET title = ?, note = ?, cwd = ?, remind_on = ?, done_at = ? WHERE id = ?`).run(t.title, t.note, t.cwd, t.remindOn, t.doneAt, t.id);
+    },
+    deleteTodo(id: string): boolean {
+      return db.prepare(`DELETE FROM todos WHERE id = ?`).run(id).changes === 1;
+    },
+    listTodos(done: boolean): Todo[] {
+      return (done
+        ? db.prepare(`SELECT * FROM todos WHERE done_at IS NOT NULL ORDER BY done_at DESC LIMIT 100`).all()
+        : db.prepare(`SELECT * FROM todos WHERE done_at IS NULL ORDER BY remind_on IS NULL, remind_on, created_at DESC`).all()).map(rowToTodo);
+    },
+    /** 提醒日期已到（today 为本地日期 YYYY-MM-DD）的未完成待办 */
+    dueTodos(today: string): Todo[] {
+      return db.prepare(`SELECT * FROM todos WHERE done_at IS NULL AND remind_on <= ? ORDER BY remind_on, created_at`).all(today).map(rowToTodo);
     },
     /** Hub 重启后没有任何 Provider 回调在等这些请求，全部作废（Inbox 的待决定事项除外） */
     expireAllPending() {

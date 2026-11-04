@@ -110,3 +110,26 @@ test('hub restart keeps filed inbox questions and expires the rest', () => {
   assert.deepEqual(store.allPending().map((p) => p.id), ['filed']);
   assert.equal(store.getPending('approval')?.status, 'expired');
 });
+
+// 规则：没收尾判断只对它判断的那次活动有效；会话再有活动，Inbox 不再显示旧结论，自动归档也只移走仍有效的"已收尾"。
+test('a session review goes stale on new activity and only current done reviews are auto-archived', () => {
+  const store = openStore(':memory:');
+  const old = '2026-01-01T00:00:00.000Z';
+  for (const id of ['open', 'done', 'doneThenActive']) {
+    store.createSession({ id, provider: 'claude', cwd: '/tmp', providerSessionId: null, status: 'idle', title: null, model: null, effort: null, permissionMode: 'approval', archivedAt: null, parentId: null, createdAt: old, updatedAt: old });
+  }
+  store.setReview('open', old, 'open', 'verify the fix');
+  store.setReview('done', old, 'done', '');
+  store.setReview('doneThenActive', old, 'done', '');
+  store.setSessionStatus('doneThenActive', 'idle');
+
+  assert.deepEqual(store.unfinishedSessions().map((u) => u.sessionId), ['open']);
+  store.archiveFinished('2026-02-01T00:00:00.000Z');
+  assert.equal(store.getSession('open')?.archivedAt, null);
+  assert.notEqual(store.getSession('done')?.archivedAt, null);
+  assert.equal(store.getSession('doneThenActive')?.archivedAt, null);
+
+  store.setSessionStatus('open', 'idle');
+  assert.deepEqual(store.unfinishedSessions(), []);
+  assert.equal(store.dismissReview('open'), false);
+});

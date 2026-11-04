@@ -8,7 +8,7 @@ import Fastify from 'fastify';
 import websocket from '@fastify/websocket';
 import multipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
-import type { ClientMessage, CreateServiceBody, CreateSessionBody, CreateWorkspaceBody, ForkSessionBody, ForkSessionResponse, ListDirsResponse, ResolvePendingBody, ScheduleConfig, SendMessageBody, ServerMessage, SkillsResponse, UpdateServiceBody, UpdateSessionBody, UpdateSettingsBody, UpdateWorkspaceBody, UsageResponse, Workspace } from '@agentdeck/shared';
+import type { ClientMessage, CreateServiceBody, CreateSessionBody, CreateTodoBody, UpdateTodoBody, CreateWorkspaceBody, ForkSessionBody, ForkSessionResponse, ListDirsResponse, ResolvePendingBody, ScheduleConfig, SendMessageBody, ServerMessage, SkillsResponse, UpdateServiceBody, UpdateSessionBody, UpdateSettingsBody, UpdateWorkspaceBody, UsageResponse, Workspace } from '@agentdeck/shared';
 import { openStore } from './store/db';
 import { createAttachmentStore, isImageMime, maxAttachmentBytes, maxAttachmentsPerMessage } from './store/attachments';
 import { createHub, HubError } from './hub';
@@ -363,6 +363,21 @@ app.get<{ Querystring: { done?: boolean } }>('/api/inbox', { schema: { querystri
   reply.header('cache-control', 'no-store').send(hub.inbox(req.query.done ?? false)));
 app.post<{ Params: { id: string } }>('/api/reports/:id/read', (req) => {
   hub.markReportRead(req.params.id);
+  return { ok: true };
+});
+
+app.post<{ Params: { id: string } }>('/api/sessions/:id/review/dismiss', (req) => {
+  hub.dismissReview(req.params.id);
+  return { ok: true };
+});
+app.post<{ Params: { id: string } }>('/api/sessions/:id/todo-draft', (req) => hub.todoDraft(req.params.id));
+
+app.get<{ Querystring: { done?: boolean } }>('/api/todos', { schema: { querystring: { type: 'object', properties: { done: { type: 'boolean' } } } } }, (req, reply) =>
+  reply.header('cache-control', 'no-store').send(hub.listTodos(req.query.done ?? false)));
+app.post<{ Body: CreateTodoBody }>('/api/todos', { schema: { body: { type: 'object', required: ['title'], properties: { title: { type: 'string' } } } } }, (req) => hub.createTodo(req.body));
+app.patch<{ Params: { id: string }; Body: UpdateTodoBody }>('/api/todos/:id', { schema: { body: { type: 'object' } } }, (req) => hub.updateTodo(req.params.id, req.body));
+app.delete<{ Params: { id: string } }>('/api/todos/:id', (req) => {
+  hub.deleteTodo(req.params.id);
   return { ok: true };
 });
 

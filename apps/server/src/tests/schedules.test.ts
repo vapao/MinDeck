@@ -25,6 +25,7 @@ function setup(start: Date) {
     lastSeq: () => 1,
     deleteSession: () => {},
     fireDueWakeups: () => {},
+    reviewIdleSessions: async () => {},
   };
   let t = start;
   const scheduler = createScheduler(store, hub as never, () => t);

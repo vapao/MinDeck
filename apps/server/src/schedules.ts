@@ -72,6 +72,7 @@ export function createScheduler(store: Store, hub: Hub, now = () => new Date()) 
   function tick() {
     const t = now();
     hub.fireDueWakeups(t);
+    void hub.reviewIdleSessions(t);
     for (const s of store.listSchedules()) {
       if (!s.enabled || !s.nextRunAt || new Date(s.nextRunAt) > t) continue;
       // 下一次从现在算而不是从这次的到期时间算：停机多天回来不会连跑多次

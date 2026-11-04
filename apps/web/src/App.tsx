@@ -1,6 +1,6 @@
 import { useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Bell, CalendarClock, FolderOpen, Inbox, Plus, Settings } from 'lucide-react'
+import { Bell, CalendarClock, FolderOpen, Inbox, ListTodo, Plus, Settings } from 'lucide-react'
 import { api } from './api'
 import { formatTime } from './format'
 import { useAutoHideScrollbar } from './session/useAutoHideScrollbar'
@@ -23,9 +23,11 @@ import { WorkspacesPage } from './pages/WorkspacesPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { SchedulesPage } from './pages/SchedulesPage'
 import { InboxPage } from './pages/InboxPage'
+import { TodosPage, useTodos } from './pages/TodosPage'
+import { TodoHost } from './components/TodoDialog'
 import styles from './App.module.css'
 
-// 新建会话是全局弹窗，不占路由。路由：/ 与 /inbox/:kind/:id Inbox、/sessions 会话列表（手机；桌面在侧栏）、/s/:id 会话页、/workspaces 项目、/schedules 定时任务、/settings 设置
+// 新建会话是全局弹窗，不占路由。路由：/ 与 /inbox/:kind/:id Inbox、/sessions 会话列表（手机；桌面在侧栏）、/todos 待办、/s/:id 会话页、/workspaces 项目、/schedules 定时任务、/settings 设置
 export default function App() {
   const pathname = usePathname()
   const desktop = useMediaQuery('(min-width: 1024px)')
@@ -34,7 +36,7 @@ export default function App() {
   const notifications = useNotifications(sessions.data, sessionId)
   useMarkSeen(sessions.data, sessionId)
 
-  const page = sessionId ? <SessionPage sessionId={sessionId} /> : pathname === '/workspaces' ? <WorkspacesPage /> : pathname === '/schedules' ? <SchedulesPage /> : pathname === '/settings' ? <SettingsPage /> : pathname === '/sessions' && !desktop ? <SessionListPage /> : <InboxPage />
+  const page = sessionId ? <SessionPage sessionId={sessionId} /> : pathname === '/workspaces' ? <WorkspacesPage /> : pathname === '/schedules' ? <SchedulesPage /> : pathname === '/todos' ? <TodosPage /> : pathname === '/settings' ? <SettingsPage /> : pathname === '/sessions' && !desktop ? <SessionListPage /> : <InboxPage />
 
   return (
     <>
@@ -46,6 +48,7 @@ export default function App() {
       ) : page}
       <UpdateNotice />
       <NewSessionHost />
+      <TodoHost />
       <SessionNotifications {...notifications} />
     </>
   )
@@ -56,6 +59,7 @@ function Sidebar({ activeId, pathname }: { activeId?: string; pathname: string }
   useAutoHideScrollbar(list)
   const sessions = useSessions()
   const pending = inboxCount(useInbox().data)
+  const todos = useTodos(false).data?.length ?? 0
   const schedules = useQuery({ queryKey: ['schedules'], queryFn: api.listSchedules, refetchInterval: 30_000 })
   const nextRun = schedules.data?.map((s) => (s.enabled ? s.nextRunAt : null)).filter((at): at is string => !!at).sort()[0]
   const notify = useNotificationPermission()
@@ -80,6 +84,11 @@ function Sidebar({ activeId, pathname }: { activeId?: string; pathname: string }
           <Inbox size={14} />
           <span className={styles.primaryLabel}>Inbox</span>
           {pending > 0 && <span className={styles.badge}>{pending}</span>}
+        </button>
+        <button type="button" className={styles.primaryItem} data-on={pathname === '/todos' || undefined} onClick={() => navigate('/todos')}>
+          <ListTodo size={14} />
+          <span className={styles.primaryLabel}>Todos</span>
+          {todos > 0 && <span className={styles.hint}>{todos} open</span>}
         </button>
         <button type="button" className={styles.primaryItem} data-on={pathname === '/schedules' || undefined} onClick={() => navigate('/schedules')}>
           <CalendarClock size={14} />

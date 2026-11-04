@@ -1,5 +1,5 @@
 import type { ProjectFilesResponse, CreateServiceBody, ListServicesResponse, Service, ServiceLogResponse, UpdateServiceBody, CreateSessionBody, CreateSessionResponse, CreateWorkspaceBody, DeleteSessionResponse, DiffResponse, EntriesResponse, ForkSessionBody, ForkSessionResponse, FileResponse, InterruptResponse, ListChangesResponse, ListDirsResponse, ListSessionsResponse, ListWorkspacesResponse, ResolvePendingBody, ResolvePendingResponse, SendMessageBody, SendMessageResponse, SettingsResponse, SkillsResponse, UpdateSessionBody, UpdateSessionResponse, UpdateSettingsBody, UpdateWorkspaceBody, UploadAttachmentResponse, UsageResponse, Workspace } from '@agentdeck/shared'
-import type { InboxResponse, ListSchedulesResponse, ListWakeupsResponse, RunScheduleResponse, Schedule, ScheduleConfig, UpdateStatusResponse } from '@agentdeck/shared'
+import type { CreateTodoBody, InboxResponse, ListTodosResponse, Todo, TodoDraftResponse, UpdateTodoBody, ListSchedulesResponse, ListWakeupsResponse, RunScheduleResponse, Schedule, ScheduleConfig, UpdateStatusResponse } from '@agentdeck/shared'
 import type { CreateProjectEntryBody, DeleteProjectEntryBody, DiscardChangeBody, SaveProjectFileBody } from '@agentdeck/shared'
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -65,6 +65,12 @@ export const api = {
   listWakeups: () => request<ListWakeupsResponse>('/api/wakeups'),
   cancelWakeup: (id: string) => request<{ ok: true }>(`/api/wakeups/${id}`, { method: 'DELETE' }),
   inbox: (done: boolean) => request<InboxResponse>(`/api/inbox${done ? '?done=true' : ''}`),
+  dismissReview: (sessionId: string) => request<{ ok: true }>(`/api/sessions/${sessionId}/review/dismiss`, { method: 'POST' }),
+  todoDraft: (sessionId: string) => request<TodoDraftResponse>(`/api/sessions/${sessionId}/todo-draft`, { method: 'POST' }),
+  listTodos: (done: boolean) => request<ListTodosResponse>(`/api/todos?done=${done}`),
+  createTodo: (body: CreateTodoBody) => request<Todo>('/api/todos', { method: 'POST', body: JSON.stringify(body) }),
+  updateTodo: (id: string, body: UpdateTodoBody) => request<Todo>(`/api/todos/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  deleteTodo: (id: string) => request<{ ok: true }>(`/api/todos/${id}`, { method: 'DELETE' }),
   markReportRead: (id: string) => request<{ ok: true }>(`/api/reports/${id}/read`, { method: 'POST' }),
   uploadAttachment: (sessionId: string, file: File) => {
     const form = new FormData()

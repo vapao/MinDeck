@@ -1,0 +1,44 @@
+.hint {
+  font-size: 12px;
+  color: var(--text-3);
+}
+.note {
+  height: auto;
+  min-height: 80px;
+  padding: 8px 9px;
+  resize: vertical;
+  font-family: var(--font-sans);
+  line-height: 1.5;
+}
+.remind {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.date {
+  width: auto;
+}
+.chip {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-control);
+  background: none;
+  color: var(--text-2);
+  font-size: 12px;
+  cursor: pointer;
+}
+.chip:hover {
+  border-color: var(--border-3);
+  color: var(--text-strong);
+}
+.chip[data-on] {
+  border-color: var(--accent-border);
+  background: var(--accent-bg-2);
+  color: var(--text-strong);
+}
+.delete {
+  margin-right: auto;
+  color: var(--danger);
+}

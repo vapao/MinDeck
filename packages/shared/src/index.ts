@@ -339,7 +339,26 @@ export type Report = { id: string; sessionId: string; title: string; summary: st
  * GET /api/inbox：requests 是所有会话里待处理的审批与提问（按创建时间），reports 是未读汇报（新的在前）。
  * ?done=true 时改为已处理的异步提问（带 resolution，作废的为 null）与已读汇报，各取最近 50 条
  */
-export type InboxResponse = { requests: (PendingRequest & { resolution?: Resolution | null })[]; reports: Report[] };
+export type InboxResponse = { requests: (PendingRequest & { resolution?: Resolution | null })[]; reports: Report[]; unfinished: UnfinishedSession[]; todos: Todo[] };
+/**
+ * 空闲满 24 小时的顶层会话由 AI 标题同一个模型判断一次是否收尾；判为没收尾的进 Inbox。
+ * 只对判断时那次活动有效：会话再有活动（updatedAt 变了）就失效，空闲满 24 小时后重新判断。?done=true 时为空
+ */
+export type UnfinishedSession = { sessionId: string; next: string; idleSince: string };
+
+/**
+ * 轻量待办：用户手记、从会话生成、Agent 经 MCP add_todo 记。remindOn 是本地日期 YYYY-MM-DD，当天起未完成的进 Inbox（?done=true 时为空）。
+ * 删了关联会话，待办保留、sessionId 置空
+ */
+export type Todo = { id: string; title: string; note: string; cwd: string | null; sessionId: string | null; remindOn: string | null; createdAt: string; doneAt: string | null };
+/** GET /api/todos?done=：未完成的按提醒日期（没日期的在后）排，完成的按完成时间倒序（最近 100 条） */
+export type ListTodosResponse = Todo[];
+/** POST /api/todos。带 sessionId 时，该会话 Inbox 里的"没收尾"一并移除：已由这条待办跟进 */
+export type CreateTodoBody = { title: string; note?: string; cwd?: string | null; sessionId?: string | null; remindOn?: string | null };
+/** PATCH /api/todos/:id，只改传入字段 */
+export type UpdateTodoBody = { title?: string; note?: string; cwd?: string | null; remindOn?: string | null; done?: boolean };
+/** POST /api/sessions/:id/todo-draft：用 AI 标题模型从对话最近几轮起草，未开启 AI 标题时 400 */
+export type TodoDraftResponse = { title: string; note: string };
 
 /** Agent 经 MCP wake_later 预约的唤醒：到点把 note 作为消息发回同一个会话。触发或取消后删除 */
 export type Wakeup = { id: string; sessionId: string; at: string; note: string; createdAt: string };

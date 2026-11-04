@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type UIEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronLeft, CornerLeftUp, GitBranch, Network, Trash2 } from 'lucide-react'
+import { ChevronLeft, CornerLeftUp, GitBranch, ListPlus, Network, Trash2 } from 'lucide-react'
+import { openTodo } from '../components/TodoDialog'
 import { Loading } from '../components/Loading'
 import { skillToken, type ProviderId, type Resolution } from '@agentdeck/shared'
 import { api } from '../api'
@@ -356,6 +357,9 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
         )}
         <button type="button" className={styles.iconButton} data-active={info?.spawnGranted || undefined} onClick={onToggleSpawnGrant} disabled={!info || spawnGrant.isPending} aria-label="Auto-approve new sessions" aria-pressed={!!info?.spawnGranted} title={info?.spawnGranted ? 'New sessions started by this agent are auto-approved. Click to require approval again' : 'Auto-approve new sessions started by this agent'}>
           <Network size={16} />
+        </button>
+        <button type="button" className={styles.iconButton} onClick={() => openTodo({ draftFrom: sessionId, cwd: session?.cwd ?? null, sessionId })} disabled={!session} aria-label="Create todo" title="Create a todo from this conversation">
+          <ListPlus size={16} />
         </button>
         <button type="button" className={styles.iconButton} data-danger onClick={onDelete} disabled={!session || remove.isPending} aria-label="Delete session" title="Delete the session and all its history">
           <Trash2 size={16} />

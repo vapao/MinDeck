@@ -1,11 +1,11 @@
 import { useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowUpRight, ChevronLeft, CircleHelp, FileText, Inbox, Plus, ShieldAlert } from 'lucide-react'
-import type { PendingRequest, Report, Resolution, Session } from '@agentdeck/shared'
+import { AlarmClock, ArrowUpRight, ChevronLeft, CircleHelp, FileText, Hourglass, Inbox, Plus, ShieldAlert } from 'lucide-react'
+import type { InboxResponse, PendingRequest, Report, Resolution, Session, Todo, UnfinishedSession } from '@agentdeck/shared'
 import { api } from '../api'
 import { formatModel } from '../format'
 import { navigate, usePathname } from '../router'
-import { useSessions } from '../session/useSessions'
+import { confirmDeleteSession, useSessions } from '../session/useSessions'
 import { useInbox } from '../session/useInbox'
 import { useMediaQuery } from '../session/useMediaQuery'
 import { useAutoHideScrollbar } from '../session/useAutoHideScrollbar'
@@ -15,22 +15,30 @@ import { AssistantMessage } from '../components/AssistantMessage'
 import { Loading } from '../components/Loading'
 import { TabBar } from '../components/TabBar'
 import { openNewSession } from '../components/NewSessionDialog'
+import { localDay, openTodo } from '../components/TodoDialog'
+import { formatDay } from './TodosPage'
 import styles from './InboxPage.module.css'
 
 type Request = PendingRequest & { resolution?: Resolution | null }
 type Item =
   | { key: string; type: 'blocking' | 'decide'; createdAt: string; request: Request }
   | { key: string; type: 'report'; createdAt: string; report: Report }
-type Filter = 'all' | 'blocking' | 'decide' | 'report' | 'done'
+  | { key: string; type: 'todo'; createdAt: string; todo: Todo }
+  | { key: string; type: 'unfinished'; createdAt: string; unfinished: UnfinishedSession }
+type Filter = 'all' | 'blocking' | 'decide' | 'report' | 'followup' | 'done'
+const followup = (type: Item['type']) => type === 'todo' || type === 'unfinished'
 
 const sections: { type: Item['type']; label: string }[] = [
   { type: 'blocking', label: 'Blocking a running turn' },
   { type: 'decide', label: 'Needs your decision' },
   { type: 'report', label: 'Reports' },
+  { type: 'todo', label: 'Reminders' },
+  { type: 'unfinished', label: 'Unfinished work' },
 ]
 
-// 卡着一轮的审批 / 同步提问在前；异步提问（Agent 提交的待决定事项、Codex 非阻塞提问）不卡任何东西
-function toItems(data: { requests: Request[]; reports: Report[] } | undefined): Item[] {
+// 卡着一轮的审批 / 同步提问在前；异步提问（Agent 提交的待决定事项、Codex 非阻塞提问）不卡任何东西。
+// 之后是到期的待办，最后是判为没收尾的会话（可能一次冒出很多，放在最后不挤掉别的）
+function toItems(data: InboxResponse | undefined): Item[] {
   if (!data) return []
   return [
     ...data.requests.map((request): Item => ({
@@ -40,6 +48,8 @@ function toItems(data: { requests: Request[]; reports: Report[] } | undefined): 
       request,
     })),
     ...data.reports.map((report): Item => ({ key: `report/${report.id}`, type: 'report', createdAt: report.createdAt, report })),
+    ...data.todos.map((todo): Item => ({ key: `todo/${todo.id}`, type: 'todo', createdAt: `${todo.remindOn}T00:00:00`, todo })),
+    ...data.unfinished.map((unfinished): Item => ({ key: `unfinished/${unfinished.sessionId}`, type: 'unfinished', createdAt: unfinished.idleSince, unfinished })),
   ]
 }
 
@@ -50,8 +60,10 @@ function ago(iso: string) {
   return new Date(iso).toLocaleDateString('en-GB', minutes < 7 * 24 * 60 ? { weekday: 'short' } : { day: '2-digit', month: '2-digit' })
 }
 
-function headline(item: Item): { kind: string; title: string; line: string } {
+function headline(item: Item, session?: Session): { kind: string; title: string; line: string } {
   if (item.type === 'report') return { kind: 'Report', title: item.report.title, line: item.report.summary }
+  if (item.type === 'todo') return { kind: 'Reminder', title: item.todo.title, line: item.todo.note.split('\n')[0] ?? '' }
+  if (item.type === 'unfinished') return { kind: 'Unfinished', title: session?.title ?? 'Session', line: item.unfinished.next }
   const r = item.request
   if (r.kind === 'question') {
     const q = r.questions[0]
@@ -74,14 +86,14 @@ export function InboxPage() {
   useAutoHideScrollbar(list)
 
   const open = toItems(inbox.data)
-  const counts = { blocking: 0, decide: 0, report: 0 }
-  for (const item of open) counts[item.type]++
+  const counts = { blocking: 0, decide: 0, report: 0, followup: 0 }
+  for (const item of open) counts[followup(item.type) ? 'followup' : (item.type as 'blocking' | 'decide' | 'report')]++
   const shown = filter === 'done'
     ? toItems(done.data).sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-    : open.filter((item) => filter === 'all' || item.type === filter)
+    : open.filter((item) => filter === 'all' || item.type === filter || (filter === 'followup' && followup(item.type)))
   const ordered = filter === 'done' ? shown : sections.flatMap((s) => shown.filter((item) => item.type === s.type))
 
-  const selectedKey = pathname.match(/^\/inbox\/((?:request|report)\/[^/]+)$/)?.[1]
+  const selectedKey = pathname.match(/^\/inbox\/((?:request|report|todo|unfinished)\/[^/]+)$/)?.[1]
   // 桌面没选时默认看第一条；选中的那条处理掉后从列表消失，顺延到下一条
   const selected = ordered.find((item) => item.key === selectedKey) ?? (desktop ? ordered[0] : undefined)
   const next = () => {
@@ -89,13 +101,14 @@ export function InboxPage() {
     const after = ordered[i + 1] ?? ordered[i - 1]
     navigate(desktop && after ? `/inbox/${after.key}` : '/', { replace: true })
   }
-  const sessionOf = (id: string) => sessions.data?.find((s) => s.id === id)
+  const sessionOf = (id: string | null) => (id ? sessions.data?.find((s) => s.id === id) : undefined)
 
   const chips: { filter: Filter; label: string; count?: number }[] = [
     { filter: 'all', label: 'All', count: open.length },
     { filter: 'blocking', label: 'Blocking', count: counts.blocking },
     { filter: 'decide', label: 'Decide', count: counts.decide },
     { filter: 'report', label: 'Reports', count: counts.report },
+    { filter: 'followup', label: 'Follow-up', count: counts.followup },
     { filter: 'done', label: 'Done' },
   ]
   const filters = (
@@ -122,7 +135,7 @@ export function InboxPage() {
       if (!group.length) return null
       return (
         <div key={s.label}>
-          {s.label && filter === 'all' && <div className={styles.section}>{s.label}</div>}
+          {s.label && (filter === 'all' || filter === 'followup') && <div className={styles.section}>{s.label}</div>}
           {group.map((item) => <Row key={item.key} item={item} session={sessionOf(sessionIdOf(item))} active={item.key === selected?.key} done={filter === 'done'} />)}
         </div>
       )
@@ -137,7 +150,7 @@ export function InboxPage() {
             <ChevronLeft size={30} />
           </button>
           <span className={styles.mobileTitle}>{headline(selected).kind}</span>
-          <OpenSession id={sessionIdOf(selected)} />
+          {sessionIdOf(selected) && <OpenSession id={sessionIdOf(selected)!} />}
         </header>
         <div className={styles.mobileBody}>
           <Detail item={selected} session={sessionOf(sessionIdOf(selected))} onHandled={next} />
@@ -185,11 +198,13 @@ export function InboxPage() {
   )
 }
 
-const sessionIdOf = (item: Item) => (item.type === 'report' ? item.report.sessionId : item.request.sessionId)
+const sessionIdOf = (item: Item): string | null =>
+  item.type === 'report' ? item.report.sessionId : item.type === 'todo' ? item.todo.sessionId : item.type === 'unfinished' ? item.unfinished.sessionId : item.request.sessionId
 
 function Row({ item, session, active, done }: { item: Item; session: Session | undefined; active: boolean; done: boolean }) {
-  const { kind, title, line } = headline(item)
-  const Icon = item.type === 'report' ? FileText : item.type === 'decide' ? CircleHelp : ShieldAlert
+  const projectName = useProjectName()
+  const { kind, title, line } = headline(item, session)
+  const Icon = { report: FileText, decide: CircleHelp, blocking: ShieldAlert, todo: AlarmClock, unfinished: Hourglass }[item.type]
   return (
     <button type="button" className={styles.row} data-active={active || undefined} onClick={() => navigate(`/inbox/${item.key}`)}>
       <span className={styles.rowIcon} data-type={item.type}><Icon size={14} /></span>
@@ -197,8 +212,8 @@ function Row({ item, session, active, done }: { item: Item; session: Session | u
         <span className={styles.rowMeta}>
           <b>{kind}</b>
           {item.type === 'blocking' && <span className={styles.blocking}>· Blocking</span>}
-          {session?.title && <span className={styles.rowSource}>· {session.title}</span>}
-          <span className={styles.ago}>{ago(item.createdAt)}</span>
+          {item.type === 'unfinished' ? <span className={styles.rowSource}>· {projectName(session?.cwd)}</span> : session?.title && <span className={styles.rowSource}>· {session.title}</span>}
+          <span className={styles.ago}>{item.type === 'todo' ? formatDay(item.todo.remindOn!) : ago(item.createdAt)}</span>
         </span>
         <span className={styles.rowTitle} data-unread={!done || undefined}>{title}</span>
         {line && <span className={styles.rowLine}>{line}</span>}
@@ -227,6 +242,11 @@ function Detail({ item, session, onHandled }: { item: Item; session: Session | u
   const resolve = useMutation({ mutationFn: ({ id, body }: { id: string; body: Resolution }) => api.resolvePending(id, body), onSuccess: settled })
   const dismiss = useMutation({ mutationFn: api.dismissPending, onSuccess: settled })
   const markRead = useMutation({ mutationFn: api.markReportRead, onSuccess: settled })
+  const dismissReview = useMutation({ mutationFn: api.dismissReview, onSuccess: settled })
+  const updateTodo = useMutation({ mutationFn: ({ id, body }: { id: string; body: { done?: boolean; remindOn?: string } }) => api.updateTodo(id, body), onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['todos'] }); settled() } })
+  const removeSession = useMutation({ mutationFn: ({ id, descendants }: { id: string; descendants: boolean }) => api.deleteSession(id, descendants), onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['sessions'] }); settled() } })
+  const sessions = useSessions()
+  const projectName = useProjectName()
   const sessionId = sessionIdOf(item)
   const pendingProps = { busy: resolve.isPending, error: resolve.error?.message ?? null }
 
@@ -234,9 +254,62 @@ function Detail({ item, session, onHandled }: { item: Item; session: Session | u
     <div className={styles.source}>
       <span className={styles.sourceTitle}>{session?.title ?? 'Session'}</span>
       {session && <span className={styles.providerChip}>{session.provider}{session.model ? ` · ${formatModel(session.provider, session.model)}` : ''}</span>}
-      {desktop && <OpenSession id={sessionId} />}
+      {desktop && sessionId && <OpenSession id={sessionId} />}
     </div>
   )
+
+  if (item.type === 'unfinished') {
+    const u = item.unfinished
+    const error = dismissReview.error ?? removeSession.error
+    return (
+      <>
+        {source}
+        <h2 className={styles.heading}>{session?.title ?? 'Session'}</h2>
+        <div className={styles.nextStep}>
+          <span className={styles.nextLabel}>Left off at</span>
+          {u.next || 'No next step given'}
+        </div>
+        <div className={styles.meta}>{projectName(session?.cwd)} · idle since {new Date(u.idleSince).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</div>
+        <div className={styles.actions}>
+          <button type="button" className={styles.primary} onClick={() => navigate(`/s/${u.sessionId}`)}>Continue</button>
+          <button type="button" className={styles.ghost} onClick={() => openTodo({ title: session?.title ?? '', note: u.next, cwd: session?.cwd ?? null, sessionId: u.sessionId, remindOn: localDay(7) })}>Later…</button>
+          <button
+            type="button"
+            className={styles.ghost}
+            disabled={removeSession.isPending}
+            onClick={async () => {
+              const choice = await confirmDeleteSession(sessions.data, u.sessionId)
+              if (choice) removeSession.mutate({ id: u.sessionId, descendants: choice.descendants })
+            }}
+          >
+            Done, delete session
+          </button>
+          <button type="button" className={styles.ghost} disabled={dismissReview.isPending} onClick={() => dismissReview.mutate(u.sessionId)}>Dismiss</button>
+          {error && <span className={styles.errorText}>{error.message}</span>}
+        </div>
+        <div className={styles.note}>Checked by the AI title model after the session sat idle for a day. Dismiss keeps the session; it comes back only if the session has new activity.</div>
+      </>
+    )
+  }
+
+  if (item.type === 'todo') {
+    const t = item.todo
+    return (
+      <>
+        {session && source}
+        <h2 className={styles.heading}>{t.title}</h2>
+        {t.note && <div className={styles.todoNote}>{t.note}</div>}
+        <div className={styles.meta}>{t.cwd ? `${projectName(t.cwd)} · ` : ''}reminder for {formatDay(t.remindOn!)}</div>
+        <div className={styles.actions}>
+          <button type="button" className={styles.primary} disabled={updateTodo.isPending} onClick={() => updateTodo.mutate({ id: t.id, body: { done: true } })}>Done</button>
+          <button type="button" className={styles.ghost} disabled={updateTodo.isPending} onClick={() => updateTodo.mutate({ id: t.id, body: { remindOn: localDay(1) } })}>Tomorrow</button>
+          <button type="button" className={styles.ghost} disabled={updateTodo.isPending} onClick={() => updateTodo.mutate({ id: t.id, body: { remindOn: localDay(7) } })}>Next week</button>
+          <button type="button" className={styles.ghost} onClick={() => openTodo({ todo: t })}>Edit…</button>
+          {updateTodo.error && <span className={styles.errorText}>{updateTodo.error.message}</span>}
+        </div>
+      </>
+    )
+  }
 
   if (item.type === 'report') {
     const r = item.report
@@ -244,7 +317,7 @@ function Detail({ item, session, onHandled }: { item: Item; session: Session | u
       <>
         {source}
         <h2 className={styles.heading}>{r.title}</h2>
-        <AssistantMessage sessionId={sessionId} text={r.body} streaming={false} />
+        <AssistantMessage sessionId={sessionId!} text={r.body} streaming={false} />
         <div className={styles.actions}>
           {r.readAt ? <span className={styles.note}>Read {new Date(r.readAt).toLocaleString('en-GB')}</span> : (
             <button type="button" className={styles.primary} disabled={markRead.isPending} onClick={() => markRead.mutate(r.id)}>Mark as read</button>
@@ -273,7 +346,7 @@ function Detail({ item, session, onHandled }: { item: Item; session: Session | u
       {r.filed && (
         <>
           <h2 className={styles.heading}>{r.questions[0]?.question}</h2>
-          {r.details && <AssistantMessage sessionId={sessionId} text={r.details} streaming={false} />}
+          {r.details && <AssistantMessage sessionId={sessionId!} text={r.details} streaming={false} />}
         </>
       )}
       <QuestionCard bare={!!r.filed} request={r} provider={session?.provider ?? 'claude'} state={state} answers={resolution?.answers ?? null} response={resolution?.response ?? null} resolvedAt={r.resolvedAt} {...pendingProps}
@@ -287,4 +360,10 @@ function Detail({ item, session, onHandled }: { item: Item; session: Session | u
       )}
     </>
   )
+}
+
+// 显示项目别名；项目已被移除时退回目录名
+function useProjectName() {
+  const workspaces = useQuery({ queryKey: ['workspaces'], queryFn: api.listWorkspaces })
+  return (cwd: string | undefined | null) => (cwd && workspaces.data?.find((w) => w.path === cwd)?.alias) || cwd?.split('/').pop() || 'Project'
 }
