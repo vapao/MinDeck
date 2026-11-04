@@ -266,7 +266,8 @@ app.get<{ Params: { id: string }; Querystring: { q?: string } }>('/api/sessions/
 
 app.get<{ Params: { id: string } }>('/api/sessions/:id/skills', async (req): Promise<SkillsResponse> => {
   const { provider, cwd } = hub.getSession(req.params.id);
-  const skills = provider === 'codex' ? await listCodexSkills(cwd) : await listClaudeSkills(cwd);
+  // Codex 内置（system）和插件带的 skill 不进补全列表；只是不显示，Agent 照样能用，手打 $name 也照样生效
+  const skills = provider === 'codex' ? (await listCodexSkills(cwd)).filter((s) => s.scope !== 'system' && !s.pluginId) : await listClaudeSkills(cwd);
   return { skills: skills.map(({ name, description }) => ({ name, description })) };
 });
 
