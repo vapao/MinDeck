@@ -163,10 +163,32 @@ Files 支持在项目根目录或指定子目录新建空文件 / 文件夹，�
 
 ## 定时任务
 
-- 侧栏 / 手机顶栏 Scheduled 页：到点在指定项目新建一个会话并发出 prompt。周期三选一：一次性（本机时区的日期时间）、每天、工作日（周一到周五，**不处理法定假日和调休**）。每次执行都新建会话，标题为"任务名 · 日期"（先占住标题，AI 标题不覆盖）。
+- 侧栏 / 手机底部 tab 的 Automations 页（路由仍是 `/schedules`）：到点在指定项目新建一个会话并发出 prompt。周期三选一：一次性（本机时区的日期时间）、每天、工作日（周一到周五，**不处理法定假日和调休**）。每次执行都新建会话，标题为"任务名 · 日期"（先占住标题，AI 标题不覆盖）。
 - 调度在 Hub 进程内：`schedules` 表 + 每 30 秒检查一次，启动时立即检查一次。先用条件更新推进 `next_run_at`（认领）再建会话，同一次到期最多执行一次；下一次从当前时间算，不逐次补跑。
 - 错过（Hub 重启、宕机）：过期 1 小时内的启动后补跑一次；更久的只在 `last_error` 记一条 Missed，不执行。执行失败（项目被移除、Key 未配等）也记在 `last_error`，不重试。一次性任务执行或错过后自动关闭。
 - model / effort 保存具体值（空 = Provider 默认）；权限模式存在任务上、不跟设置走，默认 approval，选 bypass 时前端二次确认。approval 模式下首个审批会停住等人，此时会话是 waiting_user，`update-when-idle` 会一直等它。
 - Run now 立即执行一次，不影响下次执行时间。
 - MCP（`src/mcp.ts`）：`list_schedules` / `create_schedule(name, provider, prompt, kind, time, workspace?, model?, effort?)` / `update_schedule(id, …)`（只改传入字段）/ `delete_schedule(id)`。写操作先校验再由 Hub 在调用方会话弹审批卡，**每次都弹，不提供"本会话允许"**（任务会无人值守执行）；Provider 侧免审。model / effort 省略取设置默认值并存成具体值；权限模式创建时取该 Provider 设置里的默认值，卡上展示，MCP 不能改（换 Provider 也保留原值），要改只能在页面上。不暴露 Run now。
 - 未做：任意 cron 表达式、自选星期、完成推送。
+
+## Inbox（2026-11-04）
+
+方向：工作模式逐步转向 Agent 自主运行，用户只处理汇报和决策。Inbox 是首页（`/`），汇总所有需要用户处理的事。
+
+- 三类事项：
+  - **Blocking**：卡着一轮的审批和同步提问（会话 waiting_user），在 Inbox 详情里直接用原审批卡 / 提问卡处理。
+  - **Decide**：异步提问——Agent 经 MCP `ask_user` 提交的待决定事项，以及 Codex 的非阻塞提问（规则 14）。答案作为一条用户消息发回原会话并唤醒它（运行中则插入当前轮）。可 Dismiss：不答就关掉，记为作废，不通知 Agent。
+  - **Report**：Agent 经 MCP `report_to_user` 提交的汇报，只读，Mark as read 后进 Done。
+- `ask_user(question, details?, options?, multiSelect?)`：存为 `pending_requests` 里 `kind: 'question'`、`delivery: 'async'`、`filed: true` 的一行，不挂起调用方、不改会话状态，提交即返回。`filed` 事项 **Hub 重启不作废**（其余待处理请求照旧作废）；用户中断提交它的那一轮时作废（之前几轮提交的不动）；会话删除时随会话删除。会话流里显示为非阻塞提问卡（说明按纯文本），Inbox 里问题作标题、说明按 Markdown 渲染。
+- `report_to_user(title, summary, body)`：存 `reports` 表，随会话删除。两个工具 Provider 侧免审。
+- REST：`GET /api/inbox`（待处理请求 + 未读汇报；`?done=true` 为已处理的异步提问（带答案）与已读汇报，各最近 50 条）、`POST /api/pending/:id/dismiss`（只限异步提问）、`POST /api/reports/:id/read`。前端 5s 轮询，侧栏角标与手机 tab 角标共用。
+- Agent 是否使用这两个工具取决于它自己的判断和任务 prompt；定时任务的 prompt 里要写明"待决定事项用 ask_user 提交，结论用 report_to_user 汇报"。
+- 未做：推送通知（浏览器关着时只能等打开 Inbox）。
+
+## Automations 与唤醒（2026-11-04）
+
+- 定时任务执行时新建的会话记 `scheduleId`（`sessions.schedule_id`）。它们**不进 Active 侧栏**，只在 Automations 页该任务的 Recent runs 里（最近 6 次，按创建时间倒序）；正在跑、等你（waiting_user）、Inbox 里有它的事项、或正在看时才出现在侧栏。分叉出来的会话不带 `scheduleId`，回到侧栏。归档后照常在 Inactive。
+- Recent runs 芯片：日期 + 状态点（蓝 = 运行中、琥珀 = 等你或有未处理事项并注明条数、红 = 出错、绿 = 正常结束），点击进会话。错过 / 执行失败仍只显示在任务的 `lastError`。
+- MCP `wake_later(note, inMinutes | at)`（二选一，`at` 为本机时区 `YYYY-MM-DDTHH:mm`，须晚于现在；Provider 侧免审）：存 `wakeups` 表，到点由调度器（30 秒一次的 tick）把 `[AgentDeck] Wake-up you scheduled at …: <note>` 作为消息发回同一会话（运行中则插入当前轮）。先删后发，同一个最多发一次；Hub 停机期间到点的启动后照发；发不出去（如项目正在做文件操作）在会话里记一条 error，不重试。用户中断某一轮时，这一轮预约的唤醒作废；会话删除时一起删。
+- Automations 页的 Upcoming wake-ups 列出全部待触发唤醒（时间、note、会话），可取消（`GET /api/wakeups`、`DELETE /api/wakeups/:id`）。Agent 侧没有取消工具。
+- 未做：自动唤醒的次数上限（bypass 会话可以无限续约，靠 Upcoming 列表人工发现）。

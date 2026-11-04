@@ -22,6 +22,8 @@ export type Session = {
   archivedAt: string | null;
   /** 通过 MCP create_session 派生它的会话；用户手动新建为 null。创建后不变，父会话删掉后可能指向不存在的会话 */
   parentId: string | null;
+  /** 由哪个定时任务执行时创建；它不进 Active 侧栏，只在 Automations 的运行记录里，需要用户处理或在跑时才出现。分叉出来的会话不带 */
+  scheduleId?: string | null;
   /** 该会话调 create_session 免审批：可在顶栏事先打开，也可在派生审批卡上选"本会话允许"。只有 Hub 返回的会话带 */
   spawnGranted?: boolean;
   createdAt: string;
@@ -168,7 +170,17 @@ export type PendingRequestBody =
       /** Provider 建议的规则原文，resolve 时原样交还 Provider，UI 不解释 */
       suggestions: unknown[];
     }
-  | { kind: 'question'; toolUseId: string; questions: QuestionSpec[]; /** 异步提问的答案通过用户消息送回 Provider */ delivery?: 'async' };
+  | {
+      kind: 'question';
+      toolUseId: string;
+      questions: QuestionSpec[];
+      /** 异步提问的答案通过用户消息送回 Provider */
+      delivery?: 'async';
+      /** Agent 经 MCP ask_user 提交到 Inbox 的待决定事项（一定是 async）：Hub 重启不作废，提交它的那一轮被中断时作废 */
+      filed?: true;
+      /** filed 事项的背景说明，Markdown */
+      details?: string;
+    };
 
 export type PendingRequest = PendingRequestBody & {
   id: string;
@@ -318,6 +330,21 @@ export type Schedule = ScheduleConfig & { id: string; nextRunAt: string | null; 
 export type ListSchedulesResponse = Schedule[];
 /** POST /api/schedules/:id/run：立即执行一次，不影响下次执行时间 */
 export type RunScheduleResponse = { sessionId: string };
+
+// ---- Inbox：所有需要用户处理的事项 ----
+
+/** Agent 经 MCP report_to_user 提交的汇报；只读，用户标为已读后进 Done */
+export type Report = { id: string; sessionId: string; title: string; summary: string; body: string; createdAt: string; readAt: string | null };
+/**
+ * GET /api/inbox：requests 是所有会话里待处理的审批与提问（按创建时间），reports 是未读汇报（新的在前）。
+ * ?done=true 时改为已处理的异步提问（带 resolution，作废的为 null）与已读汇报，各取最近 50 条
+ */
+export type InboxResponse = { requests: (PendingRequest & { resolution?: Resolution | null })[]; reports: Report[] };
+
+/** Agent 经 MCP wake_later 预约的唤醒：到点把 note 作为消息发回同一个会话。触发或取消后删除 */
+export type Wakeup = { id: string; sessionId: string; at: string; note: string; createdAt: string };
+/** GET /api/wakeups，按 at 排；DELETE /api/wakeups/:id 取消 */
+export type ListWakeupsResponse = Wakeup[];
 
 /** GET /api/fs/dirs?path=：列出 path 下的子目录（跳过隐藏目录），只允许家目录内；path 省略 = 家目录 */
 export type ListDirsResponse = { path: string; parent: string | null; dirs: { name: string; path: string }[] };

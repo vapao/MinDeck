@@ -15,9 +15,11 @@ type Props = {
   busy: boolean
   error: string | null
   onSubmit: (answers: QuestionAnswers, response: string | undefined) => void
+  /** Inbox 详情已把问题和说明作为标题与正文展示，卡片里只留选项 */
+  bare?: boolean
 }
 
-export function QuestionCard({ request, provider, state, answers, response, resolvedAt, busy, error, onSubmit }: Props) {
+export function QuestionCard({ request, provider, state, answers, response, resolvedAt, busy, error, onSubmit, bare = false }: Props) {
   const [picked, setPicked] = useState<QuestionAnswers>({})
   const [other, setOther] = useState('')
   const complete = request.questions.every((q) => (picked[q.question]?.length ?? 0) > 0) || other.trim().length > 0
@@ -39,8 +41,13 @@ export function QuestionCard({ request, provider, state, answers, response, reso
       <div className={styles.body}>
         {request.questions.map((q) => (
           <div key={q.question} className={styles.field}>
-            <span className={styles.label}>{q.header}</span>
-            <div className={styles.text}>{q.question}</div>
+            {!bare && (
+              <>
+                <span className={styles.label}>{q.header}</span>
+                <div className={styles.text}>{q.question}</div>
+                {request.details && <div className={styles.details}>{request.details}</div>}
+              </>
+            )}
             {state === 'pending' ? (
               q.options.map((o) => (
                 <label key={o.label} className={styles.option}>
@@ -67,7 +74,7 @@ export function QuestionCard({ request, provider, state, answers, response, reso
           </div>
         ))}
         {state === 'pending' ? (
-          <input className={styles.other} value={other} placeholder="Other (free text)" onChange={(e) => setOther(e.target.value)} />
+          <input className={styles.other} value={other} placeholder={request.questions.some((q) => q.options.length) ? 'Other (free text)' : 'Your answer'} onChange={(e) => setOther(e.target.value)} />
         ) : (
           response && <div className={styles.text}>Other: {response}</div>
         )}

@@ -48,7 +48,7 @@ export function createScheduler(store: Store, hub: Hub, now = () => new Date()) 
   function execute(s: Schedule): string {
     const workspace = store.getWorkspace(s.workspaceId);
     if (!workspace) throw new HubError(400, 'Project was removed');
-    const session = hub.createSession(s.provider, workspace.path, { model: s.model, effort: s.effort, permissionMode: s.permissionMode });
+    const session = hub.createSession(s.provider, workspace.path, { model: s.model, effort: s.effort, permissionMode: s.permissionMode, scheduleId: s.id });
     // 先占住标题：每次执行都是同一句 prompt，AI 标题分不出是哪天的
     store.setSessionTitle(session.id, `${s.name} · ${localDate(now())}`);
     try {
@@ -71,6 +71,7 @@ export function createScheduler(store: Store, hub: Hub, now = () => new Date()) 
 
   function tick() {
     const t = now();
+    hub.fireDueWakeups(t);
     for (const s of store.listSchedules()) {
       if (!s.enabled || !s.nextRunAt || new Date(s.nextRunAt) > t) continue;
       // 下一次从现在算而不是从这次的到期时间算：停机多天回来不会连跑多次

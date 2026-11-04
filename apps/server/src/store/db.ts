@@ -1,5 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
-import type { AgentEvent, Attachment, EventType, PendingRequest, PendingRequestBody, PermissionMode, ProviderEvent, Resolution, Schedule, ScheduleConfig, ServiceConfig, Session, SessionStatus, Settings, Workspace } from '@agentdeck/shared';
+import type { AgentEvent, Attachment, EventType, PendingRequest, PendingRequestBody, PermissionMode, ProviderEvent, Report, Resolution, Schedule, ScheduleConfig, ServiceConfig, Session, SessionStatus, Settings, Wakeup, Workspace } from '@agentdeck/shared';
 
 export type Store = ReturnType<typeof openStore>;
 /** pid 是服务进程组的组长；startedAt 是它在 ps 里的启动时间，用来识别 pid 是否已被别的进程复用 */
@@ -73,10 +73,26 @@ export function openStore(path: string) {
       last_error      TEXT,
       created_at      TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS wakeups (
+      id         TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL REFERENCES sessions(id),
+      at         TEXT NOT NULL,
+      note       TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS reports (
+      id         TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL REFERENCES sessions(id),
+      title      TEXT NOT NULL,
+      summary    TEXT NOT NULL,
+      body       TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      read_at    TEXT
+    );
   `);
-  // 旧库没有就补上（SQLite 没有 ADD COLUMN IF NOT EXISTS）：model / effort 是切片 8 加的，permission_mode 是权限模式那次加的，archived_at 是切片 12 加的，parent_id 是派生会话隶属关系那次加的，spawn_granted_at 是派生授权持久化那次加的
+  // 旧库没有就补上（SQLite 没有 ADD COLUMN IF NOT EXISTS）：model / effort 是切片 8 加的，permission_mode 是权限模式那次加的，archived_at 是切片 12 加的，parent_id 是派生会话隶属关系那次加的，spawn_granted_at 是派生授权持久化那次加的，schedule_id 是 Automations 运行记录那次加的
   const sessionCols = new Set((db.prepare(`PRAGMA table_info(sessions)`).all() as { name: string }[]).map((c) => c.name));
-  for (const col of ['model', 'effort', 'permission_mode', 'archived_at', 'title', 'parent_id', 'spawn_granted_at']) if (!sessionCols.has(col)) db.exec(`ALTER TABLE sessions ADD COLUMN ${col} TEXT`);
+  for (const col of ['model', 'effort', 'permission_mode', 'archived_at', 'title', 'parent_id', 'spawn_granted_at', 'schedule_id']) if (!sessionCols.has(col)) db.exec(`ALTER TABLE sessions ADD COLUMN ${col} TEXT`);
 
   // 修正旧版下拉框保存的 Codex effort 拼写，不改变模型、会话排序或其他 Provider。
   for (const [oldEffort, effort] of [['light', 'low'], ['extra-high', 'xhigh']]) {
@@ -95,8 +111,8 @@ export function openStore(path: string) {
   }
 
   const insertSession = db.prepare(
-    `INSERT INTO sessions (id, provider, cwd, provider_session_id, status, model, effort, permission_mode, parent_id, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO sessions (id, provider, cwd, provider_session_id, status, model, effort, permission_mode, parent_id, schedule_id, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
   // AI 标题独立保存；旧会话和生成失败时仍展示原来的首条消息。
   const sessionColumns = `sessions.*, (
@@ -123,9 +139,11 @@ export function openStore(path: string) {
     `SELECT * FROM events WHERE session_id = ? AND seq > ? ORDER BY seq`,
   );
   const selectLastSeq = db.prepare(`SELECT COALESCE(MAX(seq), 0) AS seq FROM events WHERE session_id = ?`);
-  // 删除会话连同它的全部记录；四张表在一个事务里，不留半截
+  // 删除会话连同它的全部记录；六张表在一个事务里，不留半截
   const deleteSessionRows = [
+    db.prepare(`DELETE FROM wakeups WHERE session_id = ?`),
     db.prepare(`DELETE FROM events WHERE session_id = ?`),
+    db.prepare(`DELETE FROM reports WHERE session_id = ?`),
     db.prepare(`DELETE FROM pending_requests WHERE session_id = ?`),
     db.prepare(`DELETE FROM attachments WHERE session_id = ?`),
     db.prepare(`DELETE FROM sessions WHERE id = ?`),
@@ -141,7 +159,8 @@ export function openStore(path: string) {
   const settlePending = db.prepare(
     `UPDATE pending_requests SET status = ?, resolution = ?, resolved_at = ? WHERE id = ? AND status = 'pending'`,
   );
-  const expireAllPending = db.prepare(`UPDATE pending_requests SET status = 'expired', resolved_at = ? WHERE status = 'pending'`);
+  // Inbox 里的待决定事项不挂着 Provider 回调，答案走普通消息，重启后照样能答
+  const expireAllPending = db.prepare(`UPDATE pending_requests SET status = 'expired', resolved_at = ? WHERE status = 'pending' AND json_extract(request, '$.filed') IS NOT 1`);
   const insertAttachment = db.prepare(
     `INSERT INTO attachments (id, session_id, name, mime_type, size, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
   );
@@ -175,6 +194,7 @@ export function openStore(path: string) {
     permissionMode: (r.permission_mode as PermissionMode | null) ?? 'approval',
     archivedAt: (r.archived_at as string | null) ?? null,
     parentId: (r.parent_id as string | null) ?? null,
+    scheduleId: (r.schedule_id as string | null) ?? null,
     spawnGranted: r.spawn_granted_at != null,
     createdAt: r.created_at as string,
     updatedAt: r.updated_at as string,
@@ -186,6 +206,15 @@ export function openStore(path: string) {
     status: r.status as PendingRequest['status'],
     createdAt: r.created_at as string,
     resolvedAt: (r.resolved_at as string | null) ?? null,
+  });
+  const rowToReport = (r: Record<string, unknown>): Report => ({
+    id: r.id as string,
+    sessionId: r.session_id as string,
+    title: r.title as string,
+    summary: r.summary as string,
+    body: r.body as string,
+    createdAt: r.created_at as string,
+    readAt: (r.read_at as string | null) ?? null,
   });
   const rowToAttachment = (r: Record<string, unknown>): Attachment => ({
     id: r.id as string,
@@ -231,7 +260,7 @@ export function openStore(path: string) {
     createSession(session: Session) {
       insertSession.run(
         session.id, session.provider, session.cwd, session.providerSessionId,
-        session.status, session.model, session.effort, session.permissionMode, session.parentId, session.createdAt, session.updatedAt,
+        session.status, session.model, session.effort, session.permissionMode, session.parentId, session.scheduleId ?? null, session.createdAt, session.updatedAt,
       );
     },
     getSession(id: string): Session | undefined {
@@ -257,7 +286,7 @@ export function openStore(path: string) {
       try {
         insertSession.run(
           session.id, session.provider, session.cwd, session.providerSessionId,
-          session.status, session.model, session.effort, session.permissionMode, session.parentId, session.createdAt, session.updatedAt,
+          session.status, session.model, session.effort, session.permissionMode, session.parentId, session.scheduleId ?? null, session.createdAt, session.updatedAt,
         );
         if (session.title) db.prepare('UPDATE sessions SET title = ? WHERE id = ?').run(session.title, session.id);
         for (const a of attachments) insertAttachment.run(a.id, a.sessionId, a.name, a.mimeType, a.size, a.createdAt);
@@ -324,7 +353,38 @@ export function openStore(path: string) {
     resolvePending(id: string, resolution: Resolution | null, status: 'resolved' | 'expired' = 'resolved'): boolean {
       return settlePending.run(status, resolution && JSON.stringify(resolution), new Date().toISOString(), id).changes === 1;
     },
-    /** Hub 重启后没有任何 Provider 回调在等这些请求，全部作废 */
+    allPending(): PendingRequest[] {
+      return db.prepare(`SELECT * FROM pending_requests WHERE status = 'pending' ORDER BY created_at`).all().map(rowToPending);
+    },
+    /** Inbox 的 Done：已答或作废的异步提问；同步审批 / 提问是在会话里当场处理的，不进 Done */
+    settledAsyncQuestions(limit: number): (PendingRequest & { resolution: Resolution | null })[] {
+      return db.prepare(`SELECT * FROM pending_requests WHERE status != 'pending' AND json_extract(request, '$.delivery') = 'async' ORDER BY resolved_at DESC LIMIT ?`).all(limit)
+        .map((r) => ({ ...rowToPending(r), resolution: r.resolution ? JSON.parse(r.resolution as string) as Resolution : null }));
+    },
+    createWakeup(w: Wakeup) {
+      db.prepare(`INSERT INTO wakeups (id, session_id, at, note, created_at) VALUES (?, ?, ?, ?, ?)`).run(w.id, w.sessionId, w.at, w.note, w.createdAt);
+    },
+    listWakeups(): Wakeup[] {
+      return db.prepare(`SELECT * FROM wakeups ORDER BY at`).all().map((r) => ({ id: r.id as string, sessionId: r.session_id as string, at: r.at as string, note: r.note as string, createdAt: r.created_at as string }));
+    },
+    /** 返回 false 表示已被触发或取消：触发前先删，同一个唤醒最多发一次 */
+    deleteWakeup(id: string): boolean {
+      return db.prepare(`DELETE FROM wakeups WHERE id = ?`).run(id).changes === 1;
+    },
+    createReport(r: Report) {
+      db.prepare(`INSERT INTO reports (id, session_id, title, summary, body, created_at) VALUES (?, ?, ?, ?, ?, ?)`).run(r.id, r.sessionId, r.title, r.summary, r.body, r.createdAt);
+    },
+    listReports(read: boolean, limit: number): Report[] {
+      return db.prepare(`SELECT * FROM reports WHERE (read_at IS NOT NULL) = ? ORDER BY ${read ? 'read_at' : 'created_at'} DESC LIMIT ?`).all(read ? 1 : 0, limit).map(rowToReport);
+    },
+    markReportRead(id: string): boolean {
+      return db.prepare(`UPDATE reports SET read_at = ? WHERE id = ? AND read_at IS NULL`).run(new Date().toISOString(), id).changes === 1;
+    },
+    getReport(id: string): Report | undefined {
+      const row = db.prepare(`SELECT * FROM reports WHERE id = ?`).get(id);
+      return row && rowToReport(row);
+    },
+    /** Hub 重启后没有任何 Provider 回调在等这些请求，全部作废（Inbox 的待决定事项除外） */
     expireAllPending() {
       expireAllPending.run(new Date().toISOString());
     },

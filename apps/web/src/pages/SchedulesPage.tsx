@@ -1,16 +1,19 @@
 import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CalendarClock, ChevronLeft, MessageSquare, Pencil, Play, Plus, Power, Trash2, X } from 'lucide-react'
+import { Pencil, Play, Plus, Power, Trash2, X } from 'lucide-react'
 import { getEffortOptions, modelOptions, permissionModeOptions, type PermissionMode, type ProviderId, type Schedule, type ScheduleConfig, type ScheduleKind } from '@agentdeck/shared'
 import { api } from '../api'
-import { providerName } from '../format'
+import { formatModel, providerName } from '../format'
 import { navigate } from '../router'
 import { dialog } from '../components/Dialog'
+import { TabBar } from '../components/TabBar'
+import { useMediaQuery } from '../session/useMediaQuery'
+import { useSessions } from '../session/useSessions'
+import { useInbox } from '../session/useInbox'
 import { Select } from '../components/Select'
 import modal from '../components/Dialog.module.css'
 import form from '../components/NewSessionDialog.module.css'
 import styles from './Manage.module.css'
-import layout from './WorkspacesPage.module.css'
 import own from './SchedulesPage.module.css'
 
 const kindOptions: { value: ScheduleKind; label: string }[] = [
@@ -22,9 +25,10 @@ const kindOptions: { value: ScheduleKind; label: string }[] = [
 const formatDateTime = (iso: string) => new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', weekday: 'short', hour: '2-digit', minute: '2-digit' })
 const describe = (s: Schedule) => s.kind === 'once' ? `Once · ${s.time.replace('T', ' ')}` : `${s.kind === 'daily' ? 'Every day' : 'Weekdays'} · ${s.time}`
 
-// 定时任务：到点在指定项目新建会话并发出 prompt。错过 1 小时内的执行会在 Hub 启动后补跑一次，更早的只记错过
+// Automations：定时任务（到点在指定项目新建会话并发出 prompt；错过 1 小时内的执行会在 Hub 启动后补跑一次，更早的只记错过）、各任务最近的运行记录、Agent 预约的唤醒
 export function SchedulesPage() {
   const queryClient = useQueryClient()
+  const desktop = useMediaQuery('(min-width: 1024px)')
   const schedules = useQuery({ queryKey: ['schedules'], queryFn: api.listSchedules, refetchInterval: 30_000 })
   const workspaces = useQuery({ queryKey: ['workspaces'], queryFn: api.listWorkspaces })
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['schedules'] })
@@ -39,66 +43,111 @@ export function SchedulesPage() {
     },
   })
   const [editing, setEditing] = useState<Schedule | 'new' | null>(null)
+  const sessions = useSessions()
+  const inbox = useInbox()
+  const wakeups = useQuery({ queryKey: ['wakeups'], queryFn: api.listWakeups, refetchInterval: 30_000 })
+  const cancelWakeup = useMutation({ mutationFn: api.cancelWakeup, onSuccess: () => queryClient.invalidateQueries({ queryKey: ['wakeups'] }) })
   const alias = (id: string) => workspaces.data?.find((w) => w.id === id)?.alias ?? 'Removed project'
+  const openItems = (sessionId: string) => [...(inbox.data?.requests ?? []), ...(inbox.data?.reports ?? [])].filter((item) => item.sessionId === sessionId).length
+  // sessions 按 updatedAt 倒序，运行记录要按执行先后
+  const runsOf = (id: string) => (sessions.data ?? []).filter((x) => x.scheduleId === id).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 6)
 
   const onRemove = async (s: Schedule) => {
     if (await dialog.confirm({ title: `Delete "${s.name}"?`, message: 'Sessions it already created are not affected.', ok: 'Delete', danger: true })) remove.mutate(s.id)
   }
-  const error = schedules.error ?? remove.error ?? toggle.error ?? run.error
+  const error = schedules.error ?? remove.error ?? toggle.error ?? run.error ?? cancelWakeup.error
 
   return (
-    <div className={styles.page}>
-      <div className={`${styles.card} ${layout.card}`}>
-        <div className={styles.head}>
-          <button type="button" className={styles.back} onClick={() => navigate('/')} aria-label="Back">
-            <ChevronLeft size={18} />
-          </button>
-          <h1 className={styles.title}>Scheduled</h1>
-          {schedules.data && <span className={layout.count}>{schedules.data.length}</span>}
-          <button type="button" className={`${styles.primary} ${layout.add}`} onClick={() => setEditing('new')}>
-            <Plus size={16} />
-            New task
-          </button>
-        </div>
-        {error && <div className={styles.error}>{error.message}</div>}
-        <div className={`${styles.scroll} ${layout.list}`}>
-          {schedules.data?.length === 0 && <div className={styles.empty}>No scheduled tasks yet</div>}
-          {schedules.data?.map((s) => (
-            <div key={s.id} className={layout.item} data-disabled={s.enabled ? undefined : ''}>
-              <CalendarClock size={16} />
-              <div className={own.main}>
-                <span className={`${layout.name} ${own.name}`} title={s.name}>{s.name}</span>
-                <span className={own.meta}>{describe(s)} · {providerName[s.provider]} · {alias(s.workspaceId)}</span>
-                <span className={own.meta}>
-                  {s.enabled && s.nextRunAt ? `Next: ${formatDateTime(s.nextRunAt)}` : 'Off'}
-                  {s.lastRunAt && ` · Last: ${formatDateTime(s.lastRunAt)}`}
-                </span>
-                {s.lastError && <span className={styles.error}>{s.lastError}</span>}
+    <div className={own.page}>
+      <header className={own.top}>
+        <h1 className={own.title}>Automations</h1>
+        <button type="button" className={own.newTask} onClick={() => setEditing('new')}>
+          <Plus size={14} />
+          New task
+        </button>
+      </header>
+      <div className={own.scroll}>
+        <div className={own.column}>
+          {error && <div className={styles.error}>{error.message}</div>}
+          <div className={own.sectionHead}>
+            <h2>Scheduled tasks</h2>
+            <span>Each run starts a new session; runs stay out of the sidebar unless they need you.</span>
+          </div>
+          {schedules.data?.length === 0 && <div className={own.none}>No scheduled tasks yet</div>}
+          {schedules.data?.map((s) => {
+            const runs = runsOf(s.id)
+            return (
+              <div key={s.id} className={own.task} data-disabled={s.enabled ? undefined : ''}>
+                <div className={own.taskHead}>
+                  <span className={own.name} title={s.name}>{s.name}</span>
+                  <span className={own.pill} data-on={s.enabled || undefined}>{s.enabled ? 'On' : 'Off'}</span>
+                  <span className={own.taskActions}>
+                    <button type="button" className={styles.rowButton} onClick={() => run.mutate(s.id)} disabled={run.isPending} aria-label="Run now" title="Run now (does not change the next run)">
+                      <Play size={14} />
+                    </button>
+                    <button type="button" className={`${styles.rowButton} ${own.power}`} data-active={s.enabled ? '' : undefined} onClick={() => toggle.mutate(s)} disabled={toggle.isPending} aria-label={s.enabled ? 'Turn off' : 'Turn on'} title={s.enabled ? 'Turn off' : 'Turn on'}>
+                      <Power size={14} />
+                    </button>
+                    <button type="button" className={styles.rowButton} onClick={() => setEditing(s)} aria-label="Edit" title="Edit">
+                      <Pencil size={14} />
+                    </button>
+                    <button type="button" className={styles.rowButton} data-danger onClick={() => onRemove(s)} disabled={remove.isPending} aria-label="Delete" title="Delete">
+                      <Trash2 size={14} />
+                    </button>
+                  </span>
+                </div>
+                <div className={own.meta}>
+                  <span>{alias(s.workspaceId)}</span>
+                  <code>{s.provider}{s.model ? ` · ${formatModel(s.provider, s.model)}` : ''}</code>
+                  <span>{describe(s)}</span>
+                  <span>{s.permissionMode}</span>
+                </div>
+                <div className={own.meta}>
+                  <code>{s.enabled && s.nextRunAt ? `Next ${formatDateTime(s.nextRunAt)}` : 'Off'}</code>
+                  {s.lastRunAt && <code>Last {formatDateTime(s.lastRunAt)}</code>}
+                </div>
+                {s.lastError && <div className={styles.error}>{s.lastError}</div>}
+                <div className={own.runs}>
+                  <span className={own.runsLabel}>Recent runs</span>
+                  {runs.length === 0 && <span className={own.runsNone}>None yet</span>}
+                  {runs.map((x) => {
+                    const items = openItems(x.id)
+                    const state = x.status === 'running' ? 'running' : x.status === 'error' ? 'error' : x.status === 'waiting_user' || items ? 'waiting' : 'ok'
+                    return (
+                      <button key={x.id} type="button" className={own.run} data-state={state} onClick={() => navigate(`/s/${x.id}`)} title={x.title ?? undefined}>
+                        <i />
+                        {new Date(x.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' })}
+                        {items > 0 && ` · ${items} item${items > 1 ? 's' : ''}`}
+                      </button>
+                    )
+                  })}
+                </div>
               </div>
-              <div className={layout.actions}>
-                {s.lastSessionId && (
-                  <button type="button" className={styles.rowButton} onClick={() => navigate(`/s/${s.lastSessionId}`)} aria-label="Last session" title="Open the last session it created">
-                    <MessageSquare size={14} />
-                  </button>
-                )}
-                <button type="button" className={styles.rowButton} onClick={() => run.mutate(s.id)} disabled={run.isPending} aria-label="Run now" title="Run now (does not change the next run)">
-                  <Play size={14} />
-                </button>
-                <button type="button" className={`${styles.rowButton} ${own.power}`} data-active={s.enabled ? '' : undefined} onClick={() => toggle.mutate(s)} disabled={toggle.isPending} aria-label={s.enabled ? 'Turn off' : 'Turn on'} title={s.enabled ? 'Turn off' : 'Turn on'}>
-                  <Power size={14} />
-                </button>
-                <button type="button" className={styles.rowButton} onClick={() => setEditing(s)} aria-label="Edit" title="Edit">
-                  <Pencil size={14} />
-                </button>
-                <button type="button" className={styles.rowButton} data-danger onClick={() => onRemove(s)} disabled={remove.isPending} aria-label="Delete" title="Delete">
-                  <Trash2 size={14} />
+            )
+          })}
+
+          <div className={own.sectionHead}>
+            <h2>Upcoming wake-ups</h2>
+            <span>Set by agents with wake_later; the same session resumes with the note.</span>
+          </div>
+          {wakeups.data?.length === 0 && <div className={own.none}>No pending wake-ups</div>}
+          {wakeups.data?.map((w) => {
+            const session = sessions.data?.find((x) => x.id === w.sessionId)
+            return (
+              <div key={w.id} className={own.wakeup}>
+                <code className={own.when}>{formatDateTime(w.at)}</code>
+                <span className={own.note}>{w.note}</span>
+                <button type="button" className={own.wakeSession} onClick={() => navigate(`/s/${w.sessionId}`)}>{session?.title ?? 'Session'}</button>
+                <button type="button" className={styles.rowButton} onClick={() => cancelWakeup.mutate(w.id)} disabled={cancelWakeup.isPending} aria-label="Cancel wake-up" title="Cancel">
+                  <X size={14} />
                 </button>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
-        {editing && <ScheduleDialog schedule={editing === 'new' ? undefined : editing} onClose={() => setEditing(null)} />}
       </div>
+      {editing && <ScheduleDialog schedule={editing === 'new' ? undefined : editing} onClose={() => setEditing(null)} />}
+      {!desktop && <TabBar />}
     </div>
   )
 }

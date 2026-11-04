@@ -94,3 +94,19 @@ test('spawn grant survives reopening the store and stays with its session', () =
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// 规则（2026-11-04 与开发者确认）：Inbox 里 Agent 提交的待决定事项可能几天后才答，Hub 重启不能作废；挂着 Provider 回调的请求照旧作废。
+test('hub restart keeps filed inbox questions and expires the rest', () => {
+  const store = openStore(':memory:');
+  const now = new Date().toISOString();
+  store.createSession({ id: 's', provider: 'claude', cwd: '/tmp', providerSessionId: null, status: 'idle', title: null, model: null, effort: null, permissionMode: 'approval', archivedAt: null, parentId: null, createdAt: now, updatedAt: now });
+  const question = { sessionId: 's', status: 'pending' as const, createdAt: now, resolvedAt: null, kind: 'question' as const, toolUseId: 't', delivery: 'async' as const, questions: [] };
+  store.createPending({ ...question, id: 'filed', filed: true });
+  store.createPending({ ...question, id: 'codex-async' });
+  store.createPending({ id: 'approval', sessionId: 's', status: 'pending', createdAt: now, resolvedAt: null, kind: 'approval', toolName: 'Bash', toolUseId: 't', input: {}, sessionAllowPatterns: [], suggestions: [] });
+
+  store.expireAllPending();
+
+  assert.deepEqual(store.allPending().map((p) => p.id), ['filed']);
+  assert.equal(store.getPending('approval')?.status, 'expired');
+});

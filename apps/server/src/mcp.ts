@@ -24,8 +24,8 @@ const maxEntries = 40;
 const defaultLogLines = 100;
 const maxLogLines = 1000;
 
-/** Provider 侧免审批的工具：只读的，create_session 与定时任务写操作（它们由 Hub 自己弹审批卡，不再让 Provider 先审一次），以及只影响自己会话的 compact_after_turn */
-const autoApprove = ['list_workspaces', 'list_sessions', 'get_session', 'create_session', 'list_services', 'get_service_log', 'compact_after_turn', 'list_schedules', 'create_schedule', 'update_schedule', 'delete_schedule'];
+/** Provider 侧免审批的工具：只读的，create_session 与定时任务写操作（它们由 Hub 自己弹审批卡，不再让 Provider 先审一次），以及只影响自己会话或只是交给用户看的 compact_after_turn / ask_user / report_to_user / wake_later */
+const autoApprove = ['list_workspaces', 'list_sessions', 'get_session', 'create_session', 'list_services', 'get_service_log', 'compact_after_turn', 'ask_user', 'report_to_user', 'wake_later', 'list_schedules', 'create_schedule', 'update_schedule', 'delete_schedule'];
 
 export function agentdeckMcpFor(url: string, sessionId: string): AgentdeckMcp {
   return { url, headers: { [callerHeader]: sessionId }, timeoutSec: toolTimeoutSec, autoApprove };
@@ -187,6 +187,40 @@ export function createMcpServer(hub: Hub, store: Store, services: Services, sche
     return json({ scheduled: true });
   });
 
+  // Inbox：Agent 自主运行时找用户的唯一出口。提交即返回，不等用户，一轮不为等人挂着
+  server.registerTool('ask_user', {
+    description: 'File a decision or question for the user in the AgentDeck Inbox, without waiting for the answer. Use it when you need a decision or information only the user has, especially in unattended runs where nobody watches this conversation. Then carry on with work that does not depend on the answer, or end your turn; do not wait or poll. The answer arrives later as a new message in this session. One question per call; do not file a question that is already open.',
+    inputSchema: {
+      question: z.string().min(1).describe('One line the user can answer without opening this session'),
+      details: z.string().optional().describe('Markdown: what you found, the evidence, and what happens with each choice'),
+      options: z.array(z.string().min(1)).max(6).optional().describe('Choices to pick from; the user can always reply in their own words instead'),
+      multiSelect: z.boolean().optional(),
+    },
+  }, ({ question, details, options = [], multiSelect = false }) => json({ id: hub.fileQuestion(callerId, { question, details, options, multiSelect }).id, filed: true }));
+
+  server.registerTool('report_to_user', {
+    description: 'File a report in the AgentDeck Inbox for the user to read later, e.g. the outcome of a scheduled or long-running task. The user reads it without opening this session, so make it self-contained and short. Not for questions: use ask_user for anything that needs an answer.',
+    inputSchema: {
+      title: z.string().min(1),
+      summary: z.string().min(1).describe('One line shown in the Inbox list, e.g. key numbers or the verdict'),
+      body: z.string().min(1).describe('Markdown'),
+    },
+  }, ({ title, summary, body }) => json({ id: hub.fileReport(callerId, { title, summary, body }).id }));
+
+  server.registerTool('wake_later', {
+    description: 'Schedule this session to be woken up later, then end your turn instead of waiting, sleeping or polling (e.g. to check CI, a deploy or a reply in 30 minutes). At that time the note arrives as a new message in this session, with this conversation intact. Give exactly one of inMinutes or at. The user can see and cancel pending wake-ups in AgentDeck.',
+    inputSchema: {
+      note: z.string().min(1).describe('What to check or do when woken up'),
+      inMinutes: z.number().int().min(1).optional(),
+      at: z.string().optional().describe('YYYY-MM-DDTHH:mm, local time of the AgentDeck host'),
+    },
+  }, ({ note, inMinutes, at }) => {
+    if ((inMinutes === undefined) === (at === undefined)) throw new HubError(400, 'Give exactly one of inMinutes or at');
+    const when = inMinutes !== undefined ? new Date(Date.now() + inMinutes * 60_000) : localDateTime(at!);
+    const wakeup = hub.setWakeup(callerId, when, note);
+    return json({ id: wakeup.id, at: new Date(wakeup.at).toLocaleString('en-GB') });
+  });
+
   server.registerTool('interrupt', {
     description: 'Stop the running turn of another session; messages it has not picked up yet are dropped.',
     inputSchema: { id: z.string() },
@@ -335,6 +369,12 @@ export function createMcpServer(hub: Hub, store: Store, services: Services, sche
   });
 
   return server;
+}
+
+function localDateTime(text: string): Date {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(text);
+  if (!m) throw new HubError(400, 'at must be YYYY-MM-DDTHH:mm');
+  return new Date(+m[1]!, +m[2]! - 1, +m[3]!, +m[4]!, +m[5]!);
 }
 
 // 只给调用方看对话本身：状态切换、额度、审批往返这些 UI 事件不占它的上下文

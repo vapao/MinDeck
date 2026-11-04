@@ -79,6 +79,11 @@
 .text {
   color: var(--text-2);
 }
+.details {
+  color: var(--text-3);
+  font-size: 12px;
+  white-space: pre-wrap;
+}
 .mono {
   font-family: var(--font-mono);
   font-size: 12px;

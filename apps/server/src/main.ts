@@ -354,6 +354,24 @@ app.post<{ Params: { id: string }; Body: ResolvePendingBody }>(
   (req) => ({ seq: hub.resolvePending(req.params.id, req.body) }),
 );
 
+app.post<{ Params: { id: string } }>('/api/pending/:id/dismiss', (req) => {
+  hub.dismissPending(req.params.id);
+  return { ok: true };
+});
+
+app.get<{ Querystring: { done?: boolean } }>('/api/inbox', { schema: { querystring: { type: 'object', properties: { done: { type: 'boolean' } } } } }, (req, reply) =>
+  reply.header('cache-control', 'no-store').send(hub.inbox(req.query.done ?? false)));
+app.post<{ Params: { id: string } }>('/api/reports/:id/read', (req) => {
+  hub.markReportRead(req.params.id);
+  return { ok: true };
+});
+
+app.get('/api/wakeups', (_req, reply) => reply.header('cache-control', 'no-store').send(hub.listWakeups()));
+app.delete<{ Params: { id: string } }>('/api/wakeups/:id', (req) => {
+  hub.cancelWakeup(req.params.id);
+  return { ok: true };
+});
+
 registerMcpRoute(app, hub, store, services, scheduler);
 
 // 浏览器允许任意站点跨站发起 WebSocket（§11.3 Origin 检查）：Origin 存在时必须与访问的 Host 一致；非浏览器客户端没有 Origin，放行

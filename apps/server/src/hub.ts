@@ -2,7 +2,7 @@ import { generateTitle } from './providers/title';
 import { randomUUID } from 'node:crypto';
 import { realpathSync } from 'node:fs';
 import { resolve, sep } from 'node:path';
-import { getEffortOptions, isCompactCommand, modelOptions, permissionModeOptions, type AgentEvent, type Attachment, type MessageDelta, type PendingRequest, type PendingRequestBody, type PermissionMode, type ProviderEvent, type ProviderOutput, type Resolution, type Session, type SessionStatus, type Settings, type UpdateSettingsBody, type UsageInfo } from '@agentdeck/shared';
+import { getEffortOptions, isCompactCommand, modelOptions, permissionModeOptions, type AgentEvent, type Attachment, type MessageDelta, type PendingRequest, type PendingRequestBody, type PermissionMode, type ProviderEvent, type ProviderOutput, type Report, type Resolution, type Wakeup, type Session, type SessionStatus, type Settings, type UpdateSettingsBody, type UsageInfo } from '@agentdeck/shared';
 import type { Store } from './store/db';
 import type { AttachmentStore } from './store/attachments';
 import type { AgentdeckMcp, ProviderSession, StartOptions } from './providers/types';
@@ -361,12 +361,12 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
 
   return {
     resolveSessionConfig,
-    createSession(provider: Session['provider'], cwd: string, override: { model?: string; effort?: string; permissionMode?: PermissionMode; parentId?: string } = {}): Session {
+    createSession(provider: Session['provider'], cwd: string, override: { model?: string; effort?: string; permissionMode?: PermissionMode; parentId?: string; scheduleId?: string } = {}): Session {
       // cwd 只能是 UI 里添加过的工作区（方案 §11.3 allowlist）
       if (!store.getWorkspaceByPath(cwd)) throw new HubError(400, `cwd is not a registered workspace`);
       const { model, effort, permissionMode } = resolveSessionConfig(provider, override);
       const now = new Date().toISOString();
-      const session: Session = { id: randomUUID(), provider, cwd, providerSessionId: null, status: 'idle', title: null, model, effort, permissionMode, archivedAt: null, parentId: override.parentId ?? null, createdAt: now, updatedAt: now };
+      const session: Session = { id: randomUUID(), provider, cwd, providerSessionId: null, status: 'idle', title: null, model, effort, permissionMode, archivedAt: null, parentId: override.parentId ?? null, scheduleId: override.scheduleId ?? null, createdAt: now, updatedAt: now };
       store.createSession(session);
       return session;
     },
@@ -470,6 +470,8 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
         // 没保留任何一轮就是全新对话，标题留给首条消息；title 可能是首条消息预览（没有 AI 标题时），照样沿用
         title: !lastStart || !source.title ? null : rewind ? source.title : `${source.title} (fork)`,
         archivedAt: null,
+        // 分叉是用户接手的一条线，回到侧栏，不再算定时任务的运行记录
+        scheduleId: null,
         createdAt: now,
         updatedAt: now,
       };
@@ -561,6 +563,79 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
       if (!provider || (session.status !== 'running' && session.status !== 'waiting_user')) throw new HubError(409, 'No turn is running');
       // 用户要的是"停下来"：Provider 连同还没被读到的插入消息一起丢弃
       await provider.interrupt();
+      // 这一轮提交到 Inbox 的待决定事项随之作废：答案会唤醒一段用户已经叫停的工作。之前几轮留下的不动
+      const turnStartedAt = store.eventsAfter(sessionId, 0).findLast((e) => e.type === 'turn.started')?.createdAt ?? '';
+      for (const p of store.pendingBySession(sessionId)) {
+        if (p.kind === 'question' && p.filed && p.createdAt >= turnStartedAt) settle(p.id, null);
+      }
+      for (const w of store.listWakeups()) {
+        if (w.sessionId === sessionId && w.createdAt >= turnStartedAt) store.deleteWakeup(w.id);
+      }
+    },
+
+    /** MCP wake_later：到点由调度器把 note 作为消息发回本会话，Agent 不必挂着一轮等 */
+    setWakeup(sessionId: string, at: Date, note: string): Wakeup {
+      getSession(sessionId);
+      if (at.getTime() <= Date.now()) throw new HubError(400, 'Wake-up time must be in the future');
+      const wakeup: Wakeup = { id: randomUUID(), sessionId, at: at.toISOString(), note, createdAt: new Date().toISOString() };
+      store.createWakeup(wakeup);
+      return wakeup;
+    },
+    listWakeups: () => store.listWakeups(),
+    cancelWakeup(id: string) {
+      if (!store.deleteWakeup(id)) throw new HubError(404, 'Wake-up not found');
+    },
+    /** Hub 停机期间到点的也照发：唤醒是接着干活，晚到好过丢掉。先删再发，同一个最多发一次；发不出去（如项目正在做文件操作）记在会话里 */
+    fireDueWakeups(now: Date) {
+      for (const w of store.listWakeups()) {
+        if (new Date(w.at) > now) break;
+        if (!store.deleteWakeup(w.id)) continue;
+        try {
+          sendMessage(w.sessionId, `[AgentDeck] Wake-up you scheduled at ${new Date(w.createdAt).toLocaleString('en-GB')}: ${w.note}`, [], 'agent');
+        } catch (err) {
+          emit(w.sessionId, { type: 'error', payload: { message: `Skipped a scheduled wake-up (${w.note}): ${(err as Error).message}` } });
+        }
+      }
+    },
+
+    /** MCP ask_user：不挂起调用方、不改会话状态，答案经 resolvePending 以用户消息送回并唤醒会话 */
+    fileQuestion(sessionId: string, question: { question: string; details?: string; options: string[]; multiSelect: boolean }): PendingRequest {
+      getSession(sessionId);
+      const request: PendingRequest = {
+        kind: 'question', toolUseId: randomUUID(), delivery: 'async', filed: true,
+        ...(question.details ? { details: question.details } : {}),
+        questions: [{ question: question.question, header: 'Decision', multiSelect: question.multiSelect, options: question.options.map((label) => ({ label, description: '' })) }],
+        id: randomUUID(), sessionId, status: 'pending', createdAt: new Date().toISOString(), resolvedAt: null,
+      };
+      store.createPending(request);
+      emit(sessionId, requestedEvent(request));
+      return request;
+    },
+
+    fileReport(sessionId: string, report: { title: string; summary: string; body: string }): Report {
+      getSession(sessionId);
+      const row: Report = { ...report, id: randomUUID(), sessionId, createdAt: new Date().toISOString(), readAt: null };
+      store.createReport(row);
+      return row;
+    },
+
+    inbox(done: boolean) {
+      return done
+        ? { requests: store.settledAsyncQuestions(50), reports: store.listReports(true, 50) }
+        : { requests: store.allPending(), reports: store.listReports(false, 200) };
+    },
+
+    markReportRead(id: string) {
+      if (!store.getReport(id)) throw new HubError(404, 'Report not found');
+      store.markReportRead(id);
+    },
+
+    /** 不答就关掉一个异步提问；同步的审批 / 提问卡着一轮，只能答或拒绝 */
+    dismissPending(requestId: string) {
+      const request = store.getPending(requestId);
+      if (!request) throw new HubError(404, 'Request not found');
+      if (request.kind !== 'question' || request.delivery !== 'async') throw new HubError(400, 'Only non-blocking questions can be dismissed');
+      if (!settle(requestId, null)) throw new HubError(409, 'Already handled elsewhere');
     },
 
     resolvePending(requestId: string, resolution: Resolution): number {

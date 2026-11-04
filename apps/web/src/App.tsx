@@ -1,9 +1,13 @@
 import { useRef } from 'react'
-import { Bell, CalendarClock, FolderOpen, MessageSquare, Plus, Settings } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import { Bell, CalendarClock, FolderOpen, Inbox, Plus, Settings } from 'lucide-react'
+import { api } from './api'
+import { formatTime } from './format'
 import { useAutoHideScrollbar } from './session/useAutoHideScrollbar'
 import { navigate, usePathname } from './router'
 import { useMediaQuery } from './session/useMediaQuery'
 import { useSessions } from './session/useSessions'
+import { inboxCount, useInbox } from './session/useInbox'
 import { notificationsSupported, useNotificationPermission, useNotifications } from './session/useNotifications'
 import { SessionTabs } from './components/SessionList'
 import { SessionNotifications } from './components/SessionNotifications'
@@ -18,9 +22,10 @@ import { SessionPage } from './pages/SessionPage'
 import { WorkspacesPage } from './pages/WorkspacesPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { SchedulesPage } from './pages/SchedulesPage'
+import { InboxPage } from './pages/InboxPage'
 import styles from './App.module.css'
 
-// 新建会话是全局弹窗，不占路由。路由：/ 列表（桌面为侧栏 + 空态）、/s/:id 会话页、/workspaces 项目、/schedules 定时任务、/settings 设置
+// 新建会话是全局弹窗，不占路由。路由：/ 与 /inbox/:kind/:id Inbox、/sessions 会话列表（手机；桌面在侧栏）、/s/:id 会话页、/workspaces 项目、/schedules 定时任务、/settings 设置
 export default function App() {
   const pathname = usePathname()
   const desktop = useMediaQuery('(min-width: 1024px)')
@@ -29,16 +34,16 @@ export default function App() {
   const notifications = useNotifications(sessions.data, sessionId)
   useMarkSeen(sessions.data, sessionId)
 
-  const page = sessionId ? <SessionPage sessionId={sessionId} /> : pathname === '/workspaces' ? <WorkspacesPage /> : pathname === '/schedules' ? <SchedulesPage /> : pathname === '/settings' ? <SettingsPage /> : null
+  const page = sessionId ? <SessionPage sessionId={sessionId} /> : pathname === '/workspaces' ? <WorkspacesPage /> : pathname === '/schedules' ? <SchedulesPage /> : pathname === '/settings' ? <SettingsPage /> : pathname === '/sessions' && !desktop ? <SessionListPage /> : <InboxPage />
 
   return (
     <>
       {desktop ? (
         <div className={styles.shell}>
-          <Sidebar activeId={sessionId} />
-          <main className={styles.main} data-session={sessionId ? '' : undefined}>{page ?? <EmptyState />}</main>
+          <Sidebar activeId={sessionId} pathname={pathname} />
+          <main className={styles.main} data-session={sessionId ? '' : undefined}>{page}</main>
         </div>
-      ) : page ?? <SessionListPage />}
+      ) : page}
       <UpdateNotice />
       <NewSessionHost />
       <SessionNotifications {...notifications} />
@@ -46,24 +51,13 @@ export default function App() {
   )
 }
 
-// 桌面端没选中会话时的占位：侧栏本身就有 New session，这里不再直接摆新建表单，删完 / 归档完当前会话也不会被动掉进表单
-function EmptyState() {
-  return (
-    <div className={styles.empty}>
-      <MessageSquare size={28} strokeWidth={1.5} />
-      <p>Select a session, or start a new one.</p>
-      <button type="button" className={styles.emptyButton} onClick={() => openNewSession()}>
-        <Plus size={14} />
-        New session
-      </button>
-    </div>
-  )
-}
-
-function Sidebar({ activeId }: { activeId?: string }) {
+function Sidebar({ activeId, pathname }: { activeId?: string; pathname: string }) {
   const list = useRef<HTMLDivElement>(null)
   useAutoHideScrollbar(list)
   const sessions = useSessions()
+  const pending = inboxCount(useInbox().data)
+  const schedules = useQuery({ queryKey: ['schedules'], queryFn: api.listSchedules, refetchInterval: 30_000 })
+  const nextRun = schedules.data?.map((s) => (s.enabled ? s.nextRunAt : null)).filter((at): at is string => !!at).sort()[0]
   const notify = useNotificationPermission()
   const { width, handle } = useResizable('sidebar', 280, 220, 480, 'left')
   return (
@@ -81,6 +75,18 @@ function Sidebar({ activeId }: { activeId?: string }) {
           </button>
         )}
       </div>
+      <nav className={styles.primary}>
+        <button type="button" className={styles.primaryItem} data-on={pathname === '/' || pathname.startsWith('/inbox/') || undefined} onClick={() => navigate('/')}>
+          <Inbox size={14} />
+          <span className={styles.primaryLabel}>Inbox</span>
+          {pending > 0 && <span className={styles.badge}>{pending}</span>}
+        </button>
+        <button type="button" className={styles.primaryItem} data-on={pathname === '/schedules' || undefined} onClick={() => navigate('/schedules')}>
+          <CalendarClock size={14} />
+          <span className={styles.primaryLabel}>Automations</span>
+          {nextRun && <span className={styles.hint} title={new Date(nextRun).toLocaleString('en-GB')}>next {new Date(nextRun).toDateString() === new Date().toDateString() ? formatTime(nextRun) : new Date(nextRun).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' })}</span>}
+        </button>
+      </nav>
       <div ref={list} className={styles.sidebarList}>
         {sessions.isPending ? <Loading label="Loading sessions…" /> : <SessionTabs sessions={sessions.data ?? []} activeId={activeId} />}
       </div>
@@ -94,10 +100,6 @@ function Sidebar({ activeId }: { activeId?: string }) {
         <button type="button" className={styles.navButton} onClick={() => navigate('/workspaces')}>
           <FolderOpen size={14} />
           Projects
-        </button>
-        <button type="button" className={styles.navButton} onClick={() => navigate('/schedules')}>
-          <CalendarClock size={14} />
-          Scheduled
         </button>
         <button type="button" className={styles.navButton} onClick={() => navigate('/settings')}>
           <Settings size={14} />

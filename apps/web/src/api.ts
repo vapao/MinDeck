@@ -1,5 +1,5 @@
 import type { ProjectFilesResponse, CreateServiceBody, ListServicesResponse, Service, ServiceLogResponse, UpdateServiceBody, CreateSessionBody, CreateSessionResponse, CreateWorkspaceBody, DeleteSessionResponse, DiffResponse, EntriesResponse, ForkSessionBody, ForkSessionResponse, FileResponse, InterruptResponse, ListChangesResponse, ListDirsResponse, ListSessionsResponse, ListWorkspacesResponse, ResolvePendingBody, ResolvePendingResponse, SendMessageBody, SendMessageResponse, SettingsResponse, SkillsResponse, UpdateSessionBody, UpdateSessionResponse, UpdateSettingsBody, UpdateWorkspaceBody, UploadAttachmentResponse, UsageResponse, Workspace } from '@agentdeck/shared'
-import type { ListSchedulesResponse, RunScheduleResponse, Schedule, ScheduleConfig, UpdateStatusResponse } from '@agentdeck/shared'
+import type { InboxResponse, ListSchedulesResponse, ListWakeupsResponse, RunScheduleResponse, Schedule, ScheduleConfig, UpdateStatusResponse } from '@agentdeck/shared'
 import type { CreateProjectEntryBody, DeleteProjectEntryBody, DiscardChangeBody, SaveProjectFileBody } from '@agentdeck/shared'
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -61,6 +61,11 @@ export const api = {
     request<SendMessageResponse>(`/api/sessions/${sessionId}/messages`, { method: 'POST', body: JSON.stringify(body) }),
   resolvePending: (requestId: string, body: ResolvePendingBody) =>
     request<ResolvePendingResponse>(`/api/pending/${requestId}/resolve`, { method: 'POST', body: JSON.stringify(body) }),
+  dismissPending: (requestId: string) => request<{ ok: true }>(`/api/pending/${requestId}/dismiss`, { method: 'POST' }),
+  listWakeups: () => request<ListWakeupsResponse>('/api/wakeups'),
+  cancelWakeup: (id: string) => request<{ ok: true }>(`/api/wakeups/${id}`, { method: 'DELETE' }),
+  inbox: (done: boolean) => request<InboxResponse>(`/api/inbox${done ? '?done=true' : ''}`),
+  markReportRead: (id: string) => request<{ ok: true }>(`/api/reports/${id}/read`, { method: 'POST' }),
   uploadAttachment: (sessionId: string, file: File) => {
     const form = new FormData()
     form.append('file', file)

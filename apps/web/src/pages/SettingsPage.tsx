@@ -4,7 +4,7 @@ import { ChevronLeft, Eye, EyeOff } from 'lucide-react'
 import { getEffortOptions, modelOptions, permissionModeOptions, type ProviderId, type Settings } from '@agentdeck/shared'
 import { api } from '../api'
 import { providerName } from '../format'
-import { navigate } from '../router'
+import { backToTab } from '../router'
 import { readLocalSettings, saveLocalSettings } from '../components/FilePreview'
 import { Select } from '../components/Select'
 import { dialog } from '../components/Dialog'
@@ -123,7 +123,7 @@ export function SettingsPage() {
     <div className={styles.page}>
       <div className={`${styles.card} ${layout.card}`}>
         <div className={styles.head}>
-          <button type="button" className={styles.back} onClick={() => navigate('/')} aria-label="Back">
+          <button type="button" className={styles.back} onClick={() => backToTab()} aria-label="Back">
             <ChevronLeft size={18} />
           </button>
           <h1 className={styles.title}>Settings</h1>

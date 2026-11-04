@@ -5,7 +5,7 @@ import { Loading } from '../components/Loading'
 import { skillToken, type ProviderId, type Resolution } from '@agentdeck/shared'
 import { api } from '../api'
 import { formatEffort, formatModel, formatTokens, providerName } from '../format'
-import { navigate } from '../router'
+import { backToTab, navigate } from '../router'
 import { useSessionStream, type StreamItem } from '../session/useSessionStream'
 import { saveDraft } from '../session/drafts'
 import { groupTools, layout, type Entry } from '../session/layout'
@@ -340,7 +340,7 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
   return (
     <div ref={page} className={styles.page}>
       <header className={styles.topbar}>
-        <button type="button" className={styles.back} onClick={() => navigate('/')} aria-label="Back">
+        <button type="button" className={styles.back} onClick={() => backToTab()} aria-label="Back">
           <ChevronLeft size={20} />
         </button>
         <span className={styles.title} title={session?.cwd}>{title}</span>

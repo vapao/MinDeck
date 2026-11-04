@@ -109,37 +109,53 @@
   min-width: 0;
   height: 100%;
 }
-.empty {
-  height: 100%;
+.primary {
+  flex: none;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  color: var(--text-3);
-  font-size: 13px;
+  gap: 2px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
 }
-.empty p {
-  margin: 0;
-}
-.emptyButton {
+.primaryItem {
   display: flex;
   align-items: center;
-  gap: 6px;
-  height: 32px;
-  margin-top: 6px;
-  padding: 0 14px;
-  border: 1px solid var(--border);
+  gap: 10px;
+  height: 34px;
+  padding: 0 10px;
+  border: 0;
   border-radius: var(--radius-control);
-  background: var(--surface);
+  background: none;
   color: var(--text-2);
   font-weight: 500;
   cursor: pointer;
 }
-.emptyButton:hover {
-  border-color: var(--border-3);
-  background: var(--surface-2);
+.primaryItem:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.primaryItem[data-on] {
+  background: var(--selected);
+  box-shadow: inset 0 0 0 1px var(--border);
   color: var(--text-strong);
+}
+.primaryLabel {
+  flex: 1;
+  text-align: left;
+}
+.badge {
+  min-width: 20px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 9px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font: 600 11px/18px var(--font-mono);
+  text-align: center;
+}
+.hint {
+  font: 11px var(--font-mono);
+  color: var(--text-4);
 }
 
 @media (display-mode: window-controls-overlay) and (min-width: 1024px) {

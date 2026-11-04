@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronLeft, ChevronRight, CornerLeftUp, Folder, FolderOpen, FolderPlus, MessageSquarePlus, Pencil, SquareTerminal, Trash2, X } from 'lucide-react'
 import { api } from '../api'
-import { navigate } from '../router'
+import { backToTab } from '../router'
 import { dialog } from '../components/Dialog'
 import { openProjectFinder, openProjectTerminal } from '../components/FilePreview'
 import { openNewSession } from '../components/NewSessionDialog'
@@ -35,7 +35,7 @@ export function WorkspacesPage() {
     <div className={styles.page}>
       <div className={`${styles.card} ${layout.card}`}>
         <div className={styles.head}>
-          <button type="button" className={styles.back} onClick={() => navigate('/')} aria-label="Back">
+          <button type="button" className={styles.back} onClick={() => backToTab()} aria-label="Back">
             <ChevronLeft size={18} />
           </button>
           <h1 className={styles.title}>Projects</h1>

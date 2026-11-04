@@ -24,6 +24,7 @@ function setup(start: Date) {
     sendMessage: (id: string) => void runs.push(id),
     lastSeq: () => 1,
     deleteSession: () => {},
+    fireDueWakeups: () => {},
   };
   let t = start;
   const scheduler = createScheduler(store, hub as never, () => t);

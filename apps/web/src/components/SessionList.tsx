@@ -12,6 +12,7 @@ import { useDraftSessions } from '../session/drafts'
 import { confirmDeleteSession, leaveSession } from '../session/useSessions'
 import { useMediaQuery } from '../session/useMediaQuery'
 import { useServices } from './ServicesPanel'
+import { useInbox } from '../session/useInbox'
 import styles from './SessionList.module.css'
 
 // idle 不显示：空闲是常态，逐行写 Idle 只是噪音；跑完还没看过的显示 Done
@@ -65,6 +66,10 @@ export function SessionTabs({ sessions, activeId }: { sessions: Session[]; activ
     const choice = await confirmDeleteSession(sessions, id)
     if (choice) remove.mutate({ id, ...choice })
   }
+  // 定时任务每次执行都新建会话，平铺进来会淹没侧栏：只在跑着、等你、Inbox 有它的事项或正在看时出现，其余在 Automations 的运行记录里
+  const inbox = useInbox()
+  const needsYou = new Set([...(inbox.data?.requests ?? []), ...(inbox.data?.reports ?? [])].map((item) => item.sessionId))
+  const shownInActive = (s: Session) => !s.scheduleId || s.status === 'running' || s.status === 'waiting_user' || needsYou.has(s.id) || s.id === activeId
   const actions = (s: Session): Action[] =>
     tab === 'active'
       ? desktop && (s.status === 'idle' || s.status === 'error')
@@ -87,7 +92,7 @@ export function SessionTabs({ sessions, activeId }: { sessions: Session[]; activ
           </button>
         ))}
       </div>
-      <SessionList all={sessions} sessions={sessions.filter((s) => (tab === 'active') !== Boolean(s.archivedAt))} activeId={activeId} onSelect={(id) => navigate(`/s/${id}`)} actions={actions} empty={tab === 'active' ? 'No active sessions' : 'No inactive sessions'} />
+      <SessionList all={sessions} sessions={sessions.filter((s) => (tab === 'active' ? !s.archivedAt && shownInActive(s) : !!s.archivedAt))} activeId={activeId} onSelect={(id) => navigate(`/s/${id}`)} actions={actions} empty={tab === 'active' ? 'No active sessions' : 'No inactive sessions'} />
     </>
   )
 }
