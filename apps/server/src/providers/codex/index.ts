@@ -48,12 +48,13 @@ function appServer() {
   return shared;
 }
 
-/** cwd 下已启用的 skill，供 $ 补全和发送时解析 */
+/** cwd 下已启用的 skill，供 $ 补全和发送时解析；同名的（不同目录各有一份）只留第一条，$name 本来也只能指一个 */
 export async function listCodexSkills(cwd: string) {
   const { rpc, ready } = appServer();
   await ready;
   const res = (await rpc.request('skills/list', { cwds: [cwd] })) as SkillsListResponse;
-  return res.data.flatMap((e) => e.skills).filter((s) => s.enabled);
+  const skills = res.data.flatMap((e) => e.skills).filter((s) => s.enabled);
+  return skills.filter((s, i) => skills.findIndex((t) => t.name === s.name) === i);
 }
 
 /** Hub 关闭时结束共享的 app-server；没启动过就什么都不做 */
