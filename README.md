@@ -17,7 +17,7 @@ Single user, self-hosted. Not a SaaS, no accounts.
 
 ## Requirements
 
-| | |
+| Item | Details |
 |---|---|
 | OS | **macOS**. The core server will probably run on Linux but is untested; the launchd service script and the Finder / iTerm2 integration are macOS-only, and the Services feature needs `/bin/zsh` |
 | Node | ≥ 24 (uses the built-in `node:sqlite`) |
