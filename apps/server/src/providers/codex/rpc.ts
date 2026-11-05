@@ -58,20 +58,27 @@ export function spawnAppServer({ onNotification, onRequest, onExit }: RpcHandler
     }
   });
 
-  child.on('exit', (code, signal) => {
+  // spawn 失败（如 PATH 里没有 codex）只触发 error 不触发 exit，等待中的请求也要在这里结束，否则界面一直转圈
+  let failure: Error | undefined;
+  const fail = (reason: Error) => {
     exited = true;
-    const reason = new Error(`codex app-server exited (${signal ?? `code ${code}`})`);
+    failure = reason;
     for (const p of pending.values()) p.reject(reason);
     pending.clear();
+  };
+  child.on('exit', (code, signal) => {
+    const reason = new Error(`codex app-server exited (${signal ?? `code ${code}`})`);
+    fail(reason);
     onExit(code === 0 || signal === 'SIGTERM' ? undefined : reason);
   });
   child.on('error', (err) => {
-    exited = true;
+    fail(err);
     onExit(err);
   });
 
   return {
     request<M extends Method>(method: M, params: ParamsOf<M>): Promise<unknown> {
+      if (failure) return Promise.reject(failure);
       const id = nextId++;
       write({ id, method, params });
       return new Promise((resolve, reject) => pending.set(id, { resolve, reject }));

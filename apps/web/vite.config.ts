@@ -2,7 +2,9 @@ import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
-// 端口分配见 ~/Workspace/mac-mini-tailscale-web-ports.md：前端 5180，后端 8004，Tailscale HTTPS 8450
+// 端口：前端 5180，后端 8004，Tailscale HTTPS 8450
+// 代理跟随 AGENTDECK_PORT，否则改了后端端口的本地开发会静默连到生产 Hub
+const hub = `127.0.0.1:${process.env.AGENTDECK_PORT ?? 8004}`
 export default defineConfig({
   plugins: [
     react(),
@@ -35,8 +37,8 @@ export default defineConfig({
     strictPort: true,
     allowedHosts: ['.ts.net'],
     proxy: {
-      '/api': 'http://127.0.0.1:8004',
-      '/ws': { target: 'ws://127.0.0.1:8004', ws: true },
+      '/api': `http://${hub}`,
+      '/ws': { target: `ws://${hub}`, ws: true },
     },
   },
 })
