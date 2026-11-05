@@ -22,7 +22,7 @@ import { readUpdateStatus } from './update-status';
 import { createScheduler } from './schedules';
 
 const repoRoot = resolve(import.meta.dirname, '../../..');
-// 端口分配见 ~/Workspace/mac-mini-tailscale-web-ports.md：8004 只监听本机；开发时由 vite dev server 代理，生产由 Tailscale Serve 8450 映射到这里
+// 8004 只监听本机；开发时由 vite dev server 代理，生产由 Tailscale Serve 8450 映射到这里
 const port = Number(process.env.AGENTDECK_PORT ?? 8004);
 const dbPath = process.env.AGENTDECK_DB ?? resolve(repoRoot, 'data/agentdeck.db');
 const uploadsDir = process.env.AGENTDECK_UPLOADS ?? resolve(repoRoot, 'data/uploads');

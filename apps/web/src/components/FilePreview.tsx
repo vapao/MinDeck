@@ -63,7 +63,7 @@ export function fileReference(href: string) {
   try { return { path: decodeURIComponent(value), line: match ? Number(match[1] ?? match[2]) : undefined } } catch { return null }
 }
 const mappingKey = 'finder:mapping'
-function mapping() { return JSON.parse(localStorage.getItem(mappingKey) ?? '{"remote":"/Users/aka","local":""}') as { remote: string; local: string } }
+function mapping() { return JSON.parse(localStorage.getItem(mappingKey) ?? '{"remote":"","local":""}') as { remote: string; local: string } }
 export type LocalSettings = { remote: string; local: string; sshHost: string }
 export function readLocalSettings(): LocalSettings { return { ...mapping(), sshHost: localStorage.getItem('terminal:sshHost') ?? '' } }
 export function saveLocalSettings(value: LocalSettings) {

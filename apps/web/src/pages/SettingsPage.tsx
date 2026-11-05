@@ -205,7 +205,7 @@ export function SettingsPage() {
             <div className={layout.sectionHead}><h2 id="finder-heading">Finder on this Mac</h2></div>
             <label className={`${styles.field} ${layout.field}`}>
               <span>Mac Mini folder</span>
-              <input className={styles.input} value={localSettings.remote} onChange={(e) => { setLocalSettings({ ...localSettings, remote: e.target.value }); setLocalError('') }} placeholder="/Users/aka" />
+              <input className={styles.input} value={localSettings.remote} onChange={(e) => { setLocalSettings({ ...localSettings, remote: e.target.value }); setLocalError('') }} placeholder="/Users/you" />
             </label>
             <label className={`${styles.field} ${layout.field}`}>
               <span>Mounted folder on this Mac</span>
