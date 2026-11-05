@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type PointerEvent } from 'react'
 import { flushSync } from 'react-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Check, ChevronLeft, ChevronRight, Copy } from 'lucide-react'
+import { Check, ChevronLeft, ChevronRight, Copy, Download } from 'lucide-react'
 import Markdown, { defaultUrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { api, type OutputFile } from '../api'
@@ -158,6 +158,8 @@ function Preview({ sessionId, path, line, image, discard, onDismiss, navigation 
     box.scrollTop += after.top + (y - before.top) / before.height * after.height - y
   }
   const currentScale = () => imageRef.current!.getBoundingClientRect().width / imageRef.current!.naturalWidth
+  const latest = useRef({ scale, navigation })
+  useLayoutEffect(() => { latest.current = { scale, navigation } })
   useEffect(() => {
     const surface = imageRef.current?.closest('dialog')
     if (!natural || !surface) return
@@ -168,23 +170,90 @@ function Preview({ sessionId, path, line, image, discard, onDismiss, navigation 
       zoomTo(currentScale() * Math.exp(-Math.max(-50, Math.min(50, e.deltaY)) / 100), e.clientX, e.clientY)
     }
     let start = 1
+    // iOS 触屏双指同时发 touch 与 gesture 事件，缩放由下面的 touch 处理；gesture 只负责 Mac 触控板
+    let touches = 0
     const gestureStart = (e: Event) => { e.preventDefault(); start = currentScale() }
     const gestureChange = (e: Event) => {
       e.preventDefault()
+      if (touches) return
       const g = e as Event & { scale: number; clientX: number; clientY: number }
       zoomTo(start * g.scale, g.clientX, g.clientY)
     }
     const gestureEnd = (e: Event) => e.preventDefault()
+    // 手机：双指缩放只作用于图片（以双指中点为基点，中点移动时同时平移）；单指交给原生滚动平移，
+    // 图片未超出视口时左右滑切换，双击在适应视口与原尺寸间切换
+    const box = imageRef.current!.parentElement!
+    let pinch: { distance: number; scale: number; x: number; y: number } | null = null
+    let swipe: { x: number; y: number } | null = null
+    let lastTap = { time: 0, x: 0, y: 0 }
+    const spread = (t: TouchList) => ({ distance: Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY), x: (t[0].clientX + t[1].clientX) / 2, y: (t[0].clientY + t[1].clientY) / 2 })
+    const touchStart = (e: TouchEvent) => {
+      touches = e.touches.length
+      if (touches >= 2) {
+        e.preventDefault()
+        swipe = null
+        pinch = { ...spread(e.touches), scale: currentScale() }
+      } else if (box.contains(e.target as Node)) {
+        swipe = { x: e.touches[0].clientX, y: e.touches[0].clientY }
+      }
+    }
+    const touchMove = (e: TouchEvent) => {
+      if (e.touches.length < 2 || !pinch) return
+      e.preventDefault()
+      const now = spread(e.touches)
+      box.scrollLeft -= now.x - pinch.x
+      box.scrollTop -= now.y - pinch.y
+      pinch.x = now.x
+      pinch.y = now.y
+      zoomTo(pinch.scale * now.distance / pinch.distance, now.x, now.y)
+    }
+    const touchEnd = (e: TouchEvent) => {
+      touches = e.touches.length
+      if (touches) return
+      if (pinch) {
+        pinch = null
+        // 缩到比视口还小时回到适应视口，避免图片缩成一角
+        const img = imageRef.current!
+        if (img.offsetWidth <= box.clientWidth && img.offsetHeight <= box.clientHeight) zoomTo(null)
+        return
+      }
+      if (!swipe) return
+      const { clientX: x, clientY: y } = e.changedTouches[0]
+      const dx = x - swipe.x, dy = y - swipe.y
+      swipe = null
+      const nav = latest.current.navigation
+      if (nav && box.scrollWidth <= box.clientWidth && Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+        nav.step(dx < 0 ? 1 : -1)
+        return
+      }
+      if (Math.abs(dx) + Math.abs(dy) > 10 || e.target !== imageRef.current) return
+      if (e.timeStamp - lastTap.time < 300 && Math.abs(x - lastTap.x) + Math.abs(y - lastTap.y) < 30) {
+        // 阻止随后合成的 dblclick，避免与桌面双击处理重复切换
+        e.preventDefault()
+        lastTap.time = 0
+        zoomTo(latest.current.scale === null ? 1 : null, x, y)
+      } else {
+        lastTap = { time: e.timeStamp, x, y }
+      }
+    }
     // 包括工具栏与遮罩，避免指针离开图片时缩放整页；不拦截普通滚动。
     surface.addEventListener('wheel', wheel as EventListener, { passive: false, capture: true })
     surface.addEventListener('gesturestart', gestureStart, { passive: false, capture: true })
     surface.addEventListener('gesturechange', gestureChange, { passive: false, capture: true })
     surface.addEventListener('gestureend', gestureEnd, { passive: false, capture: true })
+    surface.addEventListener('touchstart', touchStart, { passive: false, capture: true })
+    surface.addEventListener('touchmove', touchMove, { passive: false, capture: true })
+    surface.addEventListener('touchend', touchEnd, { passive: false, capture: true })
+    surface.addEventListener('touchcancel', touchEnd, { passive: false, capture: true })
     return () => {
       surface.removeEventListener('wheel', wheel as EventListener, true)
       surface.removeEventListener('gesturestart', gestureStart, true)
       surface.removeEventListener('gesturechange', gestureChange, true)
       surface.removeEventListener('gestureend', gestureEnd, true)
+      surface.removeEventListener('touchstart', touchStart, true)
+      surface.removeEventListener('touchmove', touchMove, true)
+      surface.removeEventListener('touchend', touchEnd, true)
+      surface.removeEventListener('touchcancel', touchEnd, true)
     }
   }, [natural, mode, imageError])
   const dismiss = () => ref.current!.close()
@@ -258,9 +327,10 @@ function Preview({ sessionId, path, line, image, discard, onDismiss, navigation 
       setGallery({ images, index })
     }, true)
   }
+  const fullPath = file?.path ?? path
   const body = <>
     <header className={modal.head}>
-      <strong className={`${modal.title} ${styles.fileTitle}`} title={file?.path ?? path}>{file?.name ?? (discard ? path.split('/').pop() : 'File')}</strong>
+      <strong className={`${modal.title} ${styles.fileTitle}`}>{!image && <span className={styles.fileDir}>{fullPath.slice(0, fullPath.lastIndexOf('/') + 1)}</span>}{file?.name ?? fullPath.slice(fullPath.lastIndexOf('/') + 1)}</strong>
       {navigation && navigation.count > 1 && <div className={styles.imageNavigation}>
         <button className={`${modal.secondary} ${styles.viewButton}`} disabled={navigation.index === 0} onClick={() => navigation.step(-1)} aria-label="Previous image" title="Previous image (←)"><ChevronLeft size={16} /></button>
         <span aria-live="polite">{navigation.index + 1} / {navigation.count}</span>
@@ -268,14 +338,14 @@ function Preview({ sessionId, path, line, image, discard, onDismiss, navigation 
       </div>}
       {discard && !dirty && <button className={`${modal.secondary} ${styles.viewButton}`} onClick={() => setMode(mode === 'diff' ? 'file' : 'diff')}>{mode === 'diff' ? 'File' : 'Diff'}</button>}
       {mode === 'file' && (file?.kind === 'markdown' || html) && !dirty && <button className={`${modal.secondary} ${styles.viewButton}`} onClick={() => setSource(!source)}>{source ? 'Preview' : 'Source'}</button>}
-      {file?.kind === 'image' && natural > 0 && <>
+      {file?.kind === 'image' && natural > 0 && <div className={styles.zoomControls}>
         <button className={`${modal.secondary} ${styles.viewButton}`} onClick={() => zoomTo(currentScale() / 1.25)} aria-label="Zoom out">−</button>
         <button className={`${modal.secondary} ${styles.viewButton} ${styles.zoomValue}`} onClick={() => zoomTo(null)} title="Fit image">{scale === null ? 'Fit' : `${Math.round(scale * 100)}%`}</button>
         <button className={`${modal.secondary} ${styles.viewButton}`} onClick={() => zoomTo(currentScale() * 1.25)} aria-label="Zoom in">+</button>
-      </>}
+      </div>}
+      {file?.kind === 'image' && <a className={`${modal.close} ${styles.headerDownload}`} href={image?.url ?? api.outputUrl(sessionId, path, true)} download={file.name} aria-label="Download"><Download size={18} /></a>}
       <button className={modal.close} onClick={() => void requestClose()} aria-label="Close">×</button>
     </header>
-    {!image && <div className={styles.filePath}>{file?.path ?? path}</div>}
     {mode === 'diff' && <>
       <div className={styles.content}><DiffBody sessionId={sessionId} path={path} /></div>
       <footer className={`${modal.actions} ${styles.footer}`}>
@@ -309,7 +379,7 @@ function Preview({ sessionId, path, line, image, discard, onDismiss, navigation 
       {html && <a className={`${modal.secondary} ${styles.action}`} href={htmlUrl} target="_blank" rel="noreferrer">Open in new tab</a>}
       {file.content !== null && <button className={`${modal.secondary} ${styles.copyButton}`} onClick={() => { void navigator.clipboard.writeText(file.content!).then(() => setCopied(true)) }}>{copied ? <Check size={14} /> : <Copy size={14} />}{copied ? 'Copied' : 'Copy text'}</button>}
       {local && <a className={`${modal.primary} ${styles.action}`} onClick={dismiss} href={`agentdeck-finder://reveal?path=${encodeURIComponent(local)}`}>Show in Finder</a>}
-      {file.kind !== 'directory' && <a className={`${modal.secondary} ${styles.action}`} onClick={dismiss} href={image?.url ?? api.outputUrl(sessionId, path, true)} download={file.name}>Download to this device</a>}
+      {file.kind !== 'directory' && <a className={`${modal.secondary} ${styles.action}`} onClick={dismiss} href={image?.url ?? api.outputUrl(sessionId, path, true)} download={file.name}>Download</a>}
     </footer>}
     </>}
   </>

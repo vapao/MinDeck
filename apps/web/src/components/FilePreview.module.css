@@ -1,11 +1,13 @@
 .preview { width: min(calc(100vw - 32px), 1000px); max-height: calc(100dvh - 32px); }
 .content { padding: 16px; overflow: auto; max-height: calc(100dvh - 180px); font-size: 13px; }
-.fileTitle { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.filePath { padding: 8px 16px; border-bottom: 1px solid var(--border); color: var(--text-2); font-family: var(--font-mono); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; user-select: text; }
+/* 目录与文件名合在标题一行：目录弱化，长路径换行显示完整，可选中复制 */
+.preview > header { padding-block: 8px; }
+.fileTitle { line-height: 1.5; overflow-wrap: anywhere; user-select: text; }
+.fileDir { color: var(--text-3); font-family: var(--font-mono); font-size: 12px; font-weight: 400; }
 .preview .viewButton { flex: none; width: auto; height: 30px; align-self: center; }
-.footer { margin-top: 0; }
+.footer { margin-top: 0; border-top: 0; }
 .imagePreview[open] { display: flex; flex-direction: column; height: min(800px, calc(100dvh - 32px)); overflow: hidden; }
-.imagePreview > header, .imagePreview > footer, .imagePreview > .filePath { flex: none; }
+.imagePreview > header, .imagePreview > footer { flex: none; }
 .content.imageContent { flex: 1; min-height: 0; max-height: none; display: flex; overflow: hidden; }
 .image { flex: 1; min-width: 0; min-height: 0; display: flex; overflow: auto; overscroll-behavior: contain; }
 .image img { flex: none; display: block; max-width: 100%; max-height: 100%; margin: auto; user-select: none; cursor: grab; }
@@ -18,7 +20,7 @@
 .pdf { width: 100%; height: 65dvh; border: 0; }
 .html { display: block; width: 100%; height: 65dvh; border: 0; background: white; color-scheme: normal; }
 .video { max-width: 100%; max-height: 65dvh; }
-.code :global(.cm-editor) { max-height: calc(100dvh - 212px); border: 1px solid var(--border); border-radius: var(--radius-control); }
+.code :global(.cm-editor) { max-height: calc(100dvh - 212px); }
 .copyButton { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
 .action { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
 .markdown { overflow-wrap: anywhere; }
@@ -29,7 +31,29 @@
 .markdown th + th, .markdown td + td { border-left: 1px solid var(--border-2); }
 .markdown tr:last-child td { border-bottom: 0; }
 .markdown th { background: var(--surface); font-weight: 500; white-space: nowrap; }
-@media (max-width: 600px) { .preview { width: 100vw; max-height: 100dvh; border-radius: 0; } .content { max-height: calc(100dvh - 220px); } .code :global(.cm-editor) { max-height: calc(100dvh - 252px); } }
+/* 双指缩放与双击由 FilePreview 接管，浏览器只保留单指平移 */
+.image { touch-action: pan-x pan-y; }
+.zoomControls { display: contents; }
+.preview .headerDownload { display: none; }
+/* 手机：文件用贴底的面板，顶部留出状态栏；图片用全屏黑底看图，工具栏浮在图片上 */
+@media (max-width: 600px) {
+  .preview[open] { display: flex; flex-direction: column; width: 100vw; max-width: none; height: calc(100dvh - max(16px, env(safe-area-inset-top) + 8px)); max-height: none; margin: auto 0 0; padding-bottom: env(safe-area-inset-bottom); border-width: 1px 0 0; border-radius: var(--radius-card) var(--radius-card) 0 0; }
+  .preview > header, .preview > footer { flex: none; }
+  .preview .content { flex: 1; min-height: 0; max-height: none; display: flex; flex-direction: column; }
+  .preview .code, .preview .pdf, .preview .html { flex: 1; min-height: 0; height: auto; }
+  .preview .code :global(.cm-editor) { height: 100%; max-height: none; }
+  .preview.imagePreview[open] { height: 100dvh; margin: 0; padding: 0; border: 0; border-radius: 0; background: #000; box-shadow: none; }
+  .imagePreview > header { position: absolute; z-index: 1; inset: 0 0 auto; min-height: calc(46px + env(safe-area-inset-top)); padding-top: env(safe-area-inset-top); border: 0; background: linear-gradient(rgba(0, 0, 0, 0.7), transparent); }
+  .imagePreview .fileDir, .imagePreview .zoomControls { display: none; }
+  /* 看图时下载移到顶部图标，底部不再放整行按钮 */
+  .imagePreview .headerDownload { display: grid; }
+  .imagePreview > header > a, .imagePreview > header > :last-child { width: 44px; height: 44px; color: var(--text-strong); }
+  .content.imageContent { padding: 0; }
+  /* 对话框通用样式在手机上把按钮竖排占满宽，预览底部按钮少，横排平分 */
+  .preview > footer { flex-direction: row; }
+  .preview > footer > * { flex: 1; width: auto; min-width: 0; }
+  .imagePreview > footer { display: none; }
+}
 
 .syntax { font-family: var(--font-mono); font-size: 12px; line-height: 1.6; color: var(--text); }
 .codeLine { display: block; min-height: 1.6em; white-space: pre; }
