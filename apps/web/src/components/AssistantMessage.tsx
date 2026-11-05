@@ -109,12 +109,12 @@ export function AssistantMessage({ text, streaming, sessionId }: Props) {
           a: ({ href, children }) => {
             const file = fileReference(href ?? '')
             if (!file) return <a href={href} target="_blank" rel="noreferrer">{children}</a>
-            return <a href={api.outputUrl(sessionId, file.path)} onClick={(e) => { e.preventDefault(); showFile(sessionId, file.path, file.line, true) }}>{children}{/\.(png|jpe?g|gif|webp|avif|svg)$/i.test(file.path) && <img src={api.outputUrl(sessionId, file.path)} alt="" loading="lazy" style={{ display: 'block', maxHeight: 240 }} />}</a>
+            return <a href={api.outputUrl(sessionId, file.path)} onClick={(e) => { e.preventDefault(); showFile(sessionId, file.path, file.line) }}>{children}{/\.(png|jpe?g|gif|webp|avif|svg)$/i.test(file.path) && <img src={api.outputUrl(sessionId, file.path)} alt="" loading="lazy" style={{ display: 'block', maxHeight: 240 }} />}</a>
           },
           img: ({ src, alt }) => {
             const file = fileReference(src ?? '')
             if (!file) return <img src={src} alt={alt} loading="lazy" />
-            return <a href={api.outputUrl(sessionId, file.path)} onClick={(e) => { e.preventDefault(); showFile(sessionId, file.path, undefined, true) }}><img src={api.outputUrl(sessionId, file.path)} alt={alt} loading="lazy" style={{ maxHeight: 240 }} /></a>
+            return <a href={api.outputUrl(sessionId, file.path)} onClick={(e) => { e.preventDefault(); showFile(sessionId, file.path) }}><img src={api.outputUrl(sessionId, file.path)} alt={alt} loading="lazy" style={{ maxHeight: 240 }} /></a>
           },
         }}>{text}</Markdown>
       </div>

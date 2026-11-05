@@ -10,7 +10,7 @@
 .image { flex: 1; min-width: 0; min-height: 0; display: flex; overflow: auto; overscroll-behavior: contain; }
 .image img { flex: none; display: block; max-width: 100%; max-height: 100%; margin: auto; user-select: none; cursor: grab; }
 .image[data-dragging] img { cursor: grabbing; }
-.preview .zoomValue, .dock .zoomValue { width: 68px; font-variant-numeric: tabular-nums; }
+.preview .zoomValue { width: 68px; font-variant-numeric: tabular-nums; }
 .imageNavigation { display: flex; align-items: center; gap: 6px; flex: none; color: var(--text-2); font-family: var(--font-mono); font-size: 12px; }
 .imageNavigation button { display: grid; place-items: center; padding: 0 6px; }
 .imageNavigation button:disabled { opacity: 0.4; cursor: default; }
@@ -22,12 +22,13 @@
 .copyButton { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
 .action { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
 .markdown { overflow-wrap: anywhere; }
-.dock { position: relative; flex: none; display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--border); background: var(--surface); }
-.dock > header { min-height: 44px; }
-.dock .content { flex: 1; min-height: 0; max-height: none; }
-.dock .code, .dock .pdf, .dock .html { height: 100%; }
-.dock .code :global(.cm-editor) { height: 100%; max-height: none; }
 .markdown img { max-width: 100%; }
+.markdown .table { margin: 0 0 12px; overflow-x: auto; border: 1px solid var(--border-2); border-radius: var(--radius-card); }
+.markdown table { width: 100%; border-collapse: separate; border-spacing: 0; }
+.markdown th, .markdown td { padding: 5px 10px; border-bottom: 1px solid var(--border-2); text-align: left; vertical-align: top; }
+.markdown th + th, .markdown td + td { border-left: 1px solid var(--border-2); }
+.markdown tr:last-child td { border-bottom: 0; }
+.markdown th { background: var(--surface); font-weight: 500; white-space: nowrap; }
 @media (max-width: 600px) { .preview { width: 100vw; max-height: 100dvh; border-radius: 0; } .content { max-height: calc(100dvh - 220px); } .code :global(.cm-editor) { max-height: calc(100dvh - 252px); } }
 
 .syntax { font-family: var(--font-mono); font-size: 12px; line-height: 1.6; color: var(--text); }

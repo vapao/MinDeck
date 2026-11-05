@@ -8,16 +8,12 @@ import { api, type OutputFile } from '../api'
 import { dialog } from './Dialog'
 import { PreviewCode } from './PreviewCode'
 import { CodeDiff, CodeView } from './CodeView'
-import { useResizable } from './Resizer'
 import styles from './FilePreview.module.css'
 import modal from './Dialog.module.css'
 
 // discard 存在表示从 Changes 打开：默认显示 diff，底部提供丢弃改动；返回 true 表示已丢弃
 type Selected = { sessionId: string; path: string; line?: number; image?: { url: string; name: string }; discard?: (path: string) => Promise<boolean> }
-// docked：桌面会话页挂着停靠预览栏，此时 selected 停靠显示不再弹窗；
-// popup：从聊天、Changes 里打开的文件，即使停靠也用弹窗，叠在停靠栏之上互不替换
-type Slot = 'selected' | 'popup'
-let state: { selected: Selected | null; popup: Selected | null; docked: boolean } = { selected: null, popup: null, docked: false }
+let state: { selected: Selected | null } = { selected: null }
 const listeners = new Set<() => void>()
 function update(next: Partial<typeof state>) {
   state = { ...state, ...next }
@@ -26,24 +22,22 @@ function update(next: Partial<typeof state>) {
 const usePreviewState = () => useSyncExternalStore((l) => { listeners.add(l); return () => { listeners.delete(l) } }, () => state)
 const previewKey = (s: Selected) => `${s.sessionId}:${s.path}:${s.line}:${!!s.discard}`
 // 当前预览有未保存的编辑时，切到别的文件前先确认放弃
-const confirmLeave: Record<Slot, (() => Promise<boolean>) | null> = { selected: null, popup: null }
-async function select(next: Selected, popup = false) {
-  const slot: Slot = popup && state.docked ? 'popup' : 'selected'
-  const current = state[slot]
+let confirmLeave: (() => Promise<boolean>) | null = null
+async function select(next: Selected) {
+  const current = state.selected
   if (current && previewKey(current) === previewKey(next)) return
-  const leave = confirmLeave[slot]
-  if (leave && !(await leave())) return
-  update({ [slot]: next })
+  if (confirmLeave && !(await confirmLeave())) return
+  update({ selected: next })
 }
-export function showFile(sessionId: string, path: string, line?: number, popup?: boolean) {
-  void select({ sessionId, path, line }, popup)
+export function showFile(sessionId: string, path: string, line?: number) {
+  void select({ sessionId, path, line })
 }
 export function showDiff(sessionId: string, path: string, discard: (path: string) => Promise<boolean>) {
-  void select({ sessionId, path, discard }, true)
+  void select({ sessionId, path, discard })
 }
 // 不属于会话输出目录的图片（聊天附件、待发送草稿）：直接给 URL，不走 output 接口
 export function showImage(url: string, name: string) {
-  void select({ sessionId: '', path: url, image: { url, name } }, true)
+  void select({ sessionId: '', path: url, image: { url, name } })
 }
 /** 正在预览的路径，供文件树高亮 */
 export function usePreviewPath(sessionId: string) {
@@ -93,27 +87,11 @@ export function openProjectTerminal(path: string) {
   window.location.href = `agentdeck-finder://terminal?host=${encodeURIComponent(host)}&path=${encodeURIComponent(path)}`
 }
 export function FilePreviewHost() {
-  const { selected, popup, docked } = usePreviewState()
-  return <>
-    {selected && !docked && <Preview key={previewKey(selected)} {...selected} slot="selected" />}
-    {popup && <Preview key={previewKey(popup)} {...popup} slot="popup" />}
-  </>
-}
-// 桌面会话页：预览停靠在对话与侧栏之间，不挡文件树，点别的文件直接替换内容。
-// 离开会话时关闭；version 变化（Agent 改了文件）时重新读取
-export function FilePreviewDock({ version }: { version: number }) {
   const { selected } = usePreviewState()
-  const { width, handle } = useResizable('preview', 560, 320, 900, 'right')
-  useEffect(() => {
-    update({ docked: true })
-    return () => update({ docked: false, selected: null, popup: null })
-  }, [])
-  if (!selected) return null
-  return <Preview key={previewKey(selected)} {...selected} slot="selected" dock={{ width, handle }} version={version} />
+  return selected && <Preview key={previewKey(selected)} {...selected} />
 }
-type Dock = { width: number; handle: ReturnType<typeof useResizable>['handle'] }
 type ImageNavigation = { index: number; count: number; step: (offset: number) => void }
-function Preview({ sessionId, path, line, image, discard, slot, dock, version, onDismiss, navigation }: Selected & { slot: Slot; dock?: Dock; version?: number; onDismiss?: () => void; navigation?: ImageNavigation }) {
+function Preview({ sessionId, path, line, image, discard, onDismiss, navigation }: Selected & { onDismiss?: () => void; navigation?: ImageNavigation }) {
   const ref = useRef<HTMLDialogElement>(null)
   const [mode, setMode] = useState<'diff' | 'file'>(discard ? 'diff' : 'file')
   const [source, setSource] = useState(!!line)
@@ -158,14 +136,7 @@ function Preview({ sessionId, path, line, image, discard, slot, dock, version, o
   const [saving, setSaving] = useState(false)
   const client = useQueryClient()
   const q = useQuery({ queryKey: ['output', sessionId, path], queryFn: () => api.outputFile(sessionId, path), staleTime: 0, retry: false, enabled: !image })
-  const docked = !!dock
-  useEffect(() => { if (!docked) ref.current!.showModal() }, [docked])
-  const firstVersion = useRef(version)
-  useEffect(() => {
-    if (version === firstVersion.current) return
-    const timer = setTimeout(() => { for (const key of ['output', 'diff']) void client.invalidateQueries({ queryKey: [key, sessionId, path] }) }, 1500)
-    return () => clearTimeout(timer)
-  }, [version, client, sessionId, path])
+  useEffect(() => { ref.current!.showModal() }, [])
   useEffect(() => {
     if (!copied) return
     const timer = setTimeout(() => setCopied(false), 2000)
@@ -188,7 +159,7 @@ function Preview({ sessionId, path, line, image, discard, slot, dock, version, o
   }
   const currentScale = () => imageRef.current!.getBoundingClientRect().width / imageRef.current!.naturalWidth
   useEffect(() => {
-    const surface = imageRef.current?.closest('dialog, aside')
+    const surface = imageRef.current?.closest('dialog')
     if (!natural || !surface) return
     // Trackpad pinch arrives as ctrl+wheel in Chrome / Firefox and as gesture events in Safari
     const wheel = (e: WheelEvent) => {
@@ -216,7 +187,7 @@ function Preview({ sessionId, path, line, image, discard, slot, dock, version, o
       surface.removeEventListener('gestureend', gestureEnd, true)
     }
   }, [natural, mode, imageError])
-  const dismiss = () => dock ? update({ [slot]: null }) : ref.current!.close()
+  const dismiss = () => ref.current!.close()
   const content = q.data?.content?.replace(/\r\n/g, '\n')
   const dirty = draft !== null
   const edit = (value: string) => {
@@ -229,9 +200,9 @@ function Preview({ sessionId, path, line, image, discard, slot, dock, version, o
   useLayoutEffect(() => { leave.current = confirmDiscard })
   useEffect(() => {
     if (onDismiss) return
-    confirmLeave[slot] = () => leave.current()
-    return () => { confirmLeave[slot] = null }
-  }, [slot, onDismiss])
+    confirmLeave = () => leave.current()
+    return () => { confirmLeave = null }
+  }, [onDismiss])
   const requestClose = async () => { if (await confirmDiscard()) dismiss() }
   const save = async () => {
     if (draft === null || saving) return
@@ -324,7 +295,7 @@ function Preview({ sessionId, path, line, image, discard, slot, dock, version, o
           {file.kind === 'markdown' && !source && !dirty ? <div className={styles.markdown}><Markdown remarkPlugins={[remarkGfm]} urlTransform={(value) => fileReference(value) ? value : defaultUrlTransform(value)} components={{ code: ({ className, children }) => {
             const language = /language-([^\s]+)/.exec(className ?? '')?.[1]
             return language ? <PreviewCode text={String(children)} language={language} /> : <code className={className}>{children}</code>
-          }, img: ({ src, alt }) => { const f = fileReference(src ?? ''); return <img src={f ? api.outputUrl(sessionId, relativeToFile(f.path)) : src} alt={alt} loading="lazy" /> }, a: ({ href, children }) => <a href={href} onClick={(e) => { const f = fileReference(href ?? ''); if (f) { e.preventDefault(); showFile(sessionId, relativeToFile(f.path), f.line, slot === 'popup') } }} target="_blank" rel="noreferrer">{children}</a> }}>{file.content}</Markdown></div> : <CodeView className={styles.code} text={content!} path={file.name} line={line} editable={!!file.editable} dirty={dirty} onChange={edit} onSave={() => void save()} />}
+          }, table: ({ node: _, ...props }) => <div className={styles.table}><table {...props} /></div>, img: ({ src, alt }) => { const f = fileReference(src ?? ''); return <img src={f ? api.outputUrl(sessionId, relativeToFile(f.path)) : src} alt={alt} loading="lazy" /> }, a: ({ href, children }) => <a href={href} onClick={(e) => { const f = fileReference(href ?? ''); if (f) { e.preventDefault(); showFile(sessionId, relativeToFile(f.path), f.line) } }} target="_blank" rel="noreferrer">{children}</a> }}>{file.content}</Markdown></div> : <CodeView className={styles.code} text={content!} path={file.name} line={line} editable={!!file.editable} dirty={dirty} onChange={edit} onSave={() => void save()} />}
           {file.truncated && <p>Showing the first 512 KB. Download for the complete file.</p>}
         </>}
         {file.kind === 'binary' && <p>No inline preview for this file. Open its location in Finder or download a copy.</p>}
@@ -337,19 +308,17 @@ function Preview({ sessionId, path, line, image, discard, slot, dock, version, o
     {file && !dirty && <footer className={`${modal.actions} ${styles.footer}`}>
       {html && <a className={`${modal.secondary} ${styles.action}`} href={htmlUrl} target="_blank" rel="noreferrer">Open in new tab</a>}
       {file.content !== null && <button className={`${modal.secondary} ${styles.copyButton}`} onClick={() => { void navigator.clipboard.writeText(file.content!).then(() => setCopied(true)) }}>{copied ? <Check size={14} /> : <Copy size={14} />}{copied ? 'Copied' : 'Copy text'}</button>}
-      {local && <a className={`${modal.primary} ${styles.action}`} onClick={dock ? undefined : dismiss} href={`agentdeck-finder://reveal?path=${encodeURIComponent(local)}`}>Show in Finder</a>}
-      {file.kind !== 'directory' && <a className={`${modal.secondary} ${styles.action}`} onClick={dock ? undefined : dismiss} href={image?.url ?? api.outputUrl(sessionId, path, true)} download={file.name}>Download to this device</a>}
+      {local && <a className={`${modal.primary} ${styles.action}`} onClick={dismiss} href={`agentdeck-finder://reveal?path=${encodeURIComponent(local)}`}>Show in Finder</a>}
+      {file.kind !== 'directory' && <a className={`${modal.secondary} ${styles.action}`} onClick={dismiss} href={image?.url ?? api.outputUrl(sessionId, path, true)} download={file.name}>Download to this device</a>}
     </footer>}
     </>}
   </>
-  const preview = dock
-    ? <aside className={styles.dock} style={{ width: dock.width }} aria-label="File preview"><div {...dock.handle} />{body}</aside>
-    : <dialog ref={ref} className={`${modal.dialog} ${styles.preview} ${mode === 'file' && file?.kind === 'image' ? styles.imagePreview : ''}`} onClose={() => onDismiss ? onDismiss() : update({ [slot]: null })} onCancel={(e) => { if (dirty) { e.preventDefault(); void requestClose() } }} onClick={(e) => { if (e.target === ref.current) void requestClose() }} onKeyDown={(e) => {
+  const preview = <dialog ref={ref} className={`${modal.dialog} ${styles.preview} ${mode === 'file' && file?.kind === 'image' ? styles.imagePreview : ''}`} onClose={() => onDismiss ? onDismiss() : update({ selected: null })} onCancel={(e) => { if (dirty) { e.preventDefault(); void requestClose() } }} onClick={(e) => { if (e.target === ref.current) void requestClose() }} onKeyDown={(e) => {
       if (!navigation || e.altKey || e.ctrlKey || e.metaKey || !['ArrowLeft', 'ArrowRight'].includes(e.key)) return
       e.preventDefault()
       navigation.step(e.key === 'ArrowLeft' ? -1 : 1)
     }} aria-label={navigation ? 'Image preview' : 'File preview'}>{body}</dialog>
-  return <>{preview}{gallery && <Preview key={gallery.images[gallery.index].url} sessionId="" path={gallery.images[gallery.index].url} image={gallery.images[gallery.index]} slot={slot} onDismiss={() => setGallery(null)} navigation={{
+  return <>{preview}{gallery && <Preview key={gallery.images[gallery.index].url} sessionId="" path={gallery.images[gallery.index].url} image={gallery.images[gallery.index]} onDismiss={() => setGallery(null)} navigation={{
     index: gallery.index, count: gallery.images.length,
     step: (offset) => setGallery((current) => current && ({ ...current, index: Math.max(0, Math.min(current.images.length - 1, current.index + offset)) })),
   }} />}</>
