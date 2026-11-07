@@ -204,6 +204,19 @@
   font-size: 12px;
   color: var(--text-3);
 }
+.project {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 50%;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-strong);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .sourceTitle {
   min-width: 0;
   overflow: hidden;

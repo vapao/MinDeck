@@ -348,7 +348,8 @@ export type InboxResponse = { requests: (PendingRequest & { resolution?: Resolut
  * 空闲满 24 小时的顶层会话由 AI 标题同一个模型判断一次是否收尾；判为没收尾的进 Inbox。
  * 只对判断时那次活动有效：会话再有活动（updatedAt 变了）就失效，空闲满 24 小时后重新判断。?done=true 时为空
  */
-export type UnfinishedSession = { sessionId: string; next: string; idleSince: string };
+/** summary：这个会话在做什么、停在哪，给已经忘了它的用户看；概况上线前判断的为空，会被重新判断补上 */
+export type UnfinishedSession = { sessionId: string; summary: string; next: string; idleSince: string };
 
 /**
  * 轻量待办：用户手记、从会话生成、Agent 经 MCP add_todo 记。remindOn 是本地日期 YYYY-MM-DD，当天起未完成的进 Inbox（?done=true 时为空）。

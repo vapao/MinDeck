@@ -118,9 +118,9 @@ test('a session review goes stale on new activity and only current done reviews 
   for (const id of ['open', 'done', 'doneThenActive']) {
     store.createSession({ id, provider: 'claude', cwd: '/tmp', providerSessionId: null, status: 'idle', title: null, model: null, effort: null, permissionMode: 'approval', archivedAt: null, parentId: null, createdAt: old, updatedAt: old });
   }
-  store.setReview('open', old, 'open', 'verify the fix');
-  store.setReview('done', old, 'done', '');
-  store.setReview('doneThenActive', old, 'done', '');
+  store.setReview('open', old, 'open', 'fixing the login bug', 'verify the fix');
+  store.setReview('done', old, 'done', '', '');
+  store.setReview('doneThenActive', old, 'done', '', '');
   store.setSessionStatus('doneThenActive', 'idle');
 
   assert.deepEqual(store.unfinishedSessions().map((u) => u.sessionId), ['open']);

@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlarmClock, ArrowUpRight, ChevronLeft, CircleHelp, FileText, Hourglass, Inbox, Plus, ShieldAlert } from 'lucide-react'
+import { AlarmClock, ArrowUpRight, ChevronLeft, CircleHelp, FileText, Folder, Hourglass, Inbox, Plus, ShieldAlert } from 'lucide-react'
 import type { InboxResponse, PendingRequest, Report, Resolution, Session, Todo, UnfinishedSession } from '@agentdeck/shared'
 import { api } from '../api'
 import { formatModel } from '../format'
@@ -252,6 +252,7 @@ function Detail({ item, session, onHandled }: { item: Item; session: Session | u
 
   const source = (
     <div className={styles.source}>
+      {session && <span className={styles.project}><Folder size={13} />{projectName(session.cwd)}</span>}
       <span className={styles.sourceTitle}>{session?.title ?? 'Session'}</span>
       {session && <span className={styles.providerChip}>{session.provider}{session.model ? ` · ${formatModel(session.provider, session.model)}` : ''}</span>}
       {desktop && sessionId && <OpenSession id={sessionId} />}
@@ -265,11 +266,12 @@ function Detail({ item, session, onHandled }: { item: Item; session: Session | u
       <>
         {source}
         <h2 className={styles.heading}>{session?.title ?? 'Session'}</h2>
+        {u.summary && <div className={styles.todoNote}>{u.summary}</div>}
         <div className={styles.nextStep}>
           <span className={styles.nextLabel}>Left off at</span>
           {u.next || 'No next step given'}
         </div>
-        <div className={styles.meta}>{projectName(session?.cwd)} · idle since {new Date(u.idleSince).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</div>
+        <div className={styles.meta}>Idle since {new Date(u.idleSince).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</div>
         <div className={styles.actions}>
           <button type="button" className={styles.primary} onClick={() => navigate(`/s/${u.sessionId}`)}>Continue</button>
           <button type="button" className={styles.ghost} onClick={() => openTodo({ title: session?.title ?? '', note: u.next, cwd: session?.cwd ?? null, sessionId: u.sessionId, remindOn: localDay(7) })}>Later…</button>
