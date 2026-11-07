@@ -2,7 +2,9 @@ import { useEffect, type RefObject } from 'react'
 
 export function useAutoHideScrollbar(ref: RefObject<HTMLElement | null>) {
   useEffect(() => {
-    const el = ref.current!
+    // Inbox 手机详情页不渲染列表，直接以详情挂载时（从会话页后退）ref 为空
+    const el = ref.current
+    if (!el) return
     let timer: ReturnType<typeof setTimeout>
     el.setAttribute('data-auto-hide-scrollbar', '')
     const show = () => {
