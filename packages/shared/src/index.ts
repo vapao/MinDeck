@@ -24,6 +24,8 @@ export type Session = {
   parentId: string | null;
   /** 由哪个定时任务执行时创建；它不进 Active 侧栏，只在 Automations 的运行记录里，需要用户处理或在跑时才出现。分叉出来的会话不带 */
   scheduleId?: string | null;
+  /** 从哪个会话分叉出来：seq 是分叉点（保留到源会话的这一条为止，新会话里同号）。原地回退、第一轮前分叉不记；源会话删掉后可能指向不存在的会话 */
+  forkedFrom?: { id: string; seq: number } | null;
   /** 该会话调 create_session 免审批：可在顶栏事先打开，也可在派生审批卡上选"本会话允许"。只有 Hub 返回的会话带 */
   spawnGranted?: boolean;
   createdAt: string;
@@ -286,10 +288,10 @@ export type UpdateSessionBody = { archived: boolean } | { provider: ProviderId }
 export type UpdateSessionResponse = Session;
 
 /**
- * POST /api/sessions/:id/fork：从 beforeSeq 那条开启一轮的用户消息之前分叉出新会话，原会话不动（idle / error 才行，否则 409）。
+ * POST /api/sessions/:id/fork：从 beforeSeq 那条开启一轮的用户消息之前分叉出新会话，省略 beforeSeq 即从末尾分叉；原会话不动（idle / error 才行，否则 409）。
  * rewind：原地回退，新会话沿用原标题（不加 "(fork)"），删原会话由前端跳转后自己调 DELETE
  */
-export type ForkSessionBody = { beforeSeq: number; rewind: boolean };
+export type ForkSessionBody = { beforeSeq?: number; rewind: boolean };
 export type ForkSessionResponse = Session;
 
 /** DELETE /api/sessions/:id[?descendants=true]：连同事件、待处理请求、附件（含文件）一起删；带 descendants 时整棵子会话树一起删。任一要删的会话 running / waiting_user 时 409，一个都不删 */

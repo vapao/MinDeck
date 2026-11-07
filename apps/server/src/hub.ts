@@ -481,16 +481,16 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
     },
 
     /**
-     * 从 beforeSeq 那条开启一轮的用户消息之前分叉：Provider 侧按上一轮结束时记下的锚点复制出新会话，Hub 侧复制此前的事件与附件。
+     * 从 beforeSeq 那条开启一轮的用户消息之前分叉，省略即从末尾分叉：Provider 侧按上一轮结束时记下的锚点复制出新会话，Hub 侧复制此前的事件与附件。
      * 分叉点前一轮没有锚点（功能上线前的轮、被 Hub 重启打断的轮）时 409；第一轮之前分叉 = 同配置的空会话
      */
-    async forkSession(sessionId: string, beforeSeq: number, rewind: boolean): Promise<Session> {
+    async forkSession(sessionId: string, beforeSeq: number | undefined, rewind: boolean): Promise<Session> {
       const source = getSession(sessionId);
       if (source.status === 'running' || source.status === 'waiting_user') throw new HubError(409, 'Session is running; stop it or wait for it to finish before forking');
       const events = store.eventsAfter(sessionId, 0);
-      const i = events.findIndex((e) => e.seq === beforeSeq);
+      const i = beforeSeq === undefined ? events.length : events.findIndex((e) => e.seq === beforeSeq);
       // 一轮中途插入的消息已被 Provider 并进那一轮，没法从中间切开
-      if (i === -1 || events[i].type !== 'message.user' || events[i + 1]?.type !== 'turn.started') throw new HubError(400, 'Can only fork before a message that started a turn');
+      if (beforeSeq !== undefined && (i === -1 || events[i].type !== 'message.user' || events[i + 1]?.type !== 'turn.started')) throw new HubError(400, 'Can only fork before a message that started a turn');
       const kept = events.slice(0, i);
       const lastStart = kept.findLast((e) => e.type === 'turn.started');
       const lastEnd = kept.findLast((e) => e.type === 'turn.completed' || e.type === 'turn.failed');
@@ -511,6 +511,8 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
         archivedAt: null,
         // 分叉是用户接手的一条线，回到侧栏，不再算定时任务的运行记录
         scheduleId: null,
+        // 原地回退是替身不是分支；第一轮前分叉就是新对话，都不记来源
+        forkedFrom: rewind || !lastStart ? null : { id: source.id, seq: kept.at(-1)!.seq },
         createdAt: now,
         updatedAt: now,
       };

@@ -313,7 +313,7 @@ app.patch<{ Params: { id: string }; Body: UpdateSessionBody }>(
 
 app.post<{ Params: { id: string }; Body: ForkSessionBody }>(
   '/api/sessions/:id/fork',
-  { schema: { body: { type: 'object', required: ['beforeSeq', 'rewind'], properties: { beforeSeq: { type: 'integer' }, rewind: { type: 'boolean' } } } } },
+  { schema: { body: { type: 'object', required: ['rewind'], properties: { beforeSeq: { type: 'integer' }, rewind: { type: 'boolean' } } } } },
   (req): Promise<ForkSessionResponse> => hub.forkSession(req.params.id, req.body.beforeSeq, req.body.rewind),
 );
 

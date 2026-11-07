@@ -9,9 +9,9 @@ export type StreamItem =
   | { kind: 'assistant'; key: string; messageId: string; text: string; streaming: boolean }
   /** done 为 false 表示还在跑；服务端不保存工具输出，卡片只显示做了什么 */
   | { kind: 'tool'; key: string; toolUseId: string; name: string; summary: string; done: boolean; isError: boolean; at: string }
-  | { kind: 'error'; key: string; message: string; at: string }
-  /** 一轮结束的落款：完成 / 中断 及用时 */
-  | { kind: 'turn'; key: string; reason: TurnEndReason; durationMs: number; at: string }
+  | { kind: 'error'; key: string; seq: number; message: string; at: string }
+  /** 一轮结束的落款：完成 / 中断 及用时；forkable：留有分叉锚点，可从这轮之后分叉 */
+  | { kind: 'turn'; key: string; seq: number; reason: TurnEndReason; durationMs: number; at: string; forkable: boolean }
   | { kind: 'approval'; key: string; request: Extract<PendingRequest, { kind: 'approval' }>; state: PendingState; decision: ApprovalDecision | null; resolvedAt: string | null }
   | { kind: 'question'; key: string; request: Extract<PendingRequest, { kind: 'question' }>; state: PendingState; answers: QuestionAnswers | null; response: string | null; resolvedAt: string | null }
 
@@ -142,16 +142,16 @@ function applyEvent(state: StreamState, e: AgentEvent): StreamState {
       return { ...state, turnStartedAt: e.createdAt, nextForkable: false, items: started }
     }
     case 'turn.failed':
-      return { ...state, turnStartedAt: null, nextForkable: !!e.payload.anchor, items: [...items, { kind: 'error', key: `e${e.seq}`, message: e.payload.message, at: e.createdAt }] }
+      return { ...state, turnStartedAt: null, nextForkable: !!e.payload.anchor, items: [...items, { kind: 'error', key: `e${e.seq}`, seq: e.seq, message: e.payload.message, at: e.createdAt }] }
     case 'error':
-      return { ...state, items: [...items, { kind: 'error', key: `e${e.seq}`, message: e.payload.message, at: e.createdAt }] }
+      return { ...state, items: [...items, { kind: 'error', key: `e${e.seq}`, seq: e.seq, message: e.payload.message, at: e.createdAt }] }
     case 'turn.completed':
       return {
         ...state,
         turnStartedAt: null,
         nextForkable: !!e.payload.anchor,
         changesVersion: state.changesVersion + 1,
-        items: [...items, { kind: 'turn', key: `t${e.seq}`, reason: e.payload.reason, durationMs: e.payload.durationMs, at: e.createdAt }],
+        items: [...items, { kind: 'turn', key: `t${e.seq}`, seq: e.seq, reason: e.payload.reason, durationMs: e.payload.durationMs, at: e.createdAt, forkable: !!e.payload.anchor }],
       }
     case 'context.updated':
       return { ...state, context: e.payload.tokens }

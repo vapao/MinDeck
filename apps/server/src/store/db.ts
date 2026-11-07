@@ -100,9 +100,10 @@ export function openStore(path: string) {
       done_at    TEXT
     );
   `);
-  // 旧库没有就补上（SQLite 没有 ADD COLUMN IF NOT EXISTS）：model / effort 是切片 8 加的，permission_mode 是权限模式那次加的，archived_at 是切片 12 加的，parent_id 是派生会话隶属关系那次加的，spawn_granted_at 是派生授权持久化那次加的，schedule_id 是 Automations 运行记录那次加的，review_* 是没收尾判断那次加的
+  // 旧库没有就补上（SQLite 没有 ADD COLUMN IF NOT EXISTS）：model / effort 是切片 8 加的，permission_mode 是权限模式那次加的，archived_at 是切片 12 加的，parent_id 是派生会话隶属关系那次加的，spawn_granted_at 是派生授权持久化那次加的，schedule_id 是 Automations 运行记录那次加的，review_* 是没收尾判断那次加的，forked_* 是分叉来源那次加的
   const sessionCols = new Set((db.prepare(`PRAGMA table_info(sessions)`).all() as { name: string }[]).map((c) => c.name));
-  for (const col of ['model', 'effort', 'permission_mode', 'archived_at', 'title', 'parent_id', 'spawn_granted_at', 'schedule_id', 'review_for', 'review_state', 'review_next']) if (!sessionCols.has(col)) db.exec(`ALTER TABLE sessions ADD COLUMN ${col} TEXT`);
+  for (const col of ['model', 'effort', 'permission_mode', 'archived_at', 'title', 'parent_id', 'spawn_granted_at', 'schedule_id', 'review_for', 'review_state', 'review_next', 'forked_from_id']) if (!sessionCols.has(col)) db.exec(`ALTER TABLE sessions ADD COLUMN ${col} TEXT`);
+  if (!sessionCols.has('forked_at_seq')) db.exec('ALTER TABLE sessions ADD COLUMN forked_at_seq INTEGER');
 
   // 修正旧版下拉框保存的 Codex effort 拼写，不改变模型、会话排序或其他 Provider。
   for (const [oldEffort, effort] of [['light', 'low'], ['extra-high', 'xhigh']]) {
@@ -206,6 +207,7 @@ export function openStore(path: string) {
     archivedAt: (r.archived_at as string | null) ?? null,
     parentId: (r.parent_id as string | null) ?? null,
     scheduleId: (r.schedule_id as string | null) ?? null,
+    forkedFrom: r.forked_from_id ? { id: r.forked_from_id as string, seq: Number(r.forked_at_seq) } : null,
     spawnGranted: r.spawn_granted_at != null,
     createdAt: r.created_at as string,
     updatedAt: r.updated_at as string,
@@ -312,6 +314,7 @@ export function openStore(path: string) {
           session.status, session.model, session.effort, session.permissionMode, session.parentId, session.scheduleId ?? null, session.createdAt, session.updatedAt,
         );
         if (session.title) db.prepare('UPDATE sessions SET title = ? WHERE id = ?').run(session.title, session.id);
+        if (session.forkedFrom) db.prepare('UPDATE sessions SET forked_from_id = ?, forked_at_seq = ? WHERE id = ?').run(session.forkedFrom.id, session.forkedFrom.seq, session.id);
         for (const a of attachments) insertAttachment.run(a.id, a.sessionId, a.name, a.mimeType, a.size, a.createdAt);
         for (const e of events) insertEvent.get(session.id, session.id, e.type, JSON.stringify(e.payload), e.createdAt);
         db.exec('COMMIT');

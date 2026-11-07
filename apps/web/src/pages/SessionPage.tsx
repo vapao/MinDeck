@@ -1,9 +1,9 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type UIEvent } from 'react'
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type UIEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronLeft, CornerLeftUp, GitBranch, ListPlus, Network, Trash2 } from 'lucide-react'
 import { openTodo } from '../components/TodoDialog'
 import { Loading } from '../components/Loading'
-import { skillToken, type ProviderId, type Resolution } from '@agentdeck/shared'
+import { skillToken, type ProviderId, type Resolution, type Session } from '@agentdeck/shared'
 import { api } from '../api'
 import { formatEffort, formatModel, formatTokens, providerName } from '../format'
 import { backToTab, navigate } from '../router'
@@ -19,7 +19,7 @@ import { AssistantMessage } from '../components/AssistantMessage'
 import { ToolGroup } from '../components/ToolCard'
 import { ProcessBlock } from '../components/ProcessBlock'
 import { ErrorCard } from '../components/ErrorCard'
-import { TurnRow, WorkingRow } from '../components/TurnRow'
+import { ForkLinks, TurnRow, WorkingRow } from '../components/TurnRow'
 import { ConnectionBanner } from '../components/ConnectionBanner'
 import { ApprovalCard } from '../components/ApprovalCard'
 import { QuestionCard } from '../components/QuestionCard'
@@ -63,6 +63,13 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
       if (inPlace) await api.deleteSession(sessionId).catch((err: Error) => dialog.alert({ title: 'Rewound into a new session, but the old one was not deleted', message: err.message }))
     },
     onError: (err) => dialog.alert({ title: 'Rewind failed', message: err.message }),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['sessions'] }),
+  })
+  // 从某轮之后分叉出一条线讨论别的方向：不删东西，不确认，直接过去。beforeSeq 省略 = 从末尾分叉
+  const fork = useMutation({
+    mutationFn: (beforeSeq: number | undefined) => api.forkSession(sessionId, { beforeSeq, rewind: false }),
+    onSuccess: (s) => navigate(`/s/${s.id}`),
+    onError: (err) => dialog.alert({ title: 'Fork failed', message: err.message }),
     onSettled: () => queryClient.invalidateQueries({ queryKey: ['sessions'] }),
   })
   const onRewind = async (it: Extract<StreamItem, { kind: 'user' }>) => {
@@ -273,6 +280,38 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
       reply = ''
     }
   }
+  // 分叉点挂在它之前最后一个落款 / 报错下面：本会话的来源，以及从这里分出去的分支
+  const forkLinks = new Map<string, { from?: Session; to: Session[] }>()
+  const linkAt = (seq: number) => {
+    const at = items.findLast((it) => (it.kind === 'turn' || it.kind === 'error') && it.seq <= seq)
+    if (!at) return undefined
+    if (!forkLinks.has(at.key)) forkLinks.set(at.key, { to: [] })
+    return forkLinks.get(at.key)
+  }
+  const source = info?.forkedFrom ? sessions.data?.find((s) => s.id === info.forkedFrom!.id) : undefined
+  if (source) {
+    const link = linkAt(info!.forkedFrom!.seq)
+    if (link) link.from = source
+  }
+  for (const s of sessions.data ?? []) if (s.forkedFrom?.id === sessionId) linkAt(s.forkedFrom.seq)?.to.push(s)
+  const withForkLinks = (key: string, node: ReactNode) => {
+    const link = forkLinks.get(key)
+    if (!link) return node
+    const open = (id: string) => navigate(`/s/${id}`)
+    return (
+      <Fragment key={key}>
+        {node}
+        {link.from && <ForkLinks label="Forked from" sessions={[link.from]} onOpen={open} />}
+        {link.to.length > 0 && <ForkLinks label="Forked here" sessions={link.to} onOpen={open} />}
+      </Fragment>
+    )
+  }
+  // 落款上的分叉：后面还有轮次就等于从下一条消息之前分叉，否则从末尾分叉；判断与 Rewind 一致
+  const forkPoint = (i: number): { beforeSeq?: number } | null => {
+    const next = items.slice(i + 1).find((it) => it.kind === 'user')
+    if (next) return next.forkable ? { beforeSeq: next.seq } : null
+    return (items[i] as Extract<StreamItem, { kind: 'turn' }>).forkable ? {} : null
+  }
   const renderItem = (it: StreamItem) => {
     switch (it.kind) {
       case 'user':
@@ -280,9 +319,11 @@ export function SessionPage({ sessionId }: { sessionId: string }) {
       case 'assistant':
         return <AssistantMessage sessionId={sessionId} key={it.key} text={it.text} streaming={it.streaming} />
       case 'error':
-        return <ErrorCard key={it.key} message={it.message} />
-      case 'turn':
-        return <TurnRow key={it.key} reason={it.reason} durationMs={it.durationMs} at={it.at} reply={replies.get(it.key)} />
+        return withForkLinks(it.key, <ErrorCard key={it.key} message={it.message} />)
+      case 'turn': {
+        const point = !running && !fork.isPending ? forkPoint(items.indexOf(it)) : null
+        return withForkLinks(it.key, <TurnRow key={it.key} reason={it.reason} durationMs={it.durationMs} at={it.at} reply={replies.get(it.key)} onFork={point ? () => fork.mutate(point.beforeSeq) : undefined} />)
+      }
       case 'approval':
         return (
           <ApprovalCard

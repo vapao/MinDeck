@@ -106,9 +106,12 @@ diff 弹窗底部提供 `Discard changes`；列表不显示回退按钮，必须
 
 ## 切片 17：分叉 / 原地回退（CLI `/rewind`）
 
-悬停在开启一轮的用户消息上出现「Rewind」：**Fork** 保留原会话；**Rewind in place** = 分叉后删原会话（不改写原事件流，会话 id 变化）。
+悬停在开启一轮的用户消息上出现「Rewind」：**Fork** 保留原会话；**Rewind in place** = 分叉后删原会话（不改写原事件流，会话 id 变化）。每轮落款上的「Fork」用于分头讨论不同方向：不确认、输入框留空，直接跳到新会话；后面还有轮次时等同于从下一条消息之前分叉，最后一轮则从末尾分叉。
 
-- `POST /api/sessions/:id/fork { beforeSeq, rewind }`，idle / error 才行。
+- `POST /api/sessions/:id/fork { beforeSeq?, rewind }`，省略 `beforeSeq` 即从末尾分叉；idle / error 才行。
+- 分叉来源记在 `sessions.forked_from_id` / `forked_at_seq`（分叉点 = 保留到的最后一条 seq，源会话与新会话里同号）；原地回退、第一轮前分叉不记。分叉点挂在它之前最后一个落款 / 报错下面：源会话显示「Forked here」+ 各分支链接，分叉会话显示「Forked from」+ 源会话链接；源会话已删除则不显示。侧栏不变，分叉与源会话平级（沿用源会话的 `parent_id`）。加列前的分叉无法回填。
+- 与派生回调（切片 15 `notify`）：分叉是新 id，不继承任何回调，父会话只收原会话的结果。分叉一个还在等子会话回调的监督会话时，回调仍只回原会话，分叉会话收不到，需用户让它用 `get_session` 自取（有意不复制回调，避免两个监督会话同时驱动一个子会话）。
+- 各分支共用同一工作目录，适合讨论；分头改代码会互相覆盖。
 - Provider 侧按上一轮 `turn.completed` / `turn.failed` 上的 `anchor` 复制：Claude / DeepSeek `forkSession(upToMessageId)`（该轮最后一条主链消息 uuid，含中断标记）；Codex `thread/fork(lastTurnId)` 后必须 `thread/unsubscribe`，否则同进程 resume 忽略权限覆盖、规则 10 校验失败。
 - Hub 复制此前事件（seq 重排、保留原时间）与附件（新 id、文件复制）；截断处仍在等的请求记为过期；第一轮前分叉 = 同配置空会话。
 - 插入的追加指令处不能分叉；上一轮无锚点 409，前端不显示按钮。
