@@ -1,9 +1,10 @@
 import { randomUUID } from 'node:crypto';
+import { resolve } from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { z } from 'zod';
-import { effortOptions, modelOptions, type AgentEvent, type ScheduleConfig } from '@agentdeck/shared';
+import { effortOptions, modelOptions, secretNamePattern, type AgentEvent, type ScheduleConfig } from '@agentdeck/shared';
 import { HubError, type createHub } from './hub';
 import type { Store } from './store/db';
 import type { Services } from './services';
@@ -23,9 +24,10 @@ const maxWaitSec = 600;
 const maxEntries = 40;
 const defaultLogLines = 100;
 const maxLogLines = 1000;
+const secretCommand = `node ${resolve(import.meta.dirname, '../../../scripts/secret.mjs')} get`;
 
-/** Provider 侧免审批的工具：只读的，create_session 与定时任务写操作（它们由 Hub 自己弹审批卡，不再让 Provider 先审一次），以及只影响自己会话或只是交给用户看的 compact_after_turn / ask_user / report_to_user / wake_later / add_todo */
-const autoApprove = ['list_workspaces', 'list_sessions', 'get_session', 'create_session', 'list_services', 'get_service_log', 'compact_after_turn', 'ask_user', 'report_to_user', 'wake_later', 'add_todo', 'list_schedules', 'create_schedule', 'update_schedule', 'delete_schedule'];
+/** Provider 侧免审批的工具：只读的，create_session 与定时任务写操作（它们由 Hub 自己弹审批卡，不再让 Provider 先审一次），以及只影响自己会话或只是交给用户看的 compact_after_turn / ask_user / report_to_user / wake_later / add_todo / request_secret / list_secrets（不返回值） */
+const autoApprove = ['list_workspaces', 'list_sessions', 'get_session', 'create_session', 'list_services', 'get_service_log', 'compact_after_turn', 'ask_user', 'report_to_user', 'wake_later', 'add_todo', 'request_secret', 'list_secrets', 'list_schedules', 'create_schedule', 'update_schedule', 'delete_schedule'];
 
 export function agentdeckMcpFor(url: string, sessionId: string): AgentdeckMcp {
   return { url, headers: { [callerHeader]: sessionId }, timeoutSec: toolTimeoutSec, autoApprove };
@@ -229,6 +231,32 @@ export function createMcpServer(hub: Hub, store: Store, services: Services, sche
       remindOn: z.string().optional().describe('YYYY-MM-DD, local date of the AgentDeck host'),
     },
   }, ({ title, note, remindOn }) => json({ id: hub.createTodo({ title, note, remindOn: remindOn ?? null, cwd: store.getSession(callerId)!.cwd, sessionId: callerId }).id }));
+
+  // 密钥值不经过 MCP：Agent 只拿到名字，用的时候在 shell 里由 secret.mjs 现取，值不进上下文
+  const secretUsage = `Use a secret only by substituting it inside a shell command, e.g. curl -H "Authorization: Bearer $(${secretCommand} NAME)" ...; run it from inside this project so private secrets resolve. Never print, echo, log, or write the value to a file, and use a secret only for what its description says.`;
+
+  server.registerTool('request_secret', {
+    description: `Ask the user to enter a secret (API key, token, password) in AgentDeck instead of pasting it into the chat. First call list_secrets and reuse a matching one. Returns immediately; when the user saves it, a message arrives in this session, then use it as described in list_secrets. Never ask the user to paste a secret into the conversation.`,
+    inputSchema: {
+      name: z.string().regex(new RegExp(secretNamePattern)).describe('Environment-variable style, naming the service and, for private secrets, the project, e.g. GITHUB_TOKEN_AGENTDECK'),
+      description: z.string().min(1).describe('What it is for and where it is used, e.g. "GitHub token for pushing to fizee/AgentDeck"; the only hint for choosing it later'),
+      shared: z.boolean().optional().describe('Default false: private to this project. True only for secrets every project may use'),
+    },
+  }, ({ name, description, shared = false }) => {
+    if (!shared) project();
+    return json({ id: hub.fileSecretRequest(callerId, { name, description, shared }).id, filed: true });
+  });
+
+  server.registerTool('list_secrets', {
+    description: 'List secrets this project can use (its private ones and shared ones), with what each is for. Values are never returned here.',
+    inputSchema: {},
+  }, () => {
+    const workspace = store.getWorkspaceByPath(hub.getSession(callerId).cwd);
+    const visible = store.listSecrets().filter((s) => s.workspaceId === null || s.workspaceId === workspace?.id);
+    // 同名时项目私有的优先，和 secret.mjs 一致
+    const secrets = visible.filter((s) => s.workspaceId !== null || !visible.some((o) => o.workspaceId !== null && o.name === s.name));
+    return json({ secrets: secrets.map((s) => ({ name: s.name, description: s.description, scope: s.workspaceId ? 'private' : 'shared' })), usage: secretUsage });
+  });
 
   server.registerTool('interrupt', {
     description: 'Stop the running turn of another session; messages it has not picked up yet are dropped.',

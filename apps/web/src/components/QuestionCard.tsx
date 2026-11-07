@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { CircleHelp } from 'lucide-react'
+import { CircleHelp, KeyRound } from 'lucide-react'
 import type { PendingRequest, ProviderId, QuestionAnswers } from '@agentdeck/shared'
 import { formatTime } from '../format'
 import type { PendingState } from '../session/useSessionStream'
@@ -30,6 +30,39 @@ export function QuestionCard({ request, provider, state, answers, response, reso
       const next = multi ? (cur.includes(label) ? cur.filter((l) => l !== label) : [...cur, label]) : [label]
       return { ...p, [question]: next }
     })
+
+  if (request.secret) {
+    const { name, shared } = request.secret
+    return (
+      <div className={styles.card} data-state={state}>
+        <div className={styles.head}>
+          <KeyRound size={16} className={styles.headIcon} />
+          {state === 'pending' ? `${provider} needs a secret · non-blocking` : state === 'expired' ? 'Secret request expired' : 'Secret · saved'}
+          <span className={styles.headMeta}>{state === 'pending' ? (shared ? 'Shared' : 'Private to this project') : resolvedAt ? formatTime(resolvedAt) : ''}</span>
+        </div>
+        <div className={styles.body}>
+          {!bare && (
+            <div className={styles.field}>
+              <span className={styles.label}>Secret</span>
+              <code className={styles.text}>{name}</code>
+              {request.details && <div className={styles.details}>{request.details}</div>}
+            </div>
+          )}
+          {state === 'pending' && (
+            <input className={styles.other} type="password" value={other} placeholder={`Value of ${name}`} autoComplete="off" spellCheck={false} onChange={(e) => setOther(e.target.value)} />
+          )}
+        </div>
+        {state === 'pending' && (
+          <div className={styles.actions}>
+            <button type="button" className={styles.primary} disabled={busy || !other.trim()} onClick={() => onSubmit({}, other.trim())}>
+              Save secret
+            </button>
+            {error && <div className={styles.error}>{error}</div>}
+          </div>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div className={styles.card} data-state={state}>

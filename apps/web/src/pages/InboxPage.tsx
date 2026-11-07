@@ -353,7 +353,7 @@ function Detail({ item, session, onHandled }: { item: Item; session: Session | u
         onSubmit={(answers, response) => resolve.mutate({ id: r.id, body: { kind: 'question', answers, response } })} />
       {state === 'pending' && item.type === 'decide' && (
         <div className={styles.actions}>
-          <span className={styles.note}>The answer goes back to the session as a new message and resumes it.</span>
+          <span className={styles.note}>{r.secret ? 'The value is saved to Secrets in Settings; the session only gets its name.' : 'The answer goes back to the session as a new message and resumes it.'}</span>
           <button type="button" className={styles.ghost} disabled={dismiss.isPending} onClick={() => dismiss.mutate(r.id)}>Dismiss</button>
           {dismiss.error && <span className={styles.errorText}>{dismiss.error.message}</span>}
         </div>

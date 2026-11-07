@@ -8,7 +8,8 @@ import Fastify from 'fastify';
 import websocket from '@fastify/websocket';
 import multipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
-import type { ClientMessage, CreateServiceBody, CreateSessionBody, CreateTodoBody, UpdateTodoBody, CreateWorkspaceBody, ForkSessionBody, ForkSessionResponse, ListDirsResponse, ResolvePendingBody, ScheduleConfig, SendMessageBody, ServerMessage, SkillsResponse, UpdateServiceBody, UpdateSessionBody, UpdateSettingsBody, UpdateWorkspaceBody, UsageResponse, Workspace } from '@agentdeck/shared';
+import { secretNamePattern } from '@agentdeck/shared';
+import type { ClientMessage, CreateServiceBody, CreateSessionBody, CreateTodoBody, UpdateTodoBody, CreateWorkspaceBody, ForkSessionBody, ForkSessionResponse, ListDirsResponse, ResolvePendingBody, SaveSecretBody, ScheduleConfig, UpdateSecretBody, SendMessageBody, ServerMessage, SkillsResponse, UpdateServiceBody, UpdateSessionBody, UpdateSettingsBody, UpdateWorkspaceBody, UsageResponse, Workspace } from '@agentdeck/shared';
 import { openStore } from './store/db';
 import { createAttachmentStore, isImageMime, maxAttachmentBytes, maxAttachmentsPerMessage } from './store/attachments';
 import { createHub, HubError } from './hub';
@@ -102,6 +103,38 @@ app.patch<{ Params: { id: string }; Body: UpdateWorkspaceBody }>(
 app.delete<{ Params: { id: string } }>('/api/workspaces/:id', (req) => {
   if (services.anyRunning(req.params.id)) throw new HubError(409, 'Stop the project services first');
   if (!store.deleteWorkspace(req.params.id)) throw new HubError(404, 'Workspace not found');
+  return { ok: true };
+});
+
+// 密钥：值只在 GET /api/secrets/:id/value 下发，列表不带
+const secretScope = (workspaceId: string | null) => {
+  if (workspaceId !== null && !store.getWorkspace(workspaceId)) throw new HubError(400, 'Workspace not found');
+  return workspaceId;
+};
+const secretFields = { workspaceId: { type: ['string', 'null'] }, description: { type: 'string' }, value: { type: 'string', minLength: 1 } };
+app.get('/api/secrets', (_req, reply) => reply.header('cache-control', 'no-store').send(store.listSecrets()));
+app.get<{ Params: { id: string } }>('/api/secrets/:id/value', (req, reply) => {
+  const value = store.getSecretValue(req.params.id);
+  if (value === undefined) throw new HubError(404, 'Secret not found');
+  return reply.header('cache-control', 'no-store').send({ value });
+});
+app.post<{ Body: SaveSecretBody }>(
+  '/api/secrets',
+  { schema: { body: { type: 'object', additionalProperties: false, required: ['workspaceId', 'name', 'description', 'value'], properties: { ...secretFields, name: { type: 'string', pattern: secretNamePattern } } } } },
+  (req, reply) => reply.code(201).send(store.saveSecret(secretScope(req.body.workspaceId), req.body.name, req.body.description.trim(), req.body.value)),
+);
+app.patch<{ Params: { id: string }; Body: UpdateSecretBody }>(
+  '/api/secrets/:id',
+  { schema: { body: { type: 'object', additionalProperties: false, required: ['workspaceId', 'description'], properties: secretFields } } },
+  (req) => {
+    const secret = store.updateSecret(req.params.id, secretScope(req.body.workspaceId), req.body.description.trim(), req.body.value);
+    if (secret === 'conflict') throw new HubError(409, 'A secret with this name already exists in that scope');
+    if (!secret) throw new HubError(404, 'Secret not found');
+    return secret;
+  },
+);
+app.delete<{ Params: { id: string } }>('/api/secrets/:id', (req) => {
+  if (!store.deleteSecret(req.params.id)) throw new HubError(404, 'Secret not found');
   return { ok: true };
 });
 

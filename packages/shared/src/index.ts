@@ -182,6 +182,8 @@ export type PendingRequestBody =
       filed?: true;
       /** filed 事项的背景说明，Markdown */
       details?: string;
+      /** MCP request_secret：卡片改为密码输入，值经 response 提交，Hub 存进 secrets 表后丢弃，不进 resolution / 事件 / 发回的消息 */
+      secret?: { name: string; shared: boolean };
     };
 
 export type PendingRequest = PendingRequestBody & {
@@ -405,6 +407,16 @@ export type DeleteProjectEntryBody = { path: string; dir: boolean };
  * expected 为开始编辑时读到的内容，磁盘内容已不同则 409；省略表示确认覆盖 */
 export type SaveProjectFileBody = { path: string; content: string; expected?: string };
 
+
+/** 密钥：workspaceId 为 null 是 Shared，否则只对该项目可见。列表不含值，值单独经 GET /api/secrets/:id/value 取 */
+export type Secret = { id: string; workspaceId: string | null; name: string; description: string; updatedAt: string };
+/** 名字限定为环境变量风格，方便在 shell 里引用 */
+export const secretNamePattern = '^[A-Za-z_][A-Za-z0-9_]*$';
+/** POST /api/secrets：同一作用域同名即覆盖 */
+export type SaveSecretBody = { workspaceId: string | null; name: string; description: string; value: string };
+/** PATCH /api/secrets/:id：value 省略保留原值；改到的作用域已有同名时 409 */
+export type UpdateSecretBody = { workspaceId: string | null; description: string; value?: string };
+export type SecretValueResponse = { value: string };
 
 /** GET / PUT /api/settings */
 export type SettingsResponse = Settings;

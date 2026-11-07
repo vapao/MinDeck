@@ -303,6 +303,15 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
     provider.send({ text, images: files.map((a) => ({ mimeType: a.mimeType, path: attachments.pathOf(a) })) });
   }
 
+  /** 异步提问的答案以用户消息送回：运行中插入当前轮，空闲时新开一轮 */
+  function wake(session: Session, text: string) {
+    const provider = ensureProvider(session);
+    emit(session.id, { type: 'message.user', payload: { text, attachments: [] } });
+    if (session.archivedAt) store.setSessionArchivedAt(session.id, null);
+    if (session.status === 'running' || session.status === 'waiting_user') provider.send({ text, images: [] });
+    else dispatch(session.id, provider, { text, files: [] });
+  }
+
   // Provider 进程在首条消息时才惰性启动，之前会话配置只是几列
   const isEmptySession = (session: Session) => !session.providerSessionId && !live.has(session.id) && store.lastSeq(session.id) === 0;
 
@@ -653,6 +662,20 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
       return request;
     },
 
+    /** MCP request_secret：和 ask_user 一样提交即返回；用户填的值只存进 secrets 表，见 resolvePending */
+    fileSecretRequest(sessionId: string, secret: { name: string; description: string; shared: boolean }): PendingRequest {
+      getSession(sessionId);
+      const request: PendingRequest = {
+        kind: 'question', toolUseId: randomUUID(), delivery: 'async', filed: true,
+        details: secret.description, secret: { name: secret.name, shared: secret.shared },
+        questions: [{ question: `Provide secret ${secret.name}`, header: 'Secret', multiSelect: false, options: [] }],
+        id: randomUUID(), sessionId, status: 'pending', createdAt: new Date().toISOString(), resolvedAt: null,
+      };
+      store.createPending(request);
+      emit(sessionId, requestedEvent(request));
+      return request;
+    },
+
     fileReport(sessionId: string, report: { title: string; summary: string; body: string }): Report {
       getSession(sessionId);
       const row: Report = { ...report, id: randomUUID(), sessionId, createdAt: new Date().toISOString(), readAt: null };
@@ -751,16 +774,22 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
       const request = store.getPending(requestId);
       if (!request) throw new HubError(404, 'Request not found');
       if (resolution.kind !== request.kind) throw new HubError(400, `Request kind is ${request.kind}, got ${resolution.kind}`);
+      if (request.kind === 'question' && request.secret && resolution.kind === 'question') {
+        // 值只进 secrets 表：resolution、user_input.resolved 事件和发回的消息里都不带
+        const value = resolution.response ?? '';
+        if (!value) throw new HubError(400, 'Secret value is empty');
+        const session = getSession(request.sessionId);
+        const workspace = request.secret.shared ? null : store.getWorkspaceByPath(session.cwd);
+        if (workspace === undefined) throw new HubError(400, `${session.cwd} is no longer an AgentDeck project; save it as Shared from Settings instead`);
+        if (!settle(requestId, { kind: 'question', answers: {} })) throw new HubError(409, 'Already handled elsewhere');
+        store.saveSecret(workspace?.id ?? null, request.secret.name, request.details ?? '', value);
+        wake(getSession(session.id), `[AgentDeck] The user saved secret ${request.secret.name} (${request.secret.shared ? 'shared' : 'private to this project'}). See list_secrets for how to use it.`);
+        return store.lastSeq(request.sessionId);
+      }
       if (!settle(requestId, resolution)) throw new HubError(409, 'Already handled elsewhere');
       if (request.kind === 'question' && request.delivery === 'async' && resolution.kind === 'question') {
-        const session = getSession(request.sessionId);
-        const provider = ensureProvider(session);
         const text = request.questions.map((q) => `${q.question}：${resolution.answers[q.question]?.join('、') || resolution.response || ''}`).join('\n');
-        emit(session.id, { type: 'message.user', payload: { text, attachments: [] } });
-        if (session.archivedAt) store.setSessionArchivedAt(session.id, null);
-        // 运行中插入当前轮，空闲时新开一轮
-        if (session.status === 'running' || session.status === 'waiting_user') provider.send({ text, images: [] });
-        else dispatch(session.id, provider, { text, files: [] });
+        wake(getSession(request.sessionId), text);
       }
       return store.lastSeq(request.sessionId);
     },

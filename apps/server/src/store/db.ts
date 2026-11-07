@@ -1,5 +1,6 @@
+import { randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
-import type { AgentEvent, Attachment, EventType, PendingRequest, PendingRequestBody, PermissionMode, ProviderEvent, Report, Resolution, Schedule, ScheduleConfig, ServiceConfig, Session, SessionStatus, Settings, Todo, UnfinishedSession, Wakeup, Workspace } from '@agentdeck/shared';
+import type { AgentEvent, Attachment, EventType, PendingRequest, PendingRequestBody, PermissionMode, ProviderEvent, Report, Resolution, Schedule, ScheduleConfig, Secret, ServiceConfig, Session, SessionStatus, Settings, Todo, UnfinishedSession, Wakeup, Workspace } from '@agentdeck/shared';
 
 export type Store = ReturnType<typeof openStore>;
 /** pid 是服务进程组的组长；startedAt 是它在 ps 里的启动时间，用来识别 pid 是否已被别的进程复用 */
@@ -99,6 +100,16 @@ export function openStore(path: string) {
       created_at TEXT NOT NULL,
       done_at    TEXT
     );
+    -- workspace_id 为 '' 是 Shared（NULL 在 UNIQUE 里互不相等，挡不住重名）
+    CREATE TABLE IF NOT EXISTS secrets (
+      id           TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL,
+      name         TEXT NOT NULL,
+      value        TEXT NOT NULL,
+      description  TEXT NOT NULL,
+      updated_at   TEXT NOT NULL,
+      UNIQUE (workspace_id, name)
+    );
   `);
   // 旧库没有就补上（SQLite 没有 ADD COLUMN IF NOT EXISTS）：model / effort 是切片 8 加的，permission_mode 是权限模式那次加的，archived_at 是切片 12 加的，parent_id 是派生会话隶属关系那次加的，spawn_granted_at 是派生授权持久化那次加的，schedule_id 是 Automations 运行记录那次加的，review_* 是没收尾判断那次加的，forked_* 是分叉来源那次加的
   const sessionCols = new Set((db.prepare(`PRAGMA table_info(sessions)`).all() as { name: string }[]).map((c) => c.name));
@@ -190,6 +201,7 @@ export function openStore(path: string) {
   const updateServiceProcess = db.prepare(`UPDATE workspace_services SET pid = ?, started_at = ? WHERE id = ?`);
   const deleteService = db.prepare(`DELETE FROM workspace_services WHERE id = ?`);
   const deleteWorkspaceServices = db.prepare(`DELETE FROM workspace_services WHERE workspace_id = ?`);
+  const deleteWorkspaceSecrets = db.prepare(`DELETE FROM secrets WHERE workspace_id = ?`);
   const selectSetting = db.prepare(`SELECT value FROM settings WHERE key = ?`);
   const upsertSetting = db.prepare(`INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`);
 
@@ -494,9 +506,10 @@ export function openStore(path: string) {
     setWorkspaceAlias(id: string, alias: string): boolean {
       return updateWorkspaceAlias.run(alias, id).changes === 1;
     },
-    /** 服务配置跟着项目走，一起删；是否还有服务在跑由调用方先检查 */
+    /** 服务配置和项目私有密钥跟着项目走，一起删；是否还有服务在跑由调用方先检查 */
     deleteWorkspace(id: string): boolean {
       deleteWorkspaceServices.run(id);
+      deleteWorkspaceSecrets.run(id);
       return deleteWorkspace.run(id).changes === 1;
     },
     createService(s: ServiceRow) {
@@ -556,8 +569,43 @@ export function openStore(path: string) {
     setSettings(settings: Settings) {
       upsertSetting.run('defaults', JSON.stringify(settings));
     },
+    listSecrets(): Secret[] {
+      return db.prepare(`SELECT id, workspace_id, name, description, updated_at FROM secrets ORDER BY name, workspace_id`).all().map(rowToSecret);
+    },
+    getSecretValue(id: string): string | undefined {
+      return db.prepare(`SELECT value FROM secrets WHERE id = ?`).get(id)?.value as string | undefined;
+    },
+    /** 同一作用域同名即覆盖，id 不变 */
+    saveSecret(workspaceId: string | null, name: string, description: string, value: string): Secret {
+      const row = db.prepare(`INSERT INTO secrets (id, workspace_id, name, value, description, updated_at) VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT (workspace_id, name) DO UPDATE SET value = excluded.value, description = excluded.description, updated_at = excluded.updated_at
+        RETURNING id, workspace_id, name, description, updated_at`).get(randomUUID(), workspaceId ?? '', name, value, description, new Date().toISOString())!;
+      return rowToSecret(row);
+    },
+    /** 改到的作用域已有同名时返回 'conflict' */
+    updateSecret(id: string, workspaceId: string | null, description: string, value: string | undefined): Secret | undefined | 'conflict' {
+      try {
+        const row = db.prepare(`UPDATE secrets SET workspace_id = ?, description = ?, value = COALESCE(?, value), updated_at = ? WHERE id = ?
+          RETURNING id, workspace_id, name, description, updated_at`).get(workspaceId ?? '', description, value ?? null, new Date().toISOString(), id);
+        return row && rowToSecret(row);
+      } catch (err) {
+        if ((err as { errcode?: number }).errcode === 2067) return 'conflict'; // SQLITE_CONSTRAINT_UNIQUE
+        throw err;
+      }
+    },
+    deleteSecret(id: string): boolean {
+      return db.prepare(`DELETE FROM secrets WHERE id = ?`).run(id).changes === 1;
+    },
     close() {
       db.close();
     },
   };
 }
+
+const rowToSecret = (r: Record<string, unknown>): Secret => ({
+  id: r.id as string,
+  workspaceId: (r.workspace_id as string) || null,
+  name: r.name as string,
+  description: r.description as string,
+  updatedAt: r.updated_at as string,
+});

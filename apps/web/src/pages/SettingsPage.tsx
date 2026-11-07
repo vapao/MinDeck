@@ -7,6 +7,7 @@ import { providerName } from '../format'
 import { backToTab } from '../router'
 import { readLocalSettings, saveLocalSettings } from '../components/FilePreview'
 import { Select } from '../components/Select'
+import { SecretsSection } from '../components/SecretsSection'
 import { dialog } from '../components/Dialog'
 import styles from './Manage.module.css'
 import layout from './SettingsPage.module.css'
@@ -228,6 +229,8 @@ export function SettingsPage() {
           </div>
           {localError ? <div className={styles.error}>{localError}</div> : save.error ? <div className={styles.error}>{save.error.message}</div> : didSave && !dirty ? <div className={styles.ok}>Saved.</div> : null}
           {saved.error && <div className={styles.error}>{saved.error.message}</div>}
+          {/* 即时生效，不归上面的 Save changes 管，所以放在它后面 */}
+          <SecretsSection />
         </div>
       </div>
     </div>
