@@ -216,6 +216,8 @@ export type EventPayloads = {
   /** anchor：Provider 侧这一轮的分叉点（Claude 最后一条主链消息 uuid / Codex 最后一个 turn id），没有则从下一条消息起不能分叉 */
   'turn.completed': { reason: TurnEndReason; durationMs: number; costUsd: number; anchor?: string };
   'turn.failed': { message: string; anchor?: string };
+  /** 一轮中途答完了一段：Agent 答完已读到的消息，接着处理轮中追加的消息（Claude 中途的 result / Codex 插入失败后新开的一轮）。只用于前端分段折叠 */
+  'reply.completed': Record<never, never>;
   'usage.updated': UsageInfo;
   /** 最近一次模型调用的上下文大小（prompt 侧 token 数，含缓存），Composer 状态区展示 */
   'context.updated': { tokens: number };

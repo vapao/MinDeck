@@ -6,7 +6,8 @@ import type { AgentEvent, ApprovalDecision, Attachment, PendingRequest, Question
 export type StreamItem =
   /** forkable：这条消息开启了一轮，且上一轮留有分叉锚点，可以从它之前分叉 / 回退 */
   | { kind: 'user'; key: string; seq: number; text: string; attachments: Attachment[]; at: string; forkable: boolean }
-  | { kind: 'assistant'; key: string; messageId: string; text: string; streaming: boolean }
+  /** endsReply：一轮中途答完一段的最后一条回复，折叠时和整轮的最后一条一样保持可见 */
+  | { kind: 'assistant'; key: string; messageId: string; text: string; streaming: boolean; endsReply?: boolean }
   /** done 为 false 表示还在跑；服务端不保存工具输出，卡片只显示做了什么 */
   | { kind: 'tool'; key: string; toolUseId: string; name: string; summary: string; done: boolean; isError: boolean; at: string }
   | { kind: 'error'; key: string; seq: number; message: string; at: string }
@@ -140,6 +141,10 @@ function applyEvent(state: StreamState, e: AgentEvent): StreamState {
       const last = items.at(-1)
       const started = last?.kind === 'user' && last.seq === e.seq - 1 ? items.toSpliced(-1, 1, { ...last, forkable: state.nextForkable }) : items
       return { ...state, turnStartedAt: e.createdAt, nextForkable: false, items: started }
+    }
+    case 'reply.completed': {
+      const i = items.findLastIndex((it) => it.kind === 'assistant')
+      return i === -1 ? state : { ...state, items: items.toSpliced(i, 1, { ...(items[i] as Extract<StreamItem, { kind: 'assistant' }>), endsReply: true }) }
     }
     case 'turn.failed':
       return { ...state, turnStartedAt: null, nextForkable: !!e.payload.anchor, items: [...items, { kind: 'error', key: `e${e.seq}`, seq: e.seq, message: e.payload.message, at: e.createdAt }] }

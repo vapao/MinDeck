@@ -18,6 +18,11 @@ export function createNormalizer(resumed: boolean) {
   const hiddenToolIds = new Set<string>();
 
   function normalize(m: SDKMessage): ProviderOutput[] {
+    // result 之后没等到 idle 又开始调模型：追加的消息自成一轮接着跑，前一段回复到此答完
+    if (turnEnd && (m.type === 'assistant' || (m.type === 'stream_event' && m.event.type === 'message_start'))) {
+      turnEnd = null;
+      return [{ type: 'reply.completed', payload: {} }, ...normalize(m)];
+    }
     switch (m.type) {
       case 'system':
         if (m.subtype === 'init') {

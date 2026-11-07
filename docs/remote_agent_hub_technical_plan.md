@@ -313,6 +313,7 @@ subscribe(session: ProviderSession, emit: (event: AgentEvent) => void): Unsubscr
 |-----------------------------------------------|---------------------------------------|
 | session.started / session.resumed             | 建立/恢复 Provider 会话               |
 | turn.started / turn.completed / turn.failed   | 一轮工作的生命周期                    |
+| reply.completed                               | 一轮中途答完一段、接着处理追加的消息；只用于前端分段折叠 |
 | message.delta / message.completed             | Assistant 文本流（delta 只广播不落库） |
 | tool.started / tool.completed                 | 工具卡：只记 name + 一行 summary 与成败，不存输出 |
 | file.changed                                  | 结构化文件变更/diff 摘要              |

@@ -1,6 +1,6 @@
 import type { StreamItem } from './useSessionStream'
 
-// 消息流的渲染布局：按 turn 落款切成一轮轮，已结束的轮次把中间过程折成一块；连续的工具卡并成一组紧凑显示。
+// 消息流的渲染布局：按 turn 落款切成一轮轮，已结束的轮次按中途答完的回复分段，各段把中间过程折成一块；连续的工具卡并成一组紧凑显示。
 // 纯函数，不改 reducer——事件流本身保持原样。
 
 export type ToolItem = Extract<StreamItem, { kind: 'tool' }>
@@ -15,7 +15,7 @@ export function layout(items: StreamItem[]): Entry[] {
   let start = 0
   for (let i = 0; i < items.length; i++) {
     if (items[i].kind !== 'turn') continue
-    out.push(...collapse(items.slice(start, i + 1)))
+    out.push(...segments(items.slice(start, i + 1)).flatMap(collapse))
     start = i + 1
   }
   // 最后一段没有落款（进行中，或还没跑过）：不折叠，看着它跑
@@ -23,7 +23,17 @@ export function layout(items: StreamItem[]): Entry[] {
   return out
 }
 
-// 一轮里最后一条 Agent 文本就是汇总说明；用户消息、报错、落款和仍待回答的卡片保持可见，其余归入过程块。
+// 轮中追加的消息在发送时就记进了流里，可能早于 Agent 对前一条的汇总，所以不按用户消息切，按 Provider 报的"答完一段"切
+function segments(turn: StreamItem[]): StreamItem[][] {
+  const out: StreamItem[][] = [[]]
+  for (const it of turn) {
+    out[out.length - 1].push(it)
+    if (it.kind === 'assistant' && it.endsReply) out.push([])
+  }
+  return out.filter((s) => s.length)
+}
+
+// 一段里最后一条 Agent 文本就是汇总说明；用户消息、报错、落款和仍待回答的卡片保持可见，其余归入过程块。
 function collapse(turn: StreamItem[]): Entry[] {
   const finalIdx = turn.findLastIndex((it) => it.kind === 'assistant')
   const isProcess = (it: StreamItem, i: number) => i !== finalIdx && it.kind !== 'user' && it.kind !== 'error' && it.kind !== 'turn' && !((it.kind === 'question' || it.kind === 'approval') && it.state === 'pending')

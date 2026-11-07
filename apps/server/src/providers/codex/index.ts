@@ -226,6 +226,8 @@ export function startCodexSession({ cwd, resume, model, effort, permissionMode, 
               }
             }
             if (epoch !== sentAt) return;
+            // 上一轮已结束、结束被压着：新开的这一轮接着处理追加的消息，前一段回复到此答完
+            if (deferredEnd) onEvent({ type: 'reply.completed', payload: {} });
             abort = new AbortController();
             // model / effort 是"本轮及之后"的覆盖，每轮都带上保证 resume 后也一致
             const res = (await rpc.request('turn/start', { threadId: threadId!, input, model, effort })) as TurnStartResponse;
