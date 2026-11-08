@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHub } from '../hub';
+import { createPush } from '../push';
 import { agentdeckMcpFor } from '../mcp';
 import { openStore } from '../store/db';
 import { createAttachmentStore } from '../store/attachments';
@@ -13,7 +14,7 @@ import { deepseekEnv } from './claude';
 test('DeepSeek settings keep credentials separate and survive restart', () => {
   const dir = mkdtempSync(join(tmpdir(), 'agentdeck-settings-'));
   let store = openStore(join(dir, 'test.db'));
-  let hub = createHub(store, createAttachmentStore(store, join(dir, 'uploads')), (id) => agentdeckMcpFor('http://127.0.0.1:0/mcp', id));
+  let hub = createHub(store, createAttachmentStore(store, join(dir, 'uploads')), (id) => agentdeckMcpFor('http://127.0.0.1:0/mcp', id), createPush(store));
   try {
     const defaults = hub.settings();
     store.createWorkspace({ id: 'w', path: dir, alias: 'test', createdAt: new Date().toISOString() });
@@ -33,7 +34,7 @@ test('DeepSeek settings keep credentials separate and survive restart', () => {
     hub.close();
     store.close();
     store = openStore(join(dir, 'test.db'));
-    hub = createHub(store, createAttachmentStore(store, join(dir, 'uploads')), (id) => agentdeckMcpFor('http://127.0.0.1:0/mcp', id));
+    hub = createHub(store, createAttachmentStore(store, join(dir, 'uploads')), (id) => agentdeckMcpFor('http://127.0.0.1:0/mcp', id), createPush(store));
     assert.equal(store.getDeepseekApiKey(), 'test-secret');
     assert.equal(hub.settings().deepseek.apiKeyConfigured, true);
     assert.equal(hub.getSession(session.id).provider, 'deepseek');

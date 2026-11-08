@@ -8,7 +8,7 @@ import { navigate, usePathname } from './router'
 import { useMediaQuery } from './session/useMediaQuery'
 import { useSessions } from './session/useSessions'
 import { inboxCount, useInbox } from './session/useInbox'
-import { notificationsSupported, useNotificationPermission, useNotifications } from './session/useNotifications'
+import { notificationsSupported, useNotificationPermission, useNotifications, usePresence } from './session/useNotifications'
 import { SessionTabs } from './components/SessionList'
 import { SessionNotifications } from './components/SessionNotifications'
 import { UpdateNotice } from './components/UpdateNotice'
@@ -36,6 +36,7 @@ export default function App() {
   const sessions = useSessions()
   const notifications = useNotifications(sessions.data, sessionId)
   useMarkSeen(sessions.data, sessionId)
+  usePresence()
 
   const page = sessionId ? <SessionPage sessionId={sessionId} /> : pathname === '/workspaces' ? <WorkspacesPage /> : pathname === '/schedules' ? <SchedulesPage /> : pathname === '/todos' ? <TodosPage /> : pathname === '/settings' ? <SettingsPage /> : pathname === '/steward' ? <StewardPage /> : pathname === '/sessions' && !desktop ? <SessionListPage /> : <InboxPage />
 

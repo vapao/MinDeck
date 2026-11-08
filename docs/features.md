@@ -186,7 +186,7 @@ Files 支持在项目根目录或指定子目录新建空文件 / 文件夹，�
 - `report_to_user(title, summary, body)`：存 `reports` 表，随会话删除。两个工具 Provider 侧免审。
 - REST：`GET /api/inbox`（待处理请求 + 未读汇报；`?done=true` 为已处理的异步提问（带答案）与已读汇报，各最近 50 条）、`POST /api/pending/:id/dismiss`（只限异步提问）、`POST /api/reports/:id/read`。前端 5s 轮询，侧栏角标与手机 tab 角标共用。
 - Agent 是否使用这两个工具取决于它自己的判断和任务 prompt；定时任务的 prompt 里要写明"待决定事项用 ask_user 提交，结论用 report_to_user 汇报"。
-- 未做：推送通知（浏览器关着时只能等打开 Inbox）。
+- 新提问和汇报会推送到手机，见「推送到手机」。
 
 ## Automations 与唤醒（2026-11-04）
 
@@ -235,3 +235,18 @@ Files 支持在项目根目录或指定子目录新建空文件 / 文件夹，�
 - **v1 只读**：管家的 MCP 只有只读工具（`list_workspaces` / `list_sessions` / `get_session` / `list_services` / `get_service_log` / `list_schedules`）、`add_todo`（不关联项目）和上面四个管家工具；不能派生、发消息、中断、改服务和定时任务。
 - REST：`GET /api/steward`（当前会话、历史会话、简报、记忆、下次与最近一次自动简报）、`POST /api/steward/messages`（`{ text }`，不支持图片）、`POST /api/steward/brief`、`POST /api/steward/memories`、`PATCH / DELETE /api/steward/memories/:id`。
 - 未做：替用户操作会话、旧对话检索、推送、简报卡片上的快捷操作、自定义星期（目前只有工作日）。
+
+## 推送到手机（2026-11-08）
+
+开发者的主力手机是国行小米（HyperOS），连不上 FCM，Web Push 不可靠，所以走 Spug 推送 App（厂商通道，不依赖 Tailscale）。手机不在前台时也能知道哪个会话跑完了、要处理什么。
+
+- **通道**：Hub 向 Shared 密钥 `SPUG_PUSH_URL` 的地址 POST `{"channel":"app","type":"markdown","title","content"}`，标题截到 32 字。没配这个密钥就不推；删掉即关闭。失败（响应体 `code` 不是 200 或网络错误）只打日志，不重试。
+- **什么时候推**（`push.ts`，在 `hub.ts` 调）：
+  - 会话一轮"在跑"之后落到 Finished / 等待处理 / Failed，与站内通知同一规则；用户中断的不推。标题 `✅ / ⏳ / ❌ 会话标题 · 项目`，正文分别是这轮最后一段回复全文、待处理的审批（命令一行摘要）或提问（问题和选项）、错误信息。
+  - 落点之后同步处理完再判断：一轮结束紧接着发出压缩时，等压缩那轮结束才推（这时正文是压缩那轮的回复）。
+  - 父会话经 `notify` 等着结果的子会话结束时不推，由父会话收尾时推；子会话等审批照推。管家会话不推。
+  - 异步提问（MCP `ask_user` / `request_secret`、Codex 非阻塞提问）提交时推 `❓`，`report_to_user` 推 `📋 标题`，正文为摘要和全文。
+- **有设备在前台就不推**：页面可见且窗口有焦点时每 10 秒 `POST /api/presence { clientId, visible }`，离开前台立刻报 `visible: false`（`keepalive`）；超过 25 秒没报算离开。任一设备在前台时都不推，只在内存里。
+- **链接**：正文末尾带 `Open session` 链接，域名取最近一次经 Tailscale 上报前台时的 Host（存 settings 表 `publicOrigin`），本机直连的不记；还没记到时不带链接。点开需要手机连着 Tailscale。
+- 正文直接带回复全文，不做脱敏（开发者明确不在意）。4K 字符正文实测可推。
+- 未做：推送开关 UI、按事件类型过滤、合并节流、管家简报推送。

@@ -10,7 +10,7 @@ import multipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
 import { secretNamePattern } from '@agentdeck/shared';
 import type { StewardMessageBody } from '@agentdeck/shared';
-import type { ClientMessage, CreateServiceBody, CreateSessionBody, CreateTodoBody, UpdateTodoBody, CreateWorkspaceBody, ForkSessionBody, ForkSessionResponse, ListDirsResponse, ResolvePendingBody, SaveSecretBody, ScheduleConfig, UpdateSecretBody, SendMessageBody, ServerMessage, SkillsResponse, UpdateServiceBody, UpdateSessionBody, UpdateSettingsBody, UpdateWorkspaceBody, UsageResponse, Workspace } from '@agentdeck/shared';
+import type { ClientMessage, CreateServiceBody, CreateSessionBody, CreateTodoBody, UpdateTodoBody, CreateWorkspaceBody, ForkSessionBody, ForkSessionResponse, ListDirsResponse, PresenceBody, ResolvePendingBody, SaveSecretBody, ScheduleConfig, UpdateSecretBody, SendMessageBody, ServerMessage, SkillsResponse, UpdateServiceBody, UpdateSessionBody, UpdateSettingsBody, UpdateWorkspaceBody, UsageResponse, Workspace } from '@agentdeck/shared';
 import { openStore } from './store/db';
 import { createAttachmentStore, isImageMime, maxAttachmentBytes, maxAttachmentsPerMessage } from './store/attachments';
 import { createHub, HubError } from './hub';
@@ -23,6 +23,7 @@ import { agentdeckMcpFor, registerMcpRoute } from './mcp';
 import { readUpdateStatus } from './update-status';
 import { createScheduler } from './schedules';
 import { createSteward } from './steward';
+import { createPush } from './push';
 
 const repoRoot = resolve(import.meta.dirname, '../../..');
 // 8004 只监听本机；开发时由 vite dev server 代理，生产由 Tailscale Serve 8450 映射到这里
@@ -37,7 +38,8 @@ const webDist = process.env.AGENTDECK_WEB_DIST ?? resolve(repoRoot, 'apps/web/di
 mkdirSync(dirname(dbPath), { recursive: true });
 const store = openStore(dbPath);
 const attachments = createAttachmentStore(store, uploadsDir);
-const hub = createHub(store, attachments, (sessionId) => agentdeckMcpFor(`http://127.0.0.1:${port}/mcp`, sessionId));
+const push = createPush(store);
+const hub = createHub(store, attachments, (sessionId) => agentdeckMcpFor(`http://127.0.0.1:${port}/mcp`, sessionId), push);
 const services = createServices(store, resolve(repoRoot, 'data/logs/services'));
 const steward = createSteward(store, hub, services, resolve(dirname(dbPath), 'steward'));
 const scheduler = createScheduler(store, hub, undefined, steward.tick);
@@ -108,6 +110,16 @@ app.delete<{ Params: { id: string } }>('/api/workspaces/:id', (req) => {
   if (!store.deleteWorkspace(req.params.id)) throw new HubError(404, 'Workspace not found');
   return { ok: true };
 });
+
+// 前台心跳：有设备在前台就不推送到手机，见 push.ts
+app.post<{ Body: PresenceBody }>(
+  '/api/presence',
+  { schema: { body: { type: 'object', additionalProperties: false, required: ['clientId', 'visible'], properties: { clientId: { type: 'string' }, visible: { type: 'boolean' } } } } },
+  (req) => {
+    push.presence(req.body.clientId, req.body.visible, req.headers.host);
+    return { ok: true };
+  },
+);
 
 // 密钥：值只在 GET /api/secrets/:id/value 下发，列表不带
 const secretScope = (workspaceId: string | null) => {

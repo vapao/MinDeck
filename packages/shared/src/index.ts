@@ -427,6 +427,9 @@ export type SaveSecretBody = { workspaceId: string | null; name: string; descrip
 export type UpdateSecretBody = { workspaceId: string | null; description: string; value?: string };
 export type SecretValueResponse = { value: string };
 
+/** POST /api/presence：页面在前台时定时上报，离开前台时报 visible=false；有设备在前台就不推送到手机 */
+export type PresenceBody = { clientId: string; visible: boolean };
+
 // ---- 管家 Steward ----
 
 /** 管家经 MCP publish_brief 发布的简报，Markdown */

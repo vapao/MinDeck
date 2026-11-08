@@ -9,6 +9,7 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { openStore } from '../store/db';
 import { createAttachmentStore } from '../store/attachments';
 import { createHub } from '../hub';
+import { createPush } from '../push';
 import { createServices } from '../services';
 import { createScheduler } from '../schedules';
 import { agentdeckMcpFor, createMcpServer } from '../mcp';
@@ -17,7 +18,7 @@ import { agentdeckMcpFor, createMcpServer } from '../mcp';
 test('create_session needs approval and leaves no empty session', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'agentdeck-mcp-'));
   const store = openStore(':memory:');
-  const hub = createHub(store, createAttachmentStore(store, join(dir, 'uploads')), (id) => agentdeckMcpFor('http://127.0.0.1:0/mcp', id));
+  const hub = createHub(store, createAttachmentStore(store, join(dir, 'uploads')), (id) => agentdeckMcpFor('http://127.0.0.1:0/mcp', id), createPush(store));
   const services = createServices(store, join(dir, 'logs'));
   try {
     store.createWorkspace({ id: 'workspace', path: dir, alias: 'test', createdAt: new Date().toISOString() });
@@ -62,7 +63,7 @@ test('create_session needs approval and leaves no empty session', async () => {
 test('move_session rejects cycles', () => {
   const dir = mkdtempSync(join(tmpdir(), 'agentdeck-mcp-'));
   const store = openStore(':memory:');
-  const hub = createHub(store, createAttachmentStore(store, join(dir, 'uploads')), (id) => agentdeckMcpFor('http://127.0.0.1:0/mcp', id));
+  const hub = createHub(store, createAttachmentStore(store, join(dir, 'uploads')), (id) => agentdeckMcpFor('http://127.0.0.1:0/mcp', id), createPush(store));
   try {
     store.createWorkspace({ id: 'workspace', path: dir, alias: 'test', createdAt: new Date().toISOString() });
     const a = hub.createSession('claude', dir);

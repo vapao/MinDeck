@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Session, SessionStatus } from '@agentdeck/shared'
+import { api } from '../api'
 import { navigate } from '../router'
 
 // 会话列表本来就在 5s 轮询，比对前后状态后按窗口焦点选择站内提醒或系统通知。
@@ -71,4 +72,31 @@ export function useNotificationPermission() {
   const [permission, setPermission] = useState<NotificationPermission>(() => (notificationsSupported ? Notification.permission : 'denied'))
   const request = () => Notification.requestPermission().then(setPermission)
   return { permission, request }
+}
+
+const clientId = crypto.randomUUID()
+
+/** 在前台时每 10 秒告诉 Hub 一次，离开前台立刻告诉它：有设备在前台，Hub 就不推送到手机 */
+export function usePresence() {
+  useEffect(() => {
+    let visible: boolean | null = null
+    const report = () => {
+      const now = isForeground()
+      // 前台时重复上报续期；不在前台只报一次
+      if (!now && visible === false) return
+      visible = now
+      void api.presence({ clientId, visible: now }).catch(() => {})
+    }
+    report()
+    const timer = setInterval(report, 10_000)
+    window.addEventListener('focus', report)
+    window.addEventListener('blur', report)
+    document.addEventListener('visibilitychange', report)
+    return () => {
+      clearInterval(timer)
+      window.removeEventListener('focus', report)
+      window.removeEventListener('blur', report)
+      document.removeEventListener('visibilitychange', report)
+    }
+  }, [])
 }

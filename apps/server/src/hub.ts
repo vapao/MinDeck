@@ -8,6 +8,8 @@ import type { AttachmentStore } from './store/attachments';
 import type { AgentdeckMcp, ProviderSession, StartOptions } from './providers/types';
 import { forkClaudeSession, startClaudeSession } from './providers/claude';
 import { forkCodexThread, shutdownCodex, startCodexSession } from './providers/codex';
+import { summarizeToolInput } from './providers/summary';
+import type { Push } from './push';
 
 const providers: Record<Session['provider'], (o: StartOptions) => ProviderSession> = { claude: startClaudeSession, codex: startCodexSession, deepseek: startClaudeSession };
 /** 从 anchor 分叉出新的 Provider 会话，返回其 id；原会话记录不动 */
@@ -34,7 +36,7 @@ const draftInstructions = `From the tail of a conversation between a developer a
 const overlaps = (a: string, b: string) => a === b || a.startsWith(b + sep) || b.startsWith(a + sep);
 
 // Hub：Session 元数据 + append-only 事件流 + 多端 fan-out。Provider 会话在首条消息时才拉起。
-export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (sessionId: string) => AgentdeckMcp) {
+export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (sessionId: string) => AgentdeckMcp, push: Push) {
   const live = new Map<string, ProviderSession>();
   /** 订阅者收到的是落库后的事件（带 seq）或不落库的流式片段 */
   type LiveMessage = { type: 'event'; event: AgentEvent } | MessageDelta;
@@ -97,10 +99,44 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
   }
 
   function setStatus(sessionId: string, status: SessionStatus) {
+    const was = store.getSession(sessionId)?.status;
     store.setSessionStatus(sessionId, status);
     emit(sessionId, { type: 'session.status', payload: { status } });
+    // 只推一轮"在跑"之后的落点。父会话等着结果的子会话结束时不推（父会话收尾时才推），但等审批要推：父会话代批不了；管家的结果在管家页看
+    if ((was === 'running' || was === 'waiting_user') && status !== 'running' && status !== was && !(status !== 'waiting_user' && watchers.has(sessionId)) && !getSession(sessionId).steward) {
+      // 同步处理完再看：一轮结束时可能紧接着发出压缩，那就等压缩完的落点再推
+      setImmediate(() => pushStatus(sessionId, status));
+    }
     // 插入的追加指令处理完才算结束（Provider 只在那时报 turn 结束）；waiting_user 不回调：父会话代批不了，靠用户自己处理
     if (status === 'idle' || status === 'error') notifyWatchers(sessionId, status);
+  }
+
+  function pushStatus(sessionId: string, status: SessionStatus) {
+    const session = store.getSession(sessionId);
+    if (!session || session.status !== status) return;
+    const name = `${session.title ?? 'New session'} · ${session.cwd.split('/').pop()}`;
+    const events = store.eventsAfter(sessionId, Math.max(0, store.lastSeq(sessionId) - 300));
+    const turn = events.slice(events.findLastIndex((e) => e.type === 'turn.started') + 1);
+    if (status === 'waiting_user') {
+      const pending = store.pendingBySession(sessionId).filter((p) => p.kind !== 'question' || p.delivery !== 'async');
+      push.send(`⏳ ${name}`, pending.map(pendingText).join('\n\n---\n\n') + push.sessionLink(sessionId));
+    } else if (status === 'error') {
+      const failure = turn.findLast((e) => e.type === 'turn.failed' || e.type === 'error');
+      push.send(`❌ ${name}`, ((failure?.payload as { message?: string } | undefined)?.message ?? 'Failed') + push.sessionLink(sessionId));
+    } else if (!turn.some((e) => e.type === 'turn.completed' && e.payload.reason === 'interrupted')) {
+      const reply = turn.findLast((e) => e.type === 'message.completed')?.payload.text;
+      push.send(`✅ ${name}`, (reply ?? 'Finished') + push.sessionLink(sessionId));
+    }
+  }
+
+  function pendingText(p: PendingRequest): string {
+    if (p.kind === 'approval') return [p.title ?? `**${p.toolName}**`, p.description, '`' + summarizeToolInput(p.input) + '`'].filter(Boolean).join('\n\n');
+    return [p.details, ...p.questions.map((q) => [`**${q.question}**`, ...q.options.map((o) => `- ${o.label}${o.description ? `：${o.description}` : ''}`)].join('\n'))].filter(Boolean).join('\n\n');
+  }
+
+  function pushQuestion(request: PendingRequest) {
+    const session = getSession(request.sessionId);
+    push.send(`❓ ${session.title ?? 'New session'} · ${session.cwd.split('/').pop()}`, pendingText(request) + push.sessionLink(session.id));
   }
 
   function notifyWatchers(childId: string, status: 'idle' | 'error') {
@@ -191,6 +227,7 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
     store.createPending(request);
     emit(sessionId, requestedEvent(request));
     if (body.kind !== 'question' || body.delivery !== 'async') setStatus(sessionId, 'waiting_user');
+    else pushQuestion(request);
     return new Promise((resolve) => {
       const expire = () => settle(request.id, null);
       waiting.set(request.id, (resolution) => {
@@ -672,6 +709,7 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
       };
       store.createPending(request);
       emit(sessionId, requestedEvent(request));
+      pushQuestion(request);
       return request;
     },
 
@@ -686,13 +724,15 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
       };
       store.createPending(request);
       emit(sessionId, requestedEvent(request));
+      pushQuestion(request);
       return request;
     },
 
     fileReport(sessionId: string, report: { title: string; summary: string; body: string }): Report {
-      getSession(sessionId);
+      const session = getSession(sessionId);
       const row: Report = { ...report, id: randomUUID(), sessionId, createdAt: new Date().toISOString(), readAt: null };
       store.createReport(row);
+      push.send(`📋 ${report.title}`, `**${report.summary}**\n\n${report.body}\n\n_${session.title ?? 'New session'} · ${session.cwd.split('/').pop()}_${push.sessionLink(sessionId)}`);
       return row;
     },
 
