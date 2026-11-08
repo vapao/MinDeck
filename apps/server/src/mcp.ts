@@ -10,6 +10,7 @@ import type { Store } from './store/db';
 import type { Services } from './services';
 import type { createScheduler } from './schedules';
 import type { AgentdeckMcp } from './providers/types';
+import type { Steward } from './steward';
 
 // 会话编排 MCP：只给 Hub 自己拉起的 Provider 会话用，调用方靠按会话注入的请求头识别（外部客户端不支持，没有会话可挂派生审批卡）。
 // 请求头不是安全边界：REST 本身无鉴权，bypass 会话照样能 curl。派生审批拦的是 Agent 经由这个工具自主派生。
@@ -26,21 +27,24 @@ const defaultLogLines = 100;
 const maxLogLines = 1000;
 const secretCommand = `node ${resolve(import.meta.dirname, '../../../scripts/secret.mjs')} get`;
 
+// 管家 v1 只看和说：除了自己的四个工具，只给只读工具和 add_todo
+const stewardTools = new Set(['work_snapshot', 'publish_brief', 'remember', 'forget', 'list_workspaces', 'list_sessions', 'get_session', 'list_services', 'get_service_log', 'list_schedules', 'add_todo']);
+
 /** Provider 侧免审批的工具：只读的，create_session 与定时任务写操作（它们由 Hub 自己弹审批卡，不再让 Provider 先审一次），以及只影响自己会话或只是交给用户看的 compact_after_turn / ask_user / report_to_user / wake_later / add_todo / request_secret / list_secrets（不返回值） */
-const autoApprove = ['list_workspaces', 'list_sessions', 'get_session', 'create_session', 'list_services', 'get_service_log', 'compact_after_turn', 'ask_user', 'report_to_user', 'wake_later', 'add_todo', 'request_secret', 'list_secrets', 'list_schedules', 'create_schedule', 'update_schedule', 'delete_schedule'];
+const autoApprove = ['work_snapshot', 'publish_brief', 'remember', 'forget', 'list_workspaces', 'list_sessions', 'get_session', 'create_session', 'list_services', 'get_service_log', 'compact_after_turn', 'ask_user', 'report_to_user', 'wake_later', 'add_todo', 'request_secret', 'list_secrets', 'list_schedules', 'create_schedule', 'update_schedule', 'delete_schedule'];
 
 export function agentdeckMcpFor(url: string, sessionId: string): AgentdeckMcp {
   return { url, headers: { [callerHeader]: sessionId }, timeoutSec: toolTimeoutSec, autoApprove };
 }
 
-export function registerMcpRoute(app: FastifyInstance, hub: Hub, store: Store, services: Services, scheduler: Scheduler) {
+export function registerMcpRoute(app: FastifyInstance, hub: Hub, store: Store, services: Services, scheduler: Scheduler, steward: Steward) {
   app.post('/mcp', async (req, reply) => {
     const callerId = req.headers[callerHeader];
     if (typeof callerId !== 'string' || !store.getSession(callerId)) return reply.code(403).send({ message: 'AgentDeck MCP is only available to AgentDeck sessions' });
     // 调用方断开（工具超时、轮被中断）时作废还在等的审批 / 等待
     const controller = new AbortController();
     reply.raw.on('close', () => controller.abort());
-    const server = createMcpServer(hub, store, services, scheduler, callerId, controller.signal);
+    const server = createMcpServer(hub, store, services, scheduler, callerId, controller.signal, steward);
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
     reply.raw.on('close', () => void server.close());
     reply.hijack();
@@ -54,8 +58,14 @@ export function registerMcpRoute(app: FastifyInstance, hub: Hub, store: Store, s
 
 const json = (value: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(value, null, 2) }] });
 
-export function createMcpServer(hub: Hub, store: Store, services: Services, scheduler: Scheduler, callerId: string, signal: AbortSignal): McpServer {
+export function createMcpServer(hub: Hub, store: Store, services: Services, scheduler: Scheduler, callerId: string, signal: AbortSignal, steward?: Steward): McpServer {
   const server = new McpServer({ name: 'agentdeck', version: '0.0.0' });
+  const isSteward = !!store.getSession(callerId)?.steward;
+  // 管家会话只注册 stewardTools 里的工具；转型保留 registerTool 按 inputSchema 推导回调参数
+  const tool = ((name: string, ...rest: unknown[]) => {
+    if (isSteward && !stewardTools.has(name)) return;
+    return (server.registerTool as (...args: unknown[]) => unknown).call(server, name, ...rest);
+  }) as typeof server.registerTool;
   const notSelf = (id: string) => {
     if (id === callerId) throw new HubError(400, 'This is your own session; target another session');
   };
@@ -73,12 +83,12 @@ export function createMcpServer(hub: Hub, store: Store, services: Services, sche
   };
   const scheduleView = ({ workspaceId, ...s }: ScheduleConfig & Record<string, unknown>) => ({ ...s, workspace: store.getWorkspace(workspaceId)?.path ?? null, model: s.model || 'Default', effort: s.effort || 'Default' });
 
-  server.registerTool('list_workspaces', {
+  tool('list_workspaces', {
     description: 'List AgentDeck projects. New sessions can only be created in one of these paths.',
     inputSchema: {},
   }, () => json(store.listWorkspaces().map((w) => ({ path: w.path, alias: w.alias }))));
 
-  server.registerTool('list_sessions', {
+  tool('list_sessions', {
     description: 'List AgentDeck sessions, most recently updated first (at most 50). Your own session is marked self: true.',
     inputSchema: {
       workspace: z.string().optional().describe('Only sessions in this project path'),
@@ -89,7 +99,7 @@ export function createMcpServer(hub: Hub, store: Store, services: Services, sche
     .slice(0, 50)
     .map((s) => ({ id: s.id, provider: s.provider, workspace: s.cwd, title: s.title, status: s.status, archived: !!s.archivedAt, updatedAt: s.updatedAt, ...(s.id === callerId ? { self: true } : {}) }))));
 
-  server.registerTool('create_session', {
+  tool('create_session', {
     description: 'Delegate a task to a new AgentDeck session. Write the prompt as a handoff brief built from this conversation: the goal, the plan and decisions already agreed, scope boundaries, and open questions. Do not investigate the repository to write the prompt; the new session explores on its own. Do not restate project rules from AGENTS.md / CLAUDE.md; the new session loads them. Do not add work the user did not ask for. The user must approve in AgentDeck (unless they already allowed it for this session); the call blocks until they do. Model and effort default to AgentDeck settings; permission mode always does. Returns the new session id.',
     inputSchema: {
       provider: z.enum(['claude', 'codex', 'deepseek']),
@@ -128,7 +138,7 @@ export function createMcpServer(hub: Hub, store: Store, services: Services, sche
     return json({ sessionId: session.id });
   });
 
-  server.registerTool('get_session', {
+  tool('get_session', {
     description: `Read a session: status, open approvals / questions, and conversation entries (user and assistant messages, errors, and interruptions; no tool calls) after afterSeq, at most ${maxEntries} latest. A reference like #[title](session:ID) identifies a session; use that ID directly without looking it up by title. Pass nextSeq from the previous call as afterSeq to read only new entries. With waitSec, first waits until the session stops running (idle, error, or waiting for the user) or the time runs out; prefer the notify option of create_session / send_message over waiting.`,
     inputSchema: {
       id: z.string(),
@@ -153,7 +163,7 @@ export function createMcpServer(hub: Hub, store: Store, services: Services, sche
     });
   });
 
-  server.registerTool('send_message', {
+  tool('send_message', {
     description: 'Send a message to another session. If it is running, the message is delivered into the current turn and takes effect at its next step.',
     inputSchema: {
       id: z.string(),
@@ -167,7 +177,7 @@ export function createMcpServer(hub: Hub, store: Store, services: Services, sche
     return json(result);
   });
 
-  server.registerTool('move_session', {
+  tool('move_session', {
     description: 'Move a session under another parent session, or to the top level when parent is omitted. To split off a separate line of work: create_session for it (its brief names the sessions it will take over and that their results will come to it), move it to the top level, then move those sessions under it. A result its old parent was waiting for (notify) goes to the new parent instead, or is dropped at the top level.',
     inputSchema: {
       id: z.string(),
@@ -178,7 +188,7 @@ export function createMcpServer(hub: Hub, store: Store, services: Services, sche
     return json({ id: session.id, parentId: session.parentId });
   });
 
-  server.registerTool('compact_after_turn', {
+  tool('compact_after_turn', {
     description: 'Compact your own conversation context once your current turn ends, to drop exploration that is no longer needed. End your turn right after calling this. Results of sessions you are notified about that arrive during compaction are delivered after it. Claude and DeepSeek sessions only.',
     inputSchema: {
       instructions: z.string().min(1).describe('What the summary must keep verbatim (e.g. session IDs you will message later, the original request, decisions, changed files, pending steps) and what it may drop'),
@@ -190,7 +200,7 @@ export function createMcpServer(hub: Hub, store: Store, services: Services, sche
   });
 
   // Inbox：Agent 自主运行时找用户的唯一出口。提交即返回，不等用户，一轮不为等人挂着
-  server.registerTool('ask_user', {
+  tool('ask_user', {
     description: 'File a decision or question for the user in the AgentDeck Inbox, without waiting for the answer. Use it when you need a decision or information only the user has, especially in unattended runs where nobody watches this conversation. Then carry on with work that does not depend on the answer, or end your turn; do not wait or poll. The answer arrives later as a new message in this session. One question per call; do not file a question that is already open.',
     inputSchema: {
       question: z.string().min(1).describe('One line the user can answer without opening this session'),
@@ -200,7 +210,7 @@ export function createMcpServer(hub: Hub, store: Store, services: Services, sche
     },
   }, ({ question, details, options = [], multiSelect = false }) => json({ id: hub.fileQuestion(callerId, { question, details, options, multiSelect }).id, filed: true }));
 
-  server.registerTool('report_to_user', {
+  tool('report_to_user', {
     description: 'File a report in the AgentDeck Inbox for the user to read later, e.g. the outcome of a scheduled or long-running task. The user reads it without opening this session, so make it self-contained and short. Not for questions: use ask_user for anything that needs an answer.',
     inputSchema: {
       title: z.string().min(1),
@@ -209,7 +219,7 @@ export function createMcpServer(hub: Hub, store: Store, services: Services, sche
     },
   }, ({ title, summary, body }) => json({ id: hub.fileReport(callerId, { title, summary, body }).id }));
 
-  server.registerTool('wake_later', {
+  tool('wake_later', {
     description: 'Schedule this session to be woken up later, then end your turn instead of waiting, sleeping or polling (e.g. to check CI, a deploy or a reply in 30 minutes). At that time the note arrives as a new message in this session, with this conversation intact. Give exactly one of inMinutes or at. The user can see and cancel pending wake-ups in AgentDeck.',
     inputSchema: {
       note: z.string().min(1).describe('What to check or do when woken up'),
@@ -223,19 +233,19 @@ export function createMcpServer(hub: Hub, store: Store, services: Services, sche
     return json({ id: wakeup.id, at: new Date(wakeup.at).toLocaleString('en-GB') });
   });
 
-  server.registerTool('add_todo', {
+  tool('add_todo', {
     description: "Add an item to the user's AgentDeck to-do list, for something the user should come back to later rather than decide now: e.g. the user asks you to note something down, or a follow-up that is not due yet. It is linked to this session and project. With remindOn it shows up in the user's Inbox from that date. For a decision needed now use ask_user; for something you will check yourself use wake_later.",
     inputSchema: {
       title: z.string().min(1).describe('The task, short enough for a list row'),
       note: z.string().optional().describe('Context needed to pick it up again'),
       remindOn: z.string().optional().describe('YYYY-MM-DD, local date of the AgentDeck host'),
     },
-  }, ({ title, note, remindOn }) => json({ id: hub.createTodo({ title, note, remindOn: remindOn ?? null, cwd: store.getSession(callerId)!.cwd, sessionId: callerId }).id }));
+  }, ({ title, note, remindOn }) => json({ id: hub.createTodo({ title, note, remindOn: remindOn ?? null, cwd: isSteward ? null : store.getSession(callerId)!.cwd, sessionId: callerId }).id }));
 
   // 密钥值不经过 MCP：Agent 只拿到名字，用的时候在 shell 里由 secret.mjs 现取，值不进上下文
   const secretUsage = `Use a secret only by substituting it inside a shell command, e.g. curl -H "Authorization: Bearer $(${secretCommand} NAME)" ...; run it from inside this project so private secrets resolve. Never print, echo, log, or write the value to a file, and use a secret only for what its description says.`;
 
-  server.registerTool('request_secret', {
+  tool('request_secret', {
     description: `Ask the user to enter a secret (API key, token, password) in AgentDeck instead of pasting it into the chat. First call list_secrets and reuse a matching one. Returns immediately; when the user saves it, a message arrives in this session, then use it as described in list_secrets. Never ask the user to paste a secret into the conversation.`,
     inputSchema: {
       name: z.string().regex(new RegExp(secretNamePattern)).describe('Environment-variable style, naming the service and, for private secrets, the project, e.g. GITHUB_TOKEN_AGENTDECK'),
@@ -247,7 +257,7 @@ export function createMcpServer(hub: Hub, store: Store, services: Services, sche
     return json({ id: hub.fileSecretRequest(callerId, { name, description, shared }).id, filed: true });
   });
 
-  server.registerTool('list_secrets', {
+  tool('list_secrets', {
     description: 'List secrets this project can use (its private ones and shared ones), with what each is for. Values are never returned here.',
     inputSchema: {},
   }, () => {
@@ -258,7 +268,7 @@ export function createMcpServer(hub: Hub, store: Store, services: Services, sche
     return json({ secrets: secrets.map((s) => ({ name: s.name, description: s.description, scope: s.workspaceId ? 'private' : 'shared' })), usage: secretUsage });
   });
 
-  server.registerTool('interrupt', {
+  tool('interrupt', {
     description: 'Stop the running turn of another session; messages it has not picked up yet are dropped.',
     inputSchema: { id: z.string() },
   }, async ({ id }) => {
@@ -267,7 +277,7 @@ export function createMcpServer(hub: Hub, store: Store, services: Services, sche
     return json({ ok: true });
   });
 
-  server.registerTool('list_services', {
+  tool('list_services', {
     description: 'List development services in an AgentDeck project, including their ids, commands, working subdirectories, links, and running state.',
     inputSchema: { workspace: z.string().optional().describe('Project path from list_workspaces; defaults to your own project') },
   }, ({ workspace }) => {
@@ -276,7 +286,7 @@ export function createMcpServer(hub: Hub, store: Store, services: Services, sche
       .map(({ id, name, command, subdir, url, running }) => ({ id, name, command, subdir, url, running })));
   });
 
-  server.registerTool('create_service', {
+  tool('create_service', {
     description: 'Create a development service configuration without starting it. First call list_services; if a similar service exists, update it instead of creating a duplicate.',
     inputSchema: {
       name: z.string().min(1),
@@ -287,7 +297,7 @@ export function createMcpServer(hub: Hub, store: Store, services: Services, sche
     },
   }, ({ name, command, subdir = '', url = '', workspace }) => json(services.create({ workspaceId: project(workspace).id, name, command, subdir, url })));
 
-  server.registerTool('update_service', {
+  tool('update_service', {
     description: 'Update only the supplied fields of a service configuration. Changes to a running service take effect after restart_service.',
     inputSchema: {
       id: z.string(),
@@ -308,7 +318,7 @@ export function createMcpServer(hub: Hub, store: Store, services: Services, sche
   });
 
   for (const action of ['start', 'stop', 'restart'] as const) {
-    server.registerTool(`${action}_service`, {
+    tool(`${action}_service`, {
       description: action === 'start'
         ? 'Start a service and return immediately, without waiting for readiness. Use get_service_log to inspect its output.'
         : `${action === 'stop' ? 'Stop' : 'Restart'} a service.`,
@@ -319,7 +329,7 @@ export function createMcpServer(hub: Hub, store: Store, services: Services, sche
     });
   }
 
-  server.registerTool('get_service_log', {
+  tool('get_service_log', {
     description: `Read a service log. Without cursor, return the last N lines (default ${defaultLogLines}, max ${maxLogLines}) and mark truncated when earlier output was omitted. Pass the returned cursor to read only new output; a restarted service resets the cursor and returns its latest lines.`,
     inputSchema: {
       id: z.string(),
@@ -340,12 +350,12 @@ export function createMcpServer(hub: Hub, store: Store, services: Services, sche
 
   const timeDesc = "once: YYYY-MM-DDTHH:mm; daily / weekdays (Mon–Fri, public holidays not skipped): HH:mm. Local time of the AgentDeck host";
 
-  server.registerTool('list_schedules', {
+  tool('list_schedules', {
     description: 'List scheduled tasks. Each run starts a new session in the project and sends the prompt.',
     inputSchema: {},
   }, () => json(scheduler.list().map(scheduleView)));
 
-  server.registerTool('create_schedule', {
+  tool('create_schedule', {
     description: 'Create a scheduled task that, at each run, starts a new session in a project and sends the prompt. Only when the user asked for it. Write the prompt as a self-contained brief: the run has no access to this conversation. The user must approve in AgentDeck. Model and effort default to AgentDeck settings; permission mode always does.',
     inputSchema: {
       name: z.string().min(1),
@@ -365,7 +375,7 @@ export function createMcpServer(hub: Hub, store: Store, services: Services, sche
     return json(scheduleView(scheduler.create(config)));
   });
 
-  server.registerTool('update_schedule', {
+  tool('update_schedule', {
     description: 'Update only the supplied fields of a scheduled task. The user must approve in AgentDeck. Changing provider resets model and effort to that provider\'s AgentDeck settings unless supplied. Permission mode cannot be changed here.',
     inputSchema: {
       id: z.string(),
@@ -394,7 +404,7 @@ export function createMcpServer(hub: Hub, store: Store, services: Services, sche
     return json(scheduleView(scheduler.update(id, config)));
   });
 
-  server.registerTool('delete_schedule', {
+  tool('delete_schedule', {
     description: 'Delete a scheduled task. The user must approve in AgentDeck.',
     inputSchema: { id: z.string() },
   }, async ({ id }) => {
@@ -404,6 +414,31 @@ export function createMcpServer(hub: Hub, store: Store, services: Services, sche
     scheduler.remove(id);
     return json({ ok: true });
   });
+
+  if (isSteward && steward) {
+    tool('work_snapshot', {
+      description: 'Current state of the user\'s work in AgentDeck: recent sessions (status, project, unfinished-work summary), approvals and questions waiting for the user, unread reports, open todos, scheduled tasks, services, and uncommitted files per project. Times are local to the AgentDeck host.',
+      inputSchema: {},
+    }, async () => json(await steward.snapshot()));
+
+    tool('publish_brief', {
+      description: 'Publish the brief to the top of the user\'s Steward page. Call once per brief request.',
+      inputSchema: { body: z.string().min(1).describe('Markdown') },
+    }, ({ body }) => json({ id: steward.publishBrief(callerId, body).id }));
+
+    tool('remember', {
+      description: 'Save one lasting fact about the user to your long-term memory: a preference, rule, goal or standing request. One self-contained sentence. Not for the state of work.',
+      inputSchema: { text: z.string().min(1) },
+    }, ({ text }) => json({ id: steward.remember(text, false).id }));
+
+    tool('forget', {
+      description: 'Remove an item from your long-term memory that is wrong or outdated.',
+      inputSchema: { id: z.string().describe('The id shown in brackets in your memory list') },
+    }, ({ id }) => {
+      steward.forget(id, false);
+      return json({ ok: true });
+    });
+  }
 
   return server;
 }

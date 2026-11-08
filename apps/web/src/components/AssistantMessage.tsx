@@ -2,6 +2,7 @@ import { useRef, useState, type ComponentProps } from 'react'
 import { ArrowRight, Check, Copy } from 'lucide-react'
 import Markdown, { defaultUrlTransform } from 'react-markdown'
 import { api } from '../api'
+import { navigate } from '../router'
 import { fileReference, showFile } from './FilePreview'
 import remarkDirective from 'remark-directive'
 import remarkGfm from 'remark-gfm'
@@ -99,7 +100,7 @@ export function AssistantMessage({ text, streaming, sessionId }: Props) {
   return (
     <div className={styles.row}>
       <div className={styles.body} data-streaming={streaming || undefined}>
-        <Markdown remarkPlugins={plugins} urlTransform={(url) => fileReference(url) ? url : defaultUrlTransform(url)} components={{ ...components,
+        <Markdown remarkPlugins={plugins} urlTransform={(url) => fileReference(url) || url.startsWith('session:') ? url : defaultUrlTransform(url)} components={{ ...components,
           button: ({ node, children, ...props }: ComponentProps<'button'> & { node?: unknown; 'data-followup'?: string }) => {
             void node
             const prompt = props['data-followup']
@@ -107,6 +108,9 @@ export function AssistantMessage({ text, streaming, sessionId }: Props) {
             return <button type="button" className={styles.followup} title={prompt} onClick={() => fillComposer(sessionId, prompt)}>{children}<ArrowRight size={13} /></button>
           },
           a: ({ href, children }) => {
+            // [标题](session:ID)：管家和编排会话引用别的会话，点了进会话页
+            const session = href?.match(/^session:([\w-]+)$/)?.[1]
+            if (session) return <a href={`/s/${session}`} onClick={(e) => { e.preventDefault(); navigate(`/s/${session}`) }}>{children}</a>
             const file = fileReference(href ?? '')
             if (!file) return <a href={href} target="_blank" rel="noreferrer">{children}</a>
             return <a href={api.outputUrl(sessionId, file.path)} onClick={(e) => { e.preventDefault(); showFile(sessionId, file.path, file.line) }}>{children}{/\.(png|jpe?g|gif|webp|avif|svg)$/i.test(file.path) && <img src={api.outputUrl(sessionId, file.path)} alt="" loading="lazy" style={{ display: 'block', maxHeight: 240 }} />}</a>

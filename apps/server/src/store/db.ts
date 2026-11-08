@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
-import type { AgentEvent, Attachment, EventType, PendingRequest, PendingRequestBody, PermissionMode, ProviderEvent, Report, Resolution, Schedule, ScheduleConfig, Secret, ServiceConfig, Session, SessionStatus, Settings, Todo, UnfinishedSession, Wakeup, Workspace } from '@agentdeck/shared';
+import type { AgentEvent, Attachment, EventType, PendingRequest, PendingRequestBody, PermissionMode, ProviderEvent, Report, Resolution, Schedule, ScheduleConfig, Secret, ServiceConfig, Session, SessionStatus, Settings, StewardBrief, StewardMemory, Todo, UnfinishedSession, Wakeup, Workspace } from '@agentdeck/shared';
 
 export type Store = ReturnType<typeof openStore>;
 /** pid 是服务进程组的组长；startedAt 是它在 ps 里的启动时间，用来识别 pid 是否已被别的进程复用 */
@@ -110,11 +110,25 @@ export function openStore(path: string) {
       updated_at   TEXT NOT NULL,
       UNIQUE (workspace_id, name)
     );
+    CREATE TABLE IF NOT EXISTS steward_memories (
+      id         TEXT PRIMARY KEY,
+      text       TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    -- 不跟会话一起删：简报是给用户看的记录，删掉某段管家对话不该连带丢掉
+    CREATE TABLE IF NOT EXISTS steward_briefs (
+      id         TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      body       TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
   `);
-  // 旧库没有就补上（SQLite 没有 ADD COLUMN IF NOT EXISTS）：model / effort 是切片 8 加的，permission_mode 是权限模式那次加的，archived_at 是切片 12 加的，parent_id 是派生会话隶属关系那次加的，spawn_granted_at 是派生授权持久化那次加的，schedule_id 是 Automations 运行记录那次加的，review_* 是没收尾判断那次加的（review_summary 是补会话概况那次），forked_* 是分叉来源那次加的
+  // 旧库没有就补上（SQLite 没有 ADD COLUMN IF NOT EXISTS）：model / effort 是切片 8 加的，permission_mode 是权限模式那次加的，archived_at 是切片 12 加的，parent_id 是派生会话隶属关系那次加的，spawn_granted_at 是派生授权持久化那次加的，schedule_id 是 Automations 运行记录那次加的，review_* 是没收尾判断那次加的（review_summary 是补会话概况那次），forked_* 是分叉来源那次加的，steward 是管家那次加的
   const sessionCols = new Set((db.prepare(`PRAGMA table_info(sessions)`).all() as { name: string }[]).map((c) => c.name));
   for (const col of ['model', 'effort', 'permission_mode', 'archived_at', 'title', 'parent_id', 'spawn_granted_at', 'schedule_id', 'review_for', 'review_state', 'review_next', 'review_summary', 'forked_from_id']) if (!sessionCols.has(col)) db.exec(`ALTER TABLE sessions ADD COLUMN ${col} TEXT`);
   if (!sessionCols.has('forked_at_seq')) db.exec('ALTER TABLE sessions ADD COLUMN forked_at_seq INTEGER');
+  if (!sessionCols.has('steward')) db.exec('ALTER TABLE sessions ADD COLUMN steward INTEGER');
 
   // 修正旧版下拉框保存的 Codex effort 拼写，不改变模型、会话排序或其他 Provider。
   for (const [oldEffort, effort] of [['light', 'low'], ['extra-high', 'xhigh']]) {
@@ -133,8 +147,8 @@ export function openStore(path: string) {
   }
 
   const insertSession = db.prepare(
-    `INSERT INTO sessions (id, provider, cwd, provider_session_id, status, model, effort, permission_mode, parent_id, schedule_id, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO sessions (id, provider, cwd, provider_session_id, status, model, effort, permission_mode, parent_id, schedule_id, steward, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
   // AI 标题独立保存；旧会话和生成失败时仍展示原来的首条消息。
   const sessionColumns = `sessions.*, (
@@ -219,6 +233,7 @@ export function openStore(path: string) {
     archivedAt: (r.archived_at as string | null) ?? null,
     parentId: (r.parent_id as string | null) ?? null,
     scheduleId: (r.schedule_id as string | null) ?? null,
+    steward: r.steward === 1,
     forkedFrom: r.forked_from_id ? { id: r.forked_from_id as string, seq: Number(r.forked_at_seq) } : null,
     spawnGranted: r.spawn_granted_at != null,
     createdAt: r.created_at as string,
@@ -297,7 +312,7 @@ export function openStore(path: string) {
     createSession(session: Session) {
       insertSession.run(
         session.id, session.provider, session.cwd, session.providerSessionId,
-        session.status, session.model, session.effort, session.permissionMode, session.parentId, session.scheduleId ?? null, session.createdAt, session.updatedAt,
+        session.status, session.model, session.effort, session.permissionMode, session.parentId, session.scheduleId ?? null, session.steward ? 1 : null, session.createdAt, session.updatedAt,
       );
     },
     getSession(id: string): Session | undefined {
@@ -323,7 +338,7 @@ export function openStore(path: string) {
       try {
         insertSession.run(
           session.id, session.provider, session.cwd, session.providerSessionId,
-          session.status, session.model, session.effort, session.permissionMode, session.parentId, session.scheduleId ?? null, session.createdAt, session.updatedAt,
+          session.status, session.model, session.effort, session.permissionMode, session.parentId, session.scheduleId ?? null, session.steward ? 1 : null, session.createdAt, session.updatedAt,
         );
         if (session.title) db.prepare('UPDATE sessions SET title = ? WHERE id = ?').run(session.title, session.id);
         if (session.forkedFrom) db.prepare('UPDATE sessions SET forked_from_id = ?, forked_at_seq = ? WHERE id = ?').run(session.forkedFrom.id, session.forkedFrom.seq, session.id);
@@ -427,7 +442,7 @@ export function openStore(path: string) {
      * 有过 Agent 回复、当前这次活动还没判断过（或判为没收尾但还没有会话概况，即概况上线前判断的）。新近空闲的优先
      */
     nextSessionToReview(cutoff: string): { id: string; updatedAt: string } | undefined {
-      const row = db.prepare(`SELECT id, updated_at FROM sessions s WHERE status IN ('idle', 'error') AND archived_at IS NULL AND schedule_id IS NULL
+      const row = db.prepare(`SELECT id, updated_at FROM sessions s WHERE status IN ('idle', 'error') AND archived_at IS NULL AND schedule_id IS NULL AND steward IS NULL
         AND (parent_id IS NULL OR NOT EXISTS (SELECT 1 FROM sessions p WHERE p.id = s.parent_id))
         AND updated_at <= ? AND (review_for IS NULL OR NOT ${currentReview} OR (review_state = 'open' AND review_summary IS NULL))
         AND EXISTS (SELECT 1 FROM events WHERE session_id = s.id AND type = 'message.completed')
@@ -554,6 +569,32 @@ export function openStore(path: string) {
     },
     deleteSchedule(id: string): boolean {
       return db.prepare(`DELETE FROM schedules WHERE id = ?`).run(id).changes === 1;
+    },
+    listStewardMemories(): StewardMemory[] {
+      return db.prepare(`SELECT * FROM steward_memories ORDER BY created_at`).all().map((r) => ({ id: r.id as string, text: r.text as string, createdAt: r.created_at as string, updatedAt: r.updated_at as string }));
+    },
+    createStewardMemory(m: StewardMemory) {
+      db.prepare(`INSERT INTO steward_memories (id, text, created_at, updated_at) VALUES (?, ?, ?, ?)`).run(m.id, m.text, m.createdAt, m.updatedAt);
+    },
+    updateStewardMemory(id: string, text: string): boolean {
+      return db.prepare(`UPDATE steward_memories SET text = ?, updated_at = ? WHERE id = ?`).run(text, new Date().toISOString(), id).changes === 1;
+    },
+    deleteStewardMemory(id: string): boolean {
+      return db.prepare(`DELETE FROM steward_memories WHERE id = ?`).run(id).changes === 1;
+    },
+    createStewardBrief(b: StewardBrief) {
+      db.prepare(`INSERT INTO steward_briefs (id, session_id, body, created_at) VALUES (?, ?, ?, ?)`).run(b.id, b.sessionId, b.body, b.createdAt);
+    },
+    listStewardBriefs(limit: number): StewardBrief[] {
+      return db.prepare(`SELECT * FROM steward_briefs ORDER BY created_at DESC LIMIT ?`).all(limit).map((r) => ({ id: r.id as string, sessionId: r.session_id as string, body: r.body as string, createdAt: r.created_at as string }));
+    },
+    /** 零散的小状态（如最近一次自动简报），一个 key 一行 JSON */
+    getState<T>(key: string): T | null {
+      const row = selectSetting.get(key);
+      return row ? (JSON.parse(row.value as string) as T) : null;
+    },
+    setState(key: string, value: unknown) {
+      upsertSetting.run(key, JSON.stringify(value));
     },
     /** 应用级默认值整份存一行 JSON；没存过时返回 null */
     getSettings(): Settings | null {

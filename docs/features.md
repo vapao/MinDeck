@@ -221,3 +221,17 @@ Files 支持在项目根目录或指定子目录新建空文件 / 文件夹，�
 - **管理**：Settings 页最下方 Secrets 分组，即时生效、不归 Save changes 管：列表（名字、作用域、说明）、点眼睛单独取值显示（`GET /api/secrets/:id/value`）、新增 / 覆盖、编辑说明与作用域（目标作用域已有同名时 409）、删除。REST：`GET/POST /api/secrets`、`PATCH/DELETE /api/secrets/:id`。
 - 边界：Agent 有 shell，直接读库能拿到所有项目的密钥；命令输出若回显了值（如报错打印请求头）仍会进上下文；Agent 被注入的指令诱导外发也拦不住，token 尽量给最小权限。
 - 未做：Keychain、加密、过期、按会话注入环境变量、命令占位符替换。
+
+## 管家 Steward（2026-11-08）
+
+解决"要一个个点开会话、Inbox 才知道现在什么情况"。管家汇总现状、判断哪些要用户处理，对话长期连续、记得用户偏好，用户不需要关心上下文用量。v1 只看和说，不替用户操作会话。
+
+- **入口**：侧栏 Inbox 上方的 Steward（`/steward`），有没看过的新简报时显示圆点；手机端是底部第一个 tab（Brief / Memory / Chat 三个子 tab）。
+- **简报**：工作日按 Settings → Steward 的时间（默认 08:00，主机本地时间）由调度器自动跑一次（Hub 停机错过的，1 小时内启动后补跑，更晚不跑；当天跑过就不再跑），页面上 Run brief 随时跑。Hub 把现状快照连同要求发给管家，管家调 MCP `publish_brief(body)` 发布 Markdown 简报（Needs you / Watch / Can clean up，会话写成 `[标题](session:ID)`，点了进会话页），存 `steward_briefs` 表。页面顶部显示最新一份，可翻看历史。自动跑失败记在页面上，不重试。
+- **现状快照**由 Hub 组装，不让管家自己查：近 14 天未归档会话（状态、项目、没收尾判断的概况与下一步）、待处理的审批与提问、未读汇报、未完成待办、定时任务（下次执行、最近错误）、项目服务运行状态、各项目未提交文件数。聊天中管家可随时调 `work_snapshot` 取最新一份，用 `get_session` 看某个会话的细节。
+- **长期记忆**：`steward_memories` 表，一条一句。管家在用户说出长期偏好、规则、目标或要求记住时调 `remember(text)`，过时了调 `forget(id)`；易变的状态不进记忆。页面右栏列出全部记忆，用户可增、改、删；用户改过后，管家下一条消息开头会收到最新记忆。
+- **连续对话 = 底层轮换会话**：管家的每段对话是一个带 `steward` 标记的普通会话，cwd 固定为 `data/steward/`（服务端生成，不在项目列表里），权限模式固定 approval，标题 `Steward · 日期`。不进侧栏、会话列表、MCP `list_sessions`，也不做没收尾判断和压缩提示。用户发消息或跑简报时，沿用最近一个管家会话，除非它不是今天建的、上下文已到 150K、或者 Provider / 模型 / 思考等级和设置不一致——此时新建一个（运行中的不换）。新会话的第一条消息前，Hub 只对 Provider 附上管家说明、全部记忆、最新简报和上一个会话的最后 12 条消息（界面上仍只显示用户原文）。页面只显示最近一个会话的对话流，之前的按日期列在下方，点开进普通会话页。
+- **模型**：Settings 页 Steward 分组选 Provider / 模型 / 思考等级，默认 Codex + Provider 默认模型。改了之后下一条消息起换到新会话。
+- **v1 只读**：管家的 MCP 只有只读工具（`list_workspaces` / `list_sessions` / `get_session` / `list_services` / `get_service_log` / `list_schedules`）、`add_todo`（不关联项目）和上面四个管家工具；不能派生、发消息、中断、改服务和定时任务。
+- REST：`GET /api/steward`（当前会话、历史会话、简报、记忆、下次与最近一次自动简报）、`POST /api/steward/messages`（`{ text }`，不支持图片）、`POST /api/steward/brief`、`POST /api/steward/memories`、`PATCH / DELETE /api/steward/memories/:id`。
+- 未做：替用户操作会话、旧对话检索、推送、简报卡片上的快捷操作、自定义星期（目前只有工作日）。

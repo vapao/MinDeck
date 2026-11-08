@@ -24,6 +24,8 @@ export type Session = {
   parentId: string | null;
   /** 由哪个定时任务执行时创建；它不进 Active 侧栏，只在 Automations 的运行记录里，需要用户处理或在跑时才出现。分叉出来的会话不带 */
   scheduleId?: string | null;
+  /** 管家（Steward）的一段对话：不进侧栏和会话列表，只在 Steward 页 */
+  steward?: boolean;
   /** 从哪个会话分叉出来：seq 是分叉点（保留到源会话的这一条为止，新会话里同号）。原地回退、第一轮前分叉不记；源会话删掉后可能指向不存在的会话 */
   forkedFrom?: { id: string; seq: number } | null;
   /** 该会话调 create_session 免审批：可在顶栏事先打开，也可在派生审批卡上选"本会话允许"。只有 Hub 返回的会话带 */
@@ -56,8 +58,12 @@ export const permissionModeOptions: readonly SelectOption[] = [
 /** 应用级默认值：新建会话时未覆盖就用它；model / effort 空字符串 = 交给 Provider 默认 */
 export type ProviderDefaults = { model: string; effort: string; permissionMode: PermissionMode };
 export type TitleSettings = { enabled: boolean; provider: ProviderId; model: string };
+/** 管家用的 Provider / 模型 / 思考等级；model / effort 空字符串 = Provider 默认。改了之后下一条消息起换新会话 */
+/** briefTime：工作日自动简报的时间，HH:mm，主机本地时间 */
+export type StewardSettings = { provider: ProviderId; model: string; effort: string; briefTime: string };
 export type Settings = Record<'claude' | 'codex', ProviderDefaults> & {
   titles: TitleSettings;
+  steward: StewardSettings;
   deepseek: ProviderDefaults & { baseUrl: string; apiKeyConfigured: boolean };
 };
 
@@ -421,9 +427,32 @@ export type SaveSecretBody = { workspaceId: string | null; name: string; descrip
 export type UpdateSecretBody = { workspaceId: string | null; description: string; value?: string };
 export type SecretValueResponse = { value: string };
 
+// ---- 管家 Steward ----
+
+/** 管家经 MCP publish_brief 发布的简报，Markdown */
+export type StewardBrief = { id: string; sessionId: string; body: string; createdAt: string };
+/** 长期记忆，一条一句；管家经 remember / forget 维护，用户在页面上也能改 */
+export type StewardMemory = { id: string; text: string; createdAt: string; updatedAt: string };
+/**
+ * GET /api/steward：sessionId 是最近一个管家会话（还没有为 null），sessions 是全部管家会话（新的在前）。
+ * briefs 新的在前，最近 30 份。lastAutoBrief 是最近一次自动简报的日期和失败原因
+ */
+export type StewardResponse = {
+  sessionId: string | null;
+  sessions: { id: string; title: string | null; status: SessionStatus; createdAt: string }[];
+  briefs: StewardBrief[];
+  memories: StewardMemory[];
+  nextAutoBriefAt: string;
+  lastAutoBrief: { date: string; error: string | null } | null;
+};
+/** POST /api/steward/messages：可能换到新会话，返回实际发往的会话 */
+export type StewardMessageBody = { text: string };
+export type StewardMessageResponse = SendMessageResponse & { sessionId: string };
+
 /** GET / PUT /api/settings */
 export type SettingsResponse = Settings;
-export type UpdateSettingsBody = Omit<Settings, 'deepseek'> & {
+export type UpdateSettingsBody = Omit<Settings, 'deepseek' | 'steward'> & {
+  steward?: StewardSettings;
   /** apiKey 省略保留原值；空字符串清除。普通设置响应不含密钥。 */
   deepseek: Omit<Settings['deepseek'], 'apiKeyConfigured'> & { apiKey?: string };
 };

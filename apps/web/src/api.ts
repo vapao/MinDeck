@@ -1,5 +1,6 @@
 import type { ProjectFilesResponse, CreateServiceBody, ListServicesResponse, Service, ServiceLogResponse, UpdateServiceBody, CreateSessionBody, CreateSessionResponse, CreateWorkspaceBody, DeleteSessionResponse, DiffResponse, EntriesResponse, ForkSessionBody, ForkSessionResponse, FileResponse, InterruptResponse, ListChangesResponse, ListDirsResponse, ListSessionsResponse, ListWorkspacesResponse, ResolvePendingBody, ResolvePendingResponse, SendMessageBody, SendMessageResponse, SettingsResponse, SkillsResponse, UpdateSessionBody, UpdateSessionResponse, UpdateSettingsBody, UpdateWorkspaceBody, UploadAttachmentResponse, UsageResponse, Workspace } from '@agentdeck/shared'
 import type { CreateTodoBody, InboxResponse, ListTodosResponse, Todo, TodoDraftResponse, UpdateTodoBody, ListSchedulesResponse, ListWakeupsResponse, RunScheduleResponse, Schedule, ScheduleConfig, UpdateStatusResponse } from '@agentdeck/shared'
+import type { StewardMessageBody, StewardMessageResponse, StewardMemory, StewardResponse } from '@agentdeck/shared'
 import type { SaveSecretBody, Secret, SecretValueResponse, UpdateSecretBody } from '@agentdeck/shared'
 import type { CreateProjectEntryBody, DeleteProjectEntryBody, DiscardChangeBody, SaveProjectFileBody } from '@agentdeck/shared'
 
@@ -84,4 +85,10 @@ export const api = {
     return request<UploadAttachmentResponse>(`/api/sessions/${sessionId}/attachments`, { method: 'POST', body: form })
   },
   attachmentUrl: (id: string) => `/api/attachments/${id}`,
+  steward: () => request<StewardResponse>('/api/steward'),
+  stewardMessage: (body: StewardMessageBody) => request<StewardMessageResponse>('/api/steward/messages', { method: 'POST', body: JSON.stringify(body) }),
+  stewardBrief: () => request<StewardMessageResponse>('/api/steward/brief', { method: 'POST' }),
+  createMemory: (text: string) => request<StewardMemory>('/api/steward/memories', { method: 'POST', body: JSON.stringify({ text }) }),
+  updateMemory: (id: string, text: string) => request<{ ok: true }>(`/api/steward/memories/${id}`, { method: 'PATCH', body: JSON.stringify({ text }) }),
+  deleteMemory: (id: string) => request<{ ok: true }>(`/api/steward/memories/${id}`, { method: 'DELETE' }),
 }

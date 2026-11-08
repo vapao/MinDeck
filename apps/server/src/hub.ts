@@ -131,12 +131,13 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
     }
   }
 
-  const emptyDefaults: Settings = { titles: { enabled: false, provider: 'claude', model: 'claude-haiku-4-5' }, claude: { model: '', effort: '', permissionMode: 'approval' }, codex: { model: '', effort: '', permissionMode: 'approval' }, deepseek: { model: 'deepseek-flash', effort: '', permissionMode: 'approval', baseUrl: 'https://api.deepseek.com/anthropic', apiKeyConfigured: false } };
+  const emptyDefaults: Settings = { titles: { enabled: false, provider: 'claude', model: 'claude-haiku-4-5' }, steward: { provider: 'codex', model: '', effort: '', briefTime: '08:00' }, claude: { model: '', effort: '', permissionMode: 'approval' }, codex: { model: '', effort: '', permissionMode: 'approval' }, deepseek: { model: 'deepseek-flash', effort: '', permissionMode: 'approval', baseUrl: 'https://api.deepseek.com/anthropic', apiKeyConfigured: false } };
   function settings(): Settings {
     const stored = store.getSettings();
     // 补 permissionMode 这种后加的字段：旧库存的 JSON 里没有，兜底成安全默认值，不然老装置升级后直接 undefined
     return {
       titles: { ...emptyDefaults.titles, ...stored?.titles },
+      steward: { ...emptyDefaults.steward, ...stored?.steward },
       claude: { ...emptyDefaults.claude, ...stored?.claude },
       codex: { ...emptyDefaults.codex, ...stored?.codex },
       deepseek: { ...emptyDefaults.deepseek, ...stored?.deepseek, apiKeyConfigured: !!store.getDeepseekApiKey() },
@@ -292,7 +293,8 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
   function hintCompact(sessionId: string) {
     const session = getSession(sessionId);
     const tokens = contextTokens.get(sessionId);
-    if (session.provider === 'codex' || tokens === undefined || tokens < compactHintTokens || background.has(sessionId)) return;
+    // 管家靠换会话控制上下文（steward.ts），不让用户看到压缩
+    if (session.provider === 'codex' || session.steward || tokens === undefined || tokens < compactHintTokens || background.has(sessionId)) return;
     compactHinted.add(sessionId);
     sendMessage(sessionId, `[AgentDeck] Your context is ${Math.round(tokens / 1000)}K tokens. Call compact_after_turn now with instructions on what to keep for whatever comes next in this session, then end your turn without doing anything else. Pass continueWith only if you stopped with unfinished steps to resume on your own.`, [], 'agent');
   }
@@ -322,8 +324,11 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
     return value;
   }
 
-  /** origin 'user' 是用户从界面发的，会清零自动唤醒计数；'agent' 是 MCP send_message 或子会话回调 */
-  function sendMessage(sessionId: string, text: string, attachmentIds: string[], origin: 'user' | 'agent' = 'user'): { seq: number; steered: boolean } {
+  /**
+   * origin 'user' 是用户从界面发的，会清零自动唤醒计数；'agent' 是 MCP send_message 或子会话回调。
+   * providerText：实际发给 Provider 的文字，界面和事件流里仍显示 text（管家在用户原文前附上的说明和记忆）
+   */
+  function sendMessage(sessionId: string, text: string, attachmentIds: string[], origin: 'user' | 'agent' = 'user', providerText = text): { seq: number; steered: boolean } {
     const session = getSession(sessionId);
     const fileOperation = writeBlocked(session.cwd);
     if (fileOperation) throw new HubError(409, `${fileOperation} in this workspace; try again when it finishes`);
@@ -350,10 +355,10 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
     const { seq } = emit(sessionId, { type: 'message.user', payload: { text, attachments: files } });
     // 一轮进行中直接交给 Provider 插入当前轮，Agent 下一步就能看到，不等这一轮结束
     const steered = session.status === 'running' || session.status === 'waiting_user';
-    if (steered) provider.send({ text, images: files.map((a) => ({ mimeType: a.mimeType, path: attachments.pathOf(a) })) });
-    else dispatch(sessionId, provider, { text, files });
+    if (steered) provider.send({ text: providerText, images: files.map((a) => ({ mimeType: a.mimeType, path: attachments.pathOf(a) })) });
+    else dispatch(sessionId, provider, { text: providerText, files });
     const config = settings();
-    if (firstText && config.titles.enabled) {
+    if (firstText && config.titles.enabled && !session.steward) {
       const controller = new AbortController();
       titleJobs.set(sessionId, controller);
       const connection = config.titles.provider === 'deepseek' ? { baseUrl: config.deepseek.baseUrl, apiKey: store.getDeepseekApiKey() } : undefined;
@@ -409,12 +414,13 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
 
   return {
     resolveSessionConfig,
-    createSession(provider: Session['provider'], cwd: string, override: { model?: string; effort?: string; permissionMode?: PermissionMode; parentId?: string; scheduleId?: string } = {}): Session {
+    /** steward：管家会话，cwd 是服务端自己的 data/steward，不走 allowlist；权限模式固定 approval */
+    createSession(provider: Session['provider'], cwd: string, override: { model?: string; effort?: string; permissionMode?: PermissionMode; parentId?: string; scheduleId?: string; steward?: boolean } = {}): Session {
       // cwd 只能是 UI 里添加过的工作区（方案 §11.3 allowlist）
-      if (!store.getWorkspaceByPath(cwd)) throw new HubError(400, `cwd is not a registered workspace`);
-      const { model, effort, permissionMode } = resolveSessionConfig(provider, override);
+      if (!override.steward && !store.getWorkspaceByPath(cwd)) throw new HubError(400, `cwd is not a registered workspace`);
+      const { model, effort, permissionMode } = resolveSessionConfig(provider, override.steward ? { ...override, permissionMode: 'approval' } : override);
       const now = new Date().toISOString();
-      const session: Session = { id: randomUUID(), provider, cwd, providerSessionId: null, status: 'idle', title: null, model, effort, permissionMode, archivedAt: null, parentId: override.parentId ?? null, scheduleId: override.scheduleId ?? null, createdAt: now, updatedAt: now };
+      const session: Session = { id: randomUUID(), provider, cwd, providerSessionId: null, status: 'idle', title: null, model, effort, permissionMode, archivedAt: null, parentId: override.parentId ?? null, scheduleId: override.scheduleId ?? null, steward: !!override.steward, createdAt: now, updatedAt: now };
       store.createSession(session);
       return session;
     },
@@ -432,17 +438,23 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
       const titles = next.titles ?? settings().titles;
       if (typeof titles.enabled !== 'boolean' || !Object.hasOwn(modelOptions, titles.provider) || !modelOptions[titles.provider].some((o) => o.value === titles.model)) throw new HubError(400, 'Invalid title provider or model');
       if (titles.enabled && titles.provider === 'deepseek' && !(next.deepseek.apiKey === undefined ? store.getDeepseekApiKey() : next.deepseek.apiKey.trim())) throw new HubError(400, '请先配置 DeepSeek API Key');
+      const steward = next.steward ?? settings().steward;
+      if (!Object.hasOwn(modelOptions, steward.provider)) throw new HubError(400, 'Invalid steward provider');
+      if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(steward.briefTime)) throw new HubError(400, 'Invalid steward brief time');
+      const stewardConfig = resolveSessionConfig(steward.provider, { model: steward.model, effort: steward.effort });
       const baseUrl = next.deepseek.baseUrl.trim().replace(/\/+$/, '');
       let url: URL;
       try { url = new URL(baseUrl); } catch { throw new HubError(400, 'DeepSeek API 地址不是有效 URL'); }
       if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) throw new HubError(400, 'DeepSeek API 地址必须是无凭据、查询参数或片段的 HTTP(S) URL');
       const { apiKey, ...deepseek } = next.deepseek;
       if (apiKey !== undefined) store.setDeepseekApiKey(apiKey.trim());
-      store.setSettings({ titles, claude: next.claude, codex: next.codex, deepseek: { ...deepseek, baseUrl, model: deepseek.model.trim() || 'deepseek-flash', apiKeyConfigured: !!store.getDeepseekApiKey() } });
+      store.setSettings({ titles, steward: { provider: steward.provider, model: stewardConfig.model ?? '', effort: stewardConfig.effort ?? '', briefTime: steward.briefTime }, claude: next.claude, codex: next.codex, deepseek: { ...deepseek, baseUrl, model: deepseek.model.trim() || 'deepseek-flash', apiKeyConfigured: !!store.getDeepseekApiKey() } });
     },
 
     getSession: (id: string) => withBackground(getSession(id)),
-    listSessions: () => store.listSessions().map(withBackground),
+    // 管家会话只在 Steward 页，不进侧栏和 MCP list_sessions
+    listSessions: () => store.listSessions().filter((s) => !s.steward).map(withBackground),
+    contextTokens: (sessionId: string) => contextTokens.get(sessionId),
     repositoryBusyReason,
     async withIdleRepository(root: string, write: () => Promise<void>, operation = 'Discarding changes'): Promise<void> {
       root = workspacePath(root);
@@ -520,6 +532,7 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
         archivedAt: null,
         // 分叉是用户接手的一条线，回到侧栏，不再算定时任务的运行记录
         scheduleId: null,
+        steward: false,
         // 原地回退是替身不是分支；第一轮前分叉就是新对话，都不记来源
         forkedFrom: rewind || !lastStart ? null : { id: source.id, seq: kept.at(-1)!.seq },
         createdAt: now,

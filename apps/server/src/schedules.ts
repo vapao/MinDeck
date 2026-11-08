@@ -27,7 +27,8 @@ export function nextRun(kind: Schedule['kind'], time: string, after: Date): Date
   return at;
 }
 
-export function createScheduler(store: Store, hub: Hub, now = () => new Date()) {
+/** onTick：同一个 30 秒节拍上的其他到点任务（管家的自动简报） */
+export function createScheduler(store: Store, hub: Hub, now = () => new Date(), onTick?: (now: Date) => void) {
   function validate(config: ScheduleConfig): string | null {
     if (!config.name.trim() || !config.prompt.trim()) throw new HubError(400, 'Name and prompt are required');
     if (!['once', 'daily', 'weekdays'].includes(config.kind)) throw new HubError(400, `Unknown schedule kind ${config.kind}`);
@@ -73,6 +74,7 @@ export function createScheduler(store: Store, hub: Hub, now = () => new Date()) 
     const t = now();
     hub.fireDueWakeups(t);
     void hub.reviewIdleSessions(t);
+    onTick?.(t);
     for (const s of store.listSchedules()) {
       if (!s.enabled || !s.nextRunAt || new Date(s.nextRunAt) > t) continue;
       // 下一次从现在算而不是从这次的到期时间算：停机多天回来不会连跑多次

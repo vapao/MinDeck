@@ -1,6 +1,6 @@
 import { useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Bell, CalendarClock, FolderOpen, Inbox, ListTodo, Plus, Settings } from 'lucide-react'
+import { Bell, CalendarClock, ConciergeBell, FolderOpen, Inbox, ListTodo, Plus, Settings } from 'lucide-react'
 import { api } from './api'
 import { formatTime } from './format'
 import { useAutoHideScrollbar } from './session/useAutoHideScrollbar'
@@ -23,11 +23,12 @@ import { WorkspacesPage } from './pages/WorkspacesPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { SchedulesPage } from './pages/SchedulesPage'
 import { InboxPage } from './pages/InboxPage'
+import { hasUnseenBrief, StewardPage, useSteward } from './pages/StewardPage'
 import { TodosPage, useTodos } from './pages/TodosPage'
 import { TodoHost } from './components/TodoDialog'
 import styles from './App.module.css'
 
-// 新建会话是全局弹窗，不占路由。路由：/ 与 /inbox/:kind/:id Inbox、/sessions 会话列表（手机；桌面在侧栏）、/todos 待办、/s/:id 会话页、/workspaces 项目、/schedules 定时任务、/settings 设置
+// 新建会话是全局弹窗，不占路由。路由：/steward 管家、/ 与 /inbox/:kind/:id Inbox、/sessions 会话列表（手机；桌面在侧栏）、/todos 待办、/s/:id 会话页、/workspaces 项目、/schedules 定时任务、/settings 设置
 export default function App() {
   const pathname = usePathname()
   const desktop = useMediaQuery('(min-width: 1024px)')
@@ -36,7 +37,7 @@ export default function App() {
   const notifications = useNotifications(sessions.data, sessionId)
   useMarkSeen(sessions.data, sessionId)
 
-  const page = sessionId ? <SessionPage sessionId={sessionId} /> : pathname === '/workspaces' ? <WorkspacesPage /> : pathname === '/schedules' ? <SchedulesPage /> : pathname === '/todos' ? <TodosPage /> : pathname === '/settings' ? <SettingsPage /> : pathname === '/sessions' && !desktop ? <SessionListPage /> : <InboxPage />
+  const page = sessionId ? <SessionPage sessionId={sessionId} /> : pathname === '/workspaces' ? <WorkspacesPage /> : pathname === '/schedules' ? <SchedulesPage /> : pathname === '/todos' ? <TodosPage /> : pathname === '/settings' ? <SettingsPage /> : pathname === '/steward' ? <StewardPage /> : pathname === '/sessions' && !desktop ? <SessionListPage /> : <InboxPage />
 
   return (
     <>
@@ -59,6 +60,7 @@ function Sidebar({ activeId, pathname }: { activeId?: string; pathname: string }
   useAutoHideScrollbar(list)
   const sessions = useSessions()
   const pending = inboxCount(useInbox().data)
+  const unseenBrief = hasUnseenBrief(useSteward().data)
   const todos = useTodos(false).data?.length ?? 0
   const schedules = useQuery({ queryKey: ['schedules'], queryFn: api.listSchedules, refetchInterval: 30_000 })
   const nextRun = schedules.data?.map((s) => (s.enabled ? s.nextRunAt : null)).filter((at): at is string => !!at).sort()[0]
@@ -80,6 +82,11 @@ function Sidebar({ activeId, pathname }: { activeId?: string; pathname: string }
         )}
       </div>
       <nav className={styles.primary}>
+        <button type="button" className={styles.primaryItem} data-on={pathname === '/steward' || undefined} onClick={() => navigate('/steward')}>
+          <ConciergeBell size={14} />
+          <span className={styles.primaryLabel}>Steward</span>
+          {unseenBrief && pathname !== '/steward' && <span className={styles.dot} title="New brief" />}
+        </button>
         <button type="button" className={styles.primaryItem} data-on={pathname === '/' || pathname.startsWith('/inbox/') || undefined} onClick={() => navigate('/')}>
           <Inbox size={14} />
           <span className={styles.primaryLabel}>Inbox</span>

@@ -10,8 +10,8 @@ export function usePathname() {
   return useSyncExternalStore(subscribe, () => location.pathname)
 }
 
-// 手机底部 tab 的四个顶层页。会话、项目、设置页的返回键回到最近停留的那个，而不是一律回首页
-export const tabPaths = ['/', '/todos', '/sessions', '/schedules']
+// 手机底部 tab 的五个顶层页。会话、项目、设置页的返回键回到最近停留的那个，而不是一律回首页
+export const tabPaths = ['/steward', '/', '/todos', '/sessions', '/schedules']
 let lastTab = tabPaths.includes(location.pathname) ? location.pathname : '/'
 addEventListener('popstate', () => {
   if (tabPaths.includes(location.pathname)) lastTab = location.pathname

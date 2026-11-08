@@ -153,6 +153,13 @@
   font: 600 11px/18px var(--font-mono);
   text-align: center;
 }
+.dot {
+  width: 7px;
+  height: 7px;
+  margin-right: 4px;
+  border-radius: 50%;
+  background: var(--accent);
+}
 .hint {
   font: 11px var(--font-mono);
   color: var(--text-4);

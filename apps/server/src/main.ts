@@ -9,6 +9,7 @@ import websocket from '@fastify/websocket';
 import multipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
 import { secretNamePattern } from '@agentdeck/shared';
+import type { StewardMessageBody } from '@agentdeck/shared';
 import type { ClientMessage, CreateServiceBody, CreateSessionBody, CreateTodoBody, UpdateTodoBody, CreateWorkspaceBody, ForkSessionBody, ForkSessionResponse, ListDirsResponse, ResolvePendingBody, SaveSecretBody, ScheduleConfig, UpdateSecretBody, SendMessageBody, ServerMessage, SkillsResponse, UpdateServiceBody, UpdateSessionBody, UpdateSettingsBody, UpdateWorkspaceBody, UsageResponse, Workspace } from '@agentdeck/shared';
 import { openStore } from './store/db';
 import { createAttachmentStore, isImageMime, maxAttachmentBytes, maxAttachmentsPerMessage } from './store/attachments';
@@ -21,6 +22,7 @@ import { createServices } from './services';
 import { agentdeckMcpFor, registerMcpRoute } from './mcp';
 import { readUpdateStatus } from './update-status';
 import { createScheduler } from './schedules';
+import { createSteward } from './steward';
 
 const repoRoot = resolve(import.meta.dirname, '../../..');
 // 8004 只监听本机；开发时由 vite dev server 代理，生产由 Tailscale Serve 8450 映射到这里
@@ -37,7 +39,8 @@ const store = openStore(dbPath);
 const attachments = createAttachmentStore(store, uploadsDir);
 const hub = createHub(store, attachments, (sessionId) => agentdeckMcpFor(`http://127.0.0.1:${port}/mcp`, sessionId));
 const services = createServices(store, resolve(repoRoot, 'data/logs/services'));
-const scheduler = createScheduler(store, hub);
+const steward = createSteward(store, hub, services, resolve(dirname(dbPath), 'steward'));
+const scheduler = createScheduler(store, hub, undefined, steward.tick);
 // 首次启动把本仓库种进去，否则新建会话页是空的
 if (store.listWorkspaces().length === 0) store.createWorkspace({ id: randomUUID(), path: repoRoot, alias: basename(repoRoot), createdAt: new Date().toISOString() });
 
@@ -212,7 +215,7 @@ const providerDefaults = {
 };
 app.put<{ Body: UpdateSettingsBody }>(
   '/api/settings',
-  { schema: { body: { type: 'object', required: ['claude', 'codex', 'deepseek'], properties: { titles: { type: 'object', required: ['enabled', 'provider', 'model'], properties: { enabled: { type: 'boolean' }, provider: { type: 'string' }, model: { type: 'string' } } }, claude: providerDefaults, codex: providerDefaults, deepseek: { ...providerDefaults, required: [...providerDefaults.required, 'baseUrl'], properties: { ...providerDefaults.properties, baseUrl: { type: 'string' }, apiKey: { type: 'string' } } } } } } },
+  { schema: { body: { type: 'object', required: ['claude', 'codex', 'deepseek'], properties: { titles: { type: 'object', required: ['enabled', 'provider', 'model'], properties: { enabled: { type: 'boolean' }, provider: { type: 'string' }, model: { type: 'string' } } }, steward: { type: 'object', required: ['provider', 'model', 'effort', 'briefTime'], properties: { provider: { type: 'string' }, model: { type: 'string' }, effort: { type: 'string' }, briefTime: { type: 'string' } } }, claude: providerDefaults, codex: providerDefaults, deepseek: { ...providerDefaults, required: [...providerDefaults.required, 'baseUrl'], properties: { ...providerDefaults.properties, baseUrl: { type: 'string' }, apiKey: { type: 'string' } } } } } } },
   (req) => {
     hub.updateSettings(req.body);
     return hub.settings();
@@ -421,7 +424,22 @@ app.delete<{ Params: { id: string } }>('/api/wakeups/:id', (req) => {
   return { ok: true };
 });
 
-registerMcpRoute(app, hub, store, services, scheduler);
+app.get('/api/steward', (_req, reply) => reply.header('cache-control', 'no-store').send(steward.view()));
+app.post<{ Body: StewardMessageBody }>('/api/steward/messages', { schema: { body: { type: 'object', additionalProperties: false, required: ['text'], properties: { text: { type: 'string', minLength: 1 } } } } },
+  (req, reply) => reply.code(202).send(steward.send(req.body.text)));
+app.post('/api/steward/brief', async (_req, reply) => reply.code(202).send(await steward.brief()));
+const memoryBody = { schema: { body: { type: 'object', additionalProperties: false, required: ['text'], properties: { text: { type: 'string', minLength: 1 } } } } };
+app.post<{ Body: { text: string } }>('/api/steward/memories', memoryBody, (req, reply) => reply.code(201).send(steward.remember(req.body.text, true)));
+app.patch<{ Params: { id: string }; Body: { text: string } }>('/api/steward/memories/:id', memoryBody, (req) => {
+  steward.updateMemory(req.params.id, req.body.text);
+  return { ok: true };
+});
+app.delete<{ Params: { id: string } }>('/api/steward/memories/:id', (req) => {
+  steward.forget(req.params.id, true);
+  return { ok: true };
+});
+
+registerMcpRoute(app, hub, store, services, scheduler, steward);
 
 // 浏览器允许任意站点跨站发起 WebSocket（§11.3 Origin 检查）：Origin 存在时必须与访问的 Host 一致；非浏览器客户端没有 Origin，放行
 const checkOrigin = (req: { headers: { origin?: string; host?: string } }) => !req.headers.origin || req.headers.origin.endsWith(`//${req.headers.host}`);

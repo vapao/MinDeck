@@ -202,6 +202,26 @@ export function SettingsPage() {
             </div>
             <p className={layout.connectionInfo}>Generates a title of up to 15 characters once, after the first text message. Sends that text to the selected provider in an extra request using your existing sign-in or API key. Uses additional quota or API credits. Existing conversations are not renamed; failures keep the message preview.</p>
           </section>}
+          {draft?.steward && <section className={layout.section} aria-labelledby="steward-heading">
+            <div className={layout.sectionHead}><h2 id="steward-heading">Steward</h2></div>
+            <div className={`${styles.field} ${layout.field}`}>
+              <span>Provider</span>
+              <Select ariaLabel="Steward provider" value={draft.steward.provider} options={(['claude', 'codex', 'deepseek'] as const).map((value) => ({ value, label: providerName[value] }))} onChange={(v) => setDraft({ ...draft, steward: { ...draft.steward, provider: v as ProviderId, model: v === 'deepseek' ? modelOptions.deepseek[0]!.value : '', effort: '' } })} />
+            </div>
+            <div className={`${styles.field} ${layout.field}`}>
+              <span>Model</span>
+              <Select ariaLabel="Steward model" value={draft.steward.model} options={draft.steward.provider === 'deepseek' ? [...modelOptions.deepseek] : [{ value: '', label: 'Default' }, ...modelOptions[draft.steward.provider]]} onChange={(model) => setDraft({ ...draft, steward: { ...draft.steward, model, effort: getEffortOptions(draft.steward.provider, model).some((o) => o.value === draft.steward.effort) ? draft.steward.effort : '' } })} />
+            </div>
+            {draft.steward.provider !== 'deepseek' && <div className={`${styles.field} ${layout.field}`}>
+              <span>Reasoning effort</span>
+              <Select ariaLabel="Steward reasoning effort" value={draft.steward.effort} options={[{ value: '', label: 'Default' }, ...getEffortOptions(draft.steward.provider, draft.steward.model)]} onChange={(effort) => setDraft({ ...draft, steward: { ...draft.steward, effort } })} />
+            </div>}
+            <label className={`${styles.field} ${layout.field}`}>
+              <span>Brief on weekdays at</span>
+              <input className={styles.input} type="time" value={draft.steward.briefTime} onChange={(e) => setDraft({ ...draft, steward: { ...draft.steward, briefTime: e.target.value } })} />
+            </label>
+            <p className={layout.connectionInfo}>Used for the daily brief and the Steward conversation. Always asks for approval. A change applies from your next message, which starts a fresh thread; memory and the latest brief carry over.</p>
+          </section>}
           <section className={layout.section} aria-labelledby="finder-heading">
             <div className={layout.sectionHead}><h2 id="finder-heading">Finder on this Mac</h2></div>
             <label className={`${styles.field} ${layout.field}`}>
