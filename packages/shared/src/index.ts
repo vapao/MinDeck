@@ -428,9 +428,6 @@ export type SaveSecretBody = { workspaceId: string | null; name: string; usernam
 export type UpdateSecretBody = { workspaceId: string | null; username: string | null; description: string; value?: string };
 export type SecretValueResponse = { value: string };
 
-/** POST /api/presence：页面在前台时定时上报，离开前台时报 visible=false；有设备在前台就不推送到手机 */
-export type PresenceBody = { clientId: string; visible: boolean };
-
 // ---- 管家 Steward ----
 
 /** 管家经 MCP publish_brief 发布的简报，Markdown */
@@ -475,7 +472,9 @@ export type ResolvePendingResponse = { seq: number };
 export type ClientMessage =
   | { type: 'subscribe'; sessionId: string; afterSeq: number }
   | { type: 'unsubscribe'; sessionId: string }
-  | { type: 'ping' };
+  | { type: 'ping' }
+  /** 页面在线状态，变了就报；决定要不要推送到手机。locked 只在电脑授权了锁屏检测（IdleDetector）时可能为 true */
+  | { type: 'presence'; device: 'desktop' | 'mobile'; foreground: boolean; locked: boolean };
 
 export type ServerMessage =
   | { type: 'snapshot'; session: Session; pendingRequests: PendingRequest[]; lastSeq: number }

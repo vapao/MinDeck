@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Session, SessionStatus } from '@agentdeck/shared'
-import { api } from '../api'
 import { navigate } from '../router'
 
 // 会话列表本来就在 5s 轮询，比对前后状态后按窗口焦点选择站内提醒或系统通知。
@@ -74,29 +73,85 @@ export function useNotificationPermission() {
   return { permission, request }
 }
 
-const clientId = crypto.randomUUID()
+// 页面放在后台时，电脑只要醒着且没锁屏就算人在；锁屏靠 IdleDetector（Chromium 才有，要授权一次），合盖由 Hub 的 WS 心跳发现
+const device = window.matchMedia('(pointer: fine)').matches ? 'desktop' : 'mobile'
 
-/** 在前台时每 10 秒告诉 Hub 一次，离开前台立刻告诉它：有设备在前台，Hub 就不推送到手机 */
-export function usePresence() {
+// IdleDetector 不在 TS 的 DOM 类型里
+type IdleDetectorInstance = EventTarget & { screenState: 'locked' | 'unlocked' | null; start(options: { threshold: number; signal: AbortSignal }): Promise<void> }
+const IdleDetectorApi = device === 'desktop' ? (window as unknown as { IdleDetector?: { new (): IdleDetectorInstance; requestPermission(): Promise<PermissionState> } }).IdleDetector : undefined
+
+/** 电脑上的锁屏检测；requestPermission 必须由用户手势触发，所以由按钮调用 */
+export function useScreenLock() {
+  const [permission, setPermission] = useState<PermissionState | 'unsupported'>(IdleDetectorApi ? 'prompt' : 'unsupported')
+  const [locked, setLocked] = useState(false)
+
   useEffect(() => {
-    let visible: boolean | null = null
-    const report = () => {
-      const now = isForeground()
-      // 前台时重复上报续期；不在前台只报一次
-      if (!now && visible === false) return
-      visible = now
-      void api.presence({ clientId, visible: now }).catch(() => {})
+    if (!IdleDetectorApi) return
+    void navigator.permissions.query({ name: 'idle-detection' as PermissionName }).then((status) => setPermission(status.state))
+  }, [])
+
+  useEffect(() => {
+    if (!IdleDetectorApi || permission !== 'granted') return
+    const controller = new AbortController()
+    const detector = new IdleDetectorApi()
+    detector.addEventListener('change', () => setLocked(detector.screenState === 'locked'))
+    // threshold 是"没操作多久算 idle"，最小 60 秒；这里只用锁屏状态
+    void detector.start({ threshold: 60_000, signal: controller.signal })
+    return () => controller.abort()
+  }, [permission])
+
+  const request = () => IdleDetectorApi?.requestPermission().then(setPermission)
+  return { permission, locked, request }
+}
+
+/** 单独一条 WS 告诉 Hub 这个页面的在线状态，变了就报；连接断开（含合盖后被 Hub 心跳断开）即算离开，见 push.ts */
+export function usePresence(locked: boolean) {
+  const lockedRef = useRef(locked)
+  const report = useRef(() => {})
+
+  useEffect(() => {
+    let ws: WebSocket | null = null
+    let stopped = false
+    let attempts = 0
+    let retryTimer: ReturnType<typeof setTimeout> | undefined
+    report.current = () => {
+      if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'presence', device, foreground: isForeground(), locked: lockedRef.current }))
     }
-    report()
-    const timer = setInterval(report, 10_000)
-    window.addEventListener('focus', report)
-    window.addEventListener('blur', report)
-    document.addEventListener('visibilitychange', report)
+    const connect = () => {
+      clearTimeout(retryTimer)
+      if (stopped || (ws && ws.readyState <= WebSocket.OPEN)) return
+      const socket = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`)
+      ws = socket
+      socket.onopen = () => {
+        attempts = 0
+        report.current()
+      }
+      socket.onclose = () => {
+        if (!stopped) retryTimer = setTimeout(connect, Math.min(30_000, 1000 * 2 ** attempts++))
+      }
+    }
+    const changed = () => {
+      connect()
+      report.current()
+    }
+    window.addEventListener('focus', changed)
+    window.addEventListener('blur', changed)
+    window.addEventListener('online', changed)
+    document.addEventListener('visibilitychange', changed)
+    connect()
     return () => {
-      clearInterval(timer)
-      window.removeEventListener('focus', report)
-      window.removeEventListener('blur', report)
-      document.removeEventListener('visibilitychange', report)
+      stopped = true
+      window.removeEventListener('focus', changed)
+      window.removeEventListener('blur', changed)
+      window.removeEventListener('online', changed)
+      document.removeEventListener('visibilitychange', changed)
+      clearTimeout(retryTimer)
+      ws?.close()
     }
   }, [])
+
+  useEffect(() => {
+    lockedRef.current = locked
+    report.current()
+  }, [locked])
 }

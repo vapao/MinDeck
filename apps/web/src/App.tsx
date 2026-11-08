@@ -1,6 +1,6 @@
 import { useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Bell, CalendarClock, ConciergeBell, FolderOpen, Inbox, ListTodo, Plus, Settings } from 'lucide-react'
+import { Bell, CalendarClock, LockKeyhole, ConciergeBell, FolderOpen, Inbox, ListTodo, Plus, Settings } from 'lucide-react'
 import { api } from './api'
 import { formatTime } from './format'
 import { useAutoHideScrollbar } from './session/useAutoHideScrollbar'
@@ -8,7 +8,7 @@ import { navigate, usePathname } from './router'
 import { useMediaQuery } from './session/useMediaQuery'
 import { useSessions } from './session/useSessions'
 import { inboxCount, useInbox } from './session/useInbox'
-import { notificationsSupported, useNotificationPermission, useNotifications, usePresence } from './session/useNotifications'
+import { notificationsSupported, useNotificationPermission, useNotifications, usePresence, useScreenLock } from './session/useNotifications'
 import { SessionTabs } from './components/SessionList'
 import { SessionNotifications } from './components/SessionNotifications'
 import { UpdateNotice } from './components/UpdateNotice'
@@ -36,7 +36,8 @@ export default function App() {
   const sessions = useSessions()
   const notifications = useNotifications(sessions.data, sessionId)
   useMarkSeen(sessions.data, sessionId)
-  usePresence()
+  const screenLock = useScreenLock()
+  usePresence(screenLock.locked)
 
   const page = sessionId ? <SessionPage sessionId={sessionId} /> : pathname === '/workspaces' ? <WorkspacesPage /> : pathname === '/schedules' ? <SchedulesPage /> : pathname === '/todos' ? <TodosPage /> : pathname === '/settings' ? <SettingsPage /> : pathname === '/steward' ? <StewardPage /> : pathname === '/sessions' && !desktop ? <SessionListPage /> : <InboxPage />
 
@@ -44,7 +45,7 @@ export default function App() {
     <>
       {desktop ? (
         <div className={styles.shell}>
-          <Sidebar activeId={sessionId} pathname={pathname} />
+          <Sidebar activeId={sessionId} pathname={pathname} screenLock={screenLock} />
           <main className={styles.main} data-session={sessionId ? '' : undefined}>{page}</main>
         </div>
       ) : page}
@@ -56,7 +57,7 @@ export default function App() {
   )
 }
 
-function Sidebar({ activeId, pathname }: { activeId?: string; pathname: string }) {
+function Sidebar({ activeId, pathname, screenLock }: { activeId?: string; pathname: string; screenLock: ReturnType<typeof useScreenLock> }) {
   const list = useRef<HTMLDivElement>(null)
   useAutoHideScrollbar(list)
   const sessions = useSessions()
@@ -79,6 +80,13 @@ function Sidebar({ activeId, pathname }: { activeId?: string; pathname: string }
           <button type="button" className={styles.bell} onClick={notify.request} aria-label="Enable notifications" title="System notification when a session needs approval or finishes">
             <Bell size={14} />
             <span className={styles.bellLabel}>Enable notifications</span>
+          </button>
+        )}
+        {/* 两个授权一次只提示一个，免得挤 */}
+        {!(notificationsSupported && notify.permission === 'default') && screenLock.permission === 'prompt' && (
+          <button type="button" className={styles.bell} onClick={screenLock.request} aria-label="Detect screen lock" title="Push to your phone while this Mac is locked, not while you are just in another app">
+            <LockKeyhole size={14} />
+            <span className={styles.bellLabel}>Detect screen lock</span>
           </button>
         )}
       </div>

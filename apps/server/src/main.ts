@@ -10,7 +10,7 @@ import multipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
 import { secretNamePattern } from '@agentdeck/shared';
 import type { StewardMessageBody } from '@agentdeck/shared';
-import type { ClientMessage, CreateServiceBody, CreateSessionBody, CreateTodoBody, UpdateTodoBody, CreateWorkspaceBody, ForkSessionBody, ForkSessionResponse, ListDirsResponse, PresenceBody, ResolvePendingBody, SaveSecretBody, ScheduleConfig, UpdateSecretBody, SendMessageBody, ServerMessage, SkillsResponse, UpdateServiceBody, UpdateSessionBody, UpdateSettingsBody, UpdateWorkspaceBody, UsageResponse, Workspace } from '@agentdeck/shared';
+import type { ClientMessage, CreateServiceBody, CreateSessionBody, CreateTodoBody, UpdateTodoBody, CreateWorkspaceBody, ForkSessionBody, ForkSessionResponse, ListDirsResponse, ResolvePendingBody, SaveSecretBody, ScheduleConfig, UpdateSecretBody, SendMessageBody, ServerMessage, SkillsResponse, UpdateServiceBody, UpdateSessionBody, UpdateSettingsBody, UpdateWorkspaceBody, UsageResponse, Workspace } from '@agentdeck/shared';
 import { openStore } from './store/db';
 import { createAttachmentStore, isImageMime, maxAttachmentBytes, maxAttachmentsPerMessage } from './store/attachments';
 import { createHub, HubError } from './hub';
@@ -110,16 +110,6 @@ app.delete<{ Params: { id: string } }>('/api/workspaces/:id', (req) => {
   if (!store.deleteWorkspace(req.params.id)) throw new HubError(404, 'Workspace not found');
   return { ok: true };
 });
-
-// 前台心跳：有设备在前台就不推送到手机，见 push.ts
-app.post<{ Body: PresenceBody }>(
-  '/api/presence',
-  { schema: { body: { type: 'object', additionalProperties: false, required: ['clientId', 'visible'], properties: { clientId: { type: 'string' }, visible: { type: 'boolean' } } } } },
-  (req) => {
-    push.presence(req.body.clientId, req.body.visible, req.headers.host);
-    return { ok: true };
-  },
-);
 
 // 密钥：值只在 GET /api/secrets/:id/value 下发，列表不带
 const secretScope = (workspaceId: string | null) => {
@@ -457,9 +447,16 @@ registerMcpRoute(app, hub, store, services, scheduler, steward);
 // 浏览器允许任意站点跨站发起 WebSocket（§11.3 Origin 检查）：Origin 存在时必须与访问的 Host 一致；非浏览器客户端没有 Origin，放行
 const checkOrigin = (req: { headers: { origin?: string; host?: string } }) => !req.headers.origin || req.headers.origin.endsWith(`//${req.headers.host}`);
 
-app.get('/ws', { websocket: true, preValidation: (req, reply, done) => (checkOrigin(req) ? done() : void reply.code(403).send({ message: 'Origin mismatch' })) }, (socket) => {
+app.get('/ws', { websocket: true, preValidation: (req, reply, done) => (checkOrigin(req) ? done() : void reply.code(403).send({ message: 'Origin mismatch' })) }, (socket, req) => {
   const send = (m: ServerMessage) => socket.send(JSON.stringify(m));
   const subscriptions = new Map<string, () => void>();
+  // 协议层 ping 由浏览器网络层回 pong，不受后台标签页的定时器节流；合盖睡眠后回不来，连续 3 次没回就断开，在线状态随之清掉
+  let missed = 0;
+  socket.on('pong', () => { missed = 0; });
+  const heartbeat = setInterval(() => {
+    if (missed++ >= 3) socket.terminate();
+    else socket.ping();
+  }, 15_000);
 
   socket.on('message', (data: { toString(): string }) => {
     let msg: ClientMessage;
@@ -471,6 +468,8 @@ app.get('/ws', { websocket: true, preValidation: (req, reply, done) => (checkOri
     switch (msg.type) {
       case 'ping':
         return send({ type: 'pong' });
+      case 'presence':
+        return push.presence(socket, { device: msg.device, foreground: msg.foreground, locked: msg.locked }, req.headers.host);
       case 'unsubscribe':
         subscriptions.get(msg.sessionId)?.();
         subscriptions.delete(msg.sessionId);
@@ -500,6 +499,8 @@ app.get('/ws', { websocket: true, preValidation: (req, reply, done) => (checkOri
   });
 
   socket.on('close', () => {
+    clearInterval(heartbeat);
+    push.leave(socket);
     for (const unsubscribe of subscriptions.values()) unsubscribe();
   });
 });

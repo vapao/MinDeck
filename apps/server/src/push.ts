@@ -1,26 +1,30 @@
+import type { ClientMessage } from '@agentdeck/shared';
 import type { Store } from './store/db';
 
-// 推送到手机（Spug 推送，国行安卓收不到 Web Push）：所有设备都不在前台时才推。
+// 推送到手机（Spug 推送，国行安卓收不到 Web Push）：没有页面在前台、电脑也不在用（锁屏、合盖、没开页面）时才推。
+// 在线状态挂在 WS 连接上，合盖睡眠由 main.ts 的协议层心跳断开连接来发现。
 // 地址取 Shared 密钥 SPUG_PUSH_URL，没配就不推；失败只记日志，不重试。
 
-/** 页面在前台时每 10 秒上报一次，离开前台时立刻上报；超过这个时长没报算离开（页面被杀、断网） */
-const presenceTtl = 25_000;
+type Presence = Omit<Extract<ClientMessage, { type: 'presence' }>, 'type'>;
 
 export type Push = ReturnType<typeof createPush>;
 
 export function createPush(store: Store) {
-  const foreground = new Map<string, number>();
+  const clients = new Map<object, Presence>();
   let origin = store.getState<string>('publicOrigin');
 
   return {
     /** host 来自 Tailscale 访问时的 Host 头，用来拼通知里的会话链接；本机直连的不算 */
-    presence(clientId: string, visible: boolean, host: string | undefined) {
-      if (visible) foreground.set(clientId, Date.now() + presenceTtl);
-      else foreground.delete(clientId);
+    presence(socket: object, presence: Presence, host: string | undefined) {
+      clients.set(socket, presence);
       if (host && !/^(127\.0\.0\.1|localhost)(:|$)/.test(host) && origin !== `https://${host}`) {
         origin = `https://${host}`;
         store.setState('publicOrigin', origin);
       }
+    },
+
+    leave(socket: object) {
+      clients.delete(socket);
     },
 
     sessionLink(sessionId: string) {
@@ -28,8 +32,7 @@ export function createPush(store: Store) {
     },
 
     send(title: string, content: string) {
-      const now = Date.now();
-      if ([...foreground.values()].some((until) => until > now)) return;
+      if ([...clients.values()].some((c) => c.foreground || (c.device === 'desktop' && !c.locked))) return;
       const secret = store.listSecrets().find((s) => s.workspaceId === null && s.name === 'SPUG_PUSH_URL');
       const url = secret && store.getSecretValue(secret.id);
       if (!url) return;

@@ -1,7 +1,7 @@
 import type { ProjectFilesResponse, CreateServiceBody, ListServicesResponse, Service, ServiceLogResponse, UpdateServiceBody, CreateSessionBody, CreateSessionResponse, CreateWorkspaceBody, DeleteSessionResponse, DiffResponse, EntriesResponse, ForkSessionBody, ForkSessionResponse, FileResponse, InterruptResponse, ListChangesResponse, ListDirsResponse, ListSessionsResponse, ListWorkspacesResponse, ResolvePendingBody, ResolvePendingResponse, SendMessageBody, SendMessageResponse, SettingsResponse, SkillsResponse, UpdateSessionBody, UpdateSessionResponse, UpdateSettingsBody, UpdateWorkspaceBody, UploadAttachmentResponse, UsageResponse, Workspace } from '@agentdeck/shared'
 import type { CreateTodoBody, InboxResponse, ListTodosResponse, Todo, TodoDraftResponse, UpdateTodoBody, ListSchedulesResponse, ListWakeupsResponse, RunScheduleResponse, Schedule, ScheduleConfig, UpdateStatusResponse } from '@agentdeck/shared'
 import type { StewardMessageBody, StewardMessageResponse, StewardMemory, StewardResponse } from '@agentdeck/shared'
-import type { PresenceBody, SaveSecretBody, Secret, SecretValueResponse, UpdateSecretBody } from '@agentdeck/shared'
+import type { SaveSecretBody, Secret, SecretValueResponse, UpdateSecretBody } from '@agentdeck/shared'
 import type { CreateProjectEntryBody, DeleteProjectEntryBody, DiscardChangeBody, SaveProjectFileBody } from '@agentdeck/shared'
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -42,7 +42,6 @@ export const api = {
   testDeepseek: () => request<{ baseUrl: string; model: string }>('/api/settings/deepseek/test', { method: 'POST' }),
   revealDeepseekKey: () => request<{ apiKey: string }>('/api/settings/deepseek/reveal-key', { method: 'POST', cache: 'no-store' }),
   // keepalive：离开前台时页面可能马上被冻结或关掉，请求仍要发出去
-  presence: (body: PresenceBody) => request<{ ok: true }>('/api/presence', { method: 'POST', body: JSON.stringify(body), keepalive: true }),
   listSecrets: () => request<Secret[]>('/api/secrets'),
   getSecretValue: (id: string) => request<SecretValueResponse>(`/api/secrets/${id}/value`, { cache: 'no-store' }),
   saveSecret: (body: SaveSecretBody) => request<Secret>('/api/secrets', { method: 'POST', body: JSON.stringify(body) }),
