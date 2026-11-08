@@ -22,6 +22,7 @@ type Props = {
 export function QuestionCard({ request, provider, state, answers, response, resolvedAt, busy, error, onSubmit, bare = false }: Props) {
   const [picked, setPicked] = useState<QuestionAnswers>({})
   const [other, setOther] = useState('')
+  const [username, setUsername] = useState('')
   const complete = request.questions.every((q) => (picked[q.question]?.length ?? 0) > 0) || other.trim().length > 0
 
   const toggle = (question: string, label: string, multi: boolean) =>
@@ -32,7 +33,8 @@ export function QuestionCard({ request, provider, state, answers, response, reso
     })
 
   if (request.secret) {
-    const { name, shared } = request.secret
+    const { name, shared, withUsername } = request.secret
+    const filled = other.trim() && (!withUsername || username.trim())
     return (
       <div className={styles.card} data-state={state}>
         <div className={styles.head}>
@@ -48,13 +50,16 @@ export function QuestionCard({ request, provider, state, answers, response, reso
               {request.details && <div className={styles.details}>{request.details}</div>}
             </div>
           )}
+          {state === 'pending' && withUsername && (
+            <input className={styles.other} value={username} placeholder="Username" autoComplete="off" autoCapitalize="none" spellCheck={false} onChange={(e) => setUsername(e.target.value)} />
+          )}
           {state === 'pending' && (
-            <input className={styles.other} type="password" value={other} placeholder={`Value of ${name}`} autoComplete="off" spellCheck={false} onChange={(e) => setOther(e.target.value)} />
+            <input className={styles.other} type="password" value={other} placeholder={withUsername ? 'Password' : `Value of ${name}`} autoComplete="off" spellCheck={false} onChange={(e) => setOther(e.target.value)} />
           )}
         </div>
         {state === 'pending' && (
           <div className={styles.actions}>
-            <button type="button" className={styles.primary} disabled={busy || !other.trim()} onClick={() => onSubmit({}, other.trim())}>
+            <button type="button" className={styles.primary} disabled={busy || !filled} onClick={() => onSubmit(withUsername ? { username: [username.trim()] } : {}, other.trim())}>
               Save secret
             </button>
             {error && <div className={styles.error}>{error}</div>}

@@ -714,11 +714,11 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
     },
 
     /** MCP request_secret：和 ask_user 一样提交即返回；用户填的值只存进 secrets 表，见 resolvePending */
-    fileSecretRequest(sessionId: string, secret: { name: string; description: string; shared: boolean }): PendingRequest {
+    fileSecretRequest(sessionId: string, secret: { name: string; description: string; shared: boolean; withUsername?: boolean }): PendingRequest {
       getSession(sessionId);
       const request: PendingRequest = {
         kind: 'question', toolUseId: randomUUID(), delivery: 'async', filed: true,
-        details: secret.description, secret: { name: secret.name, shared: secret.shared },
+        details: secret.description, secret: { name: secret.name, shared: secret.shared, ...(secret.withUsername ? { withUsername: true as const } : {}) },
         questions: [{ question: `Provide secret ${secret.name}`, header: 'Secret', multiSelect: false, options: [] }],
         id: randomUUID(), sessionId, status: 'pending', createdAt: new Date().toISOString(), resolvedAt: null,
       };
@@ -832,12 +832,15 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
         // 值只进 secrets 表：resolution、user_input.resolved 事件和发回的消息里都不带
         const value = resolution.response ?? '';
         if (!value) throw new HubError(400, 'Secret value is empty');
+        // 账号不算机密，卡片经 answers.username 提交
+        const username = request.secret.withUsername ? resolution.answers.username?.[0]?.trim() || null : null;
+        if (request.secret.withUsername && !username) throw new HubError(400, 'Username is empty');
         const session = getSession(request.sessionId);
         const workspace = request.secret.shared ? null : store.getWorkspaceByPath(session.cwd);
         if (workspace === undefined) throw new HubError(400, `${session.cwd} is no longer an AgentDeck project; save it as Shared from Settings instead`);
         if (!settle(requestId, { kind: 'question', answers: {} })) throw new HubError(409, 'Already handled elsewhere');
-        store.saveSecret(workspace?.id ?? null, request.secret.name, request.details ?? '', value);
-        wake(getSession(session.id), `[AgentDeck] The user saved secret ${request.secret.name} (${request.secret.shared ? 'shared' : 'private to this project'}). See list_secrets for how to use it.`);
+        store.saveSecret(workspace?.id ?? null, request.secret.name, username, request.details ?? '', value);
+        wake(getSession(session.id), `[AgentDeck] The user saved secret ${request.secret.name}${username ? ` (password for username ${username})` : ''}, ${request.secret.shared ? 'shared' : 'private to this project'}. See list_secrets for how to use it.`);
         return store.lastSeq(request.sessionId);
       }
       if (!settle(requestId, resolution)) throw new HubError(409, 'Already handled elsewhere');

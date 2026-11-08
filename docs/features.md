@@ -214,11 +214,11 @@ Files 支持在项目根目录或指定子目录新建空文件 / 文件夹，�
 
 解决"Agent 要密钥时只能贴进对话，或让用户自己建文件"。目标是让值不进对话和日志，Agent 下次能自己找到并使用；**不是隔离**。
 
-- **存储**：`secrets` 表（`workspace_id` 为 `''` 是 Shared，否则只对该项目可见；`(workspace_id, name)` 唯一，同一作用域同名即覆盖）。值明文存在 `data/agentdeck.db`，拷库 / 备份会连同密钥一起带走。删除项目时其私有密钥一并删除。
-- **请求**：MCP `request_secret(name, description, shared?)`，名字限环境变量风格，默认本项目私有（调用方 cwd 必须是项目）。走 `ask_user` 同一套 filed 异步提问（`kind: 'question'` 带 `secret` 字段），会话流与 Inbox 显示为密码输入卡；名字、说明、作用域只读，填错就 Dismiss 让 Agent 重提。保存后以一条只含名字的消息唤醒会话。
+- **存储**：`secrets` 表（`workspace_id` 为 `''` 是 Shared，否则只对该项目可见；`(workspace_id, name)` 唯一，同一作用域同名即覆盖）。`username` 非空表示一对账号密码，值是密码；账号不算机密，明文显示在 Settings 和 `list_secrets` 里。值明文存在 `data/agentdeck.db`，拷库 / 备份会连同密钥一起带走。删除项目时其私有密钥一并删除。
+- **请求**：MCP `request_secret(name, description, shared?, withUsername?)`，`withUsername` 时卡片多一个明文 Username 框（经 `answers.username` 提交），名字限环境变量风格，默认本项目私有（调用方 cwd 必须是项目）。走 `ask_user` 同一套 filed 异步提问（`kind: 'question'` 带 `secret` 字段），会话流与 Inbox 显示为密码输入卡；名字、说明、作用域只读，填错就 Dismiss 让 Agent 重提。保存后以一条只含名字的消息唤醒会话。
 - **值只在 `secrets` 表里**（有测试）：卡片提交的值经 `resolution.response` 传到 Hub，Hub 存表后以 `answers: {}` 结算，`pending_requests`、`user_input.resolved` 事件、发回会话的消息都不带值。
-- **查与用**：MCP `list_secrets` 只返回本项目私有和 Shared 的名字、说明、作用域（同名私有优先），不返回值，附带用法。Agent 在 shell 里用 `$(node <repo>/scripts/secret.mjs get NAME)` 取值，脚本按当前目录（解析软链接后取最长匹配的项目）判断作用域，读不到时非零退出。
-- **管理**：Settings 页最下方 Secrets 分组，即时生效、不归 Save changes 管：列表（名字、作用域、说明）、点眼睛单独取值显示（`GET /api/secrets/:id/value`）、新增 / 覆盖、编辑说明与作用域（目标作用域已有同名时 409）、删除。REST：`GET/POST /api/secrets`、`PATCH/DELETE /api/secrets/:id`。
+- **查与用**：MCP `list_secrets` 只返回本项目私有和 Shared 的名字、说明、作用域（同名私有优先），不返回值，附带用法。Agent 在 shell 里用 `$(node <repo>/scripts/secret.mjs get NAME)` 取值，脚本按当前目录（解析软链接后取最长匹配的项目）判断作用域，读不到时非零退出。浏览器自动化脚本（如 `ego-browser nodejs`）不继承 shell 环境、cwd 是 `/`，`usage` 里给出在脚本内 `execFileSync` 调 `secret.mjs`（显式传项目 `cwd`）后直接 `page.fill` 的写法；已实测 `page.fill` 失败的报错和页面快照都不带填入的值。
+- **管理**：Settings 页最下方 Secrets 分组，即时生效、不归 Save changes 管：列表（名字、作用域、账号、说明）、点眼睛单独取值显示（`GET /api/secrets/:id/value`）、新增 / 覆盖、编辑说明与作用域（目标作用域已有同名时 409）、删除。REST：`GET/POST /api/secrets`、`PATCH/DELETE /api/secrets/:id`。
 - 边界：Agent 有 shell，直接读库能拿到所有项目的密钥；命令输出若回显了值（如报错打印请求头）仍会进上下文；Agent 被注入的指令诱导外发也拦不住，token 尽量给最小权限。
 - 未做：Keychain、加密、过期、按会话注入环境变量、命令占位符替换。
 

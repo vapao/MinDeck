@@ -45,7 +45,7 @@ export function SecretsSection() {
           <div className={rows.main}>
             <code className={rows.name} title={s.name}>{s.name}</code>
             <span className={rows.path} title={s.id in revealed ? undefined : s.description}>
-              {s.id in revealed ? <code>{revealed[s.id]}</code> : `${scopeName(s.workspaceId)} · ${s.description || 'No description'}`}
+              {s.id in revealed ? <code>{revealed[s.id]}</code> : [scopeName(s.workspaceId), s.username, s.description || 'No description'].filter(Boolean).join(' · ')}
             </span>
           </div>
           <div className={rows.actions}>
@@ -77,12 +77,13 @@ function SecretDialog({ secret, onClose, onSaved }: { secret: Secret | null; onC
   const workspaces = useQuery({ queryKey: ['workspaces'], queryFn: api.listWorkspaces })
   const [name, setName] = useState(secret?.name ?? '')
   const [workspaceId, setWorkspaceId] = useState(secret?.workspaceId ?? null)
+  const [username, setUsername] = useState(secret?.username ?? '')
   const [description, setDescription] = useState(secret?.description ?? '')
   const [value, setValue] = useState('')
   const save = useMutation({
     mutationFn: () => secret
-      ? api.updateSecret(secret.id, { workspaceId, description, ...(value ? { value } : {}) })
-      : api.saveSecret({ workspaceId, name, description, value }),
+      ? api.updateSecret(secret.id, { workspaceId, username: username || null, description, ...(value ? { value } : {}) })
+      : api.saveSecret({ workspaceId, name, username: username || null, description, value }),
     onSuccess: (s) => {
       queryClient.invalidateQueries({ queryKey: ['secrets'] })
       onSaved(s.id)
@@ -117,7 +118,11 @@ function SecretDialog({ secret, onClose, onSaved }: { secret: Secret | null; onC
             <input className={manage.input} value={description} placeholder="What it is for; agents choose secrets by this" onChange={(e) => setDescription(e.target.value)} />
           </label>
           <label className={form.field}>
-            <span>Value</span>
+            <span>Username</span>
+            <input className={manage.input} value={username} placeholder="Optional; set it to store a login, with the password as value" autoComplete="off" autoCapitalize="none" spellCheck={false} onChange={(e) => setUsername(e.target.value)} />
+          </label>
+          <label className={form.field}>
+            <span>{username ? 'Password' : 'Value'}</span>
             <input className={manage.input} type="password" value={value} placeholder={secret ? 'Leave blank to keep' : ''} autoComplete="off" spellCheck={false} onChange={(e) => setValue(e.target.value)} />
           </label>
           {!secret && <div className={settings.keyMeta}>A secret with the same name in the same scope is overwritten.</div>}

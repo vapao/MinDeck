@@ -126,7 +126,8 @@ const secretScope = (workspaceId: string | null) => {
   if (workspaceId !== null && !store.getWorkspace(workspaceId)) throw new HubError(400, 'Workspace not found');
   return workspaceId;
 };
-const secretFields = { workspaceId: { type: ['string', 'null'] }, description: { type: 'string' }, value: { type: 'string', minLength: 1 } };
+const secretFields = { workspaceId: { type: ['string', 'null'] }, username: { type: ['string', 'null'] }, description: { type: 'string' }, value: { type: 'string', minLength: 1 } };
+const secretUsername = (username: string | null) => username?.trim() || null;
 app.get('/api/secrets', (_req, reply) => reply.header('cache-control', 'no-store').send(store.listSecrets()));
 app.get<{ Params: { id: string } }>('/api/secrets/:id/value', (req, reply) => {
   const value = store.getSecretValue(req.params.id);
@@ -135,14 +136,14 @@ app.get<{ Params: { id: string } }>('/api/secrets/:id/value', (req, reply) => {
 });
 app.post<{ Body: SaveSecretBody }>(
   '/api/secrets',
-  { schema: { body: { type: 'object', additionalProperties: false, required: ['workspaceId', 'name', 'description', 'value'], properties: { ...secretFields, name: { type: 'string', pattern: secretNamePattern } } } } },
-  (req, reply) => reply.code(201).send(store.saveSecret(secretScope(req.body.workspaceId), req.body.name, req.body.description.trim(), req.body.value)),
+  { schema: { body: { type: 'object', additionalProperties: false, required: ['workspaceId', 'name', 'username', 'description', 'value'], properties: { ...secretFields, name: { type: 'string', pattern: secretNamePattern } } } } },
+  (req, reply) => reply.code(201).send(store.saveSecret(secretScope(req.body.workspaceId), req.body.name, secretUsername(req.body.username), req.body.description.trim(), req.body.value)),
 );
 app.patch<{ Params: { id: string }; Body: UpdateSecretBody }>(
   '/api/secrets/:id',
-  { schema: { body: { type: 'object', additionalProperties: false, required: ['workspaceId', 'description'], properties: secretFields } } },
+  { schema: { body: { type: 'object', additionalProperties: false, required: ['workspaceId', 'username', 'description'], properties: secretFields } } },
   (req) => {
-    const secret = store.updateSecret(req.params.id, secretScope(req.body.workspaceId), req.body.description.trim(), req.body.value);
+    const secret = store.updateSecret(req.params.id, secretScope(req.body.workspaceId), secretUsername(req.body.username), req.body.description.trim(), req.body.value);
     if (secret === 'conflict') throw new HubError(409, 'A secret with this name already exists in that scope');
     if (!secret) throw new HubError(404, 'Secret not found');
     return secret;

@@ -129,6 +129,7 @@ export function openStore(path: string) {
   for (const col of ['model', 'effort', 'permission_mode', 'archived_at', 'title', 'parent_id', 'spawn_granted_at', 'schedule_id', 'review_for', 'review_state', 'review_next', 'review_summary', 'forked_from_id']) if (!sessionCols.has(col)) db.exec(`ALTER TABLE sessions ADD COLUMN ${col} TEXT`);
   if (!sessionCols.has('forked_at_seq')) db.exec('ALTER TABLE sessions ADD COLUMN forked_at_seq INTEGER');
   if (!sessionCols.has('steward')) db.exec('ALTER TABLE sessions ADD COLUMN steward INTEGER');
+  if (!(db.prepare(`PRAGMA table_info(secrets)`).all() as { name: string }[]).some((c) => c.name === 'username')) db.exec('ALTER TABLE secrets ADD COLUMN username TEXT');
 
   // 修正旧版下拉框保存的 Codex effort 拼写，不改变模型、会话排序或其他 Provider。
   for (const [oldEffort, effort] of [['light', 'low'], ['extra-high', 'xhigh']]) {
@@ -611,23 +612,23 @@ export function openStore(path: string) {
       upsertSetting.run('defaults', JSON.stringify(settings));
     },
     listSecrets(): Secret[] {
-      return db.prepare(`SELECT id, workspace_id, name, description, updated_at FROM secrets ORDER BY name, workspace_id`).all().map(rowToSecret);
+      return db.prepare(`SELECT id, workspace_id, name, username, description, updated_at FROM secrets ORDER BY name, workspace_id`).all().map(rowToSecret);
     },
     getSecretValue(id: string): string | undefined {
       return db.prepare(`SELECT value FROM secrets WHERE id = ?`).get(id)?.value as string | undefined;
     },
     /** 同一作用域同名即覆盖，id 不变 */
-    saveSecret(workspaceId: string | null, name: string, description: string, value: string): Secret {
-      const row = db.prepare(`INSERT INTO secrets (id, workspace_id, name, value, description, updated_at) VALUES (?, ?, ?, ?, ?, ?)
-        ON CONFLICT (workspace_id, name) DO UPDATE SET value = excluded.value, description = excluded.description, updated_at = excluded.updated_at
-        RETURNING id, workspace_id, name, description, updated_at`).get(randomUUID(), workspaceId ?? '', name, value, description, new Date().toISOString())!;
+    saveSecret(workspaceId: string | null, name: string, username: string | null, description: string, value: string): Secret {
+      const row = db.prepare(`INSERT INTO secrets (id, workspace_id, name, username, value, description, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT (workspace_id, name) DO UPDATE SET username = excluded.username, value = excluded.value, description = excluded.description, updated_at = excluded.updated_at
+        RETURNING id, workspace_id, name, username, description, updated_at`).get(randomUUID(), workspaceId ?? '', name, username, value, description, new Date().toISOString())!;
       return rowToSecret(row);
     },
     /** 改到的作用域已有同名时返回 'conflict' */
-    updateSecret(id: string, workspaceId: string | null, description: string, value: string | undefined): Secret | undefined | 'conflict' {
+    updateSecret(id: string, workspaceId: string | null, username: string | null, description: string, value: string | undefined): Secret | undefined | 'conflict' {
       try {
-        const row = db.prepare(`UPDATE secrets SET workspace_id = ?, description = ?, value = COALESCE(?, value), updated_at = ? WHERE id = ?
-          RETURNING id, workspace_id, name, description, updated_at`).get(workspaceId ?? '', description, value ?? null, new Date().toISOString(), id);
+        const row = db.prepare(`UPDATE secrets SET workspace_id = ?, username = ?, description = ?, value = COALESCE(?, value), updated_at = ? WHERE id = ?
+          RETURNING id, workspace_id, name, username, description, updated_at`).get(workspaceId ?? '', username, description, value ?? null, new Date().toISOString(), id);
         return row && rowToSecret(row);
       } catch (err) {
         if ((err as { errcode?: number }).errcode === 2067) return 'conflict'; // SQLITE_CONSTRAINT_UNIQUE
@@ -647,6 +648,7 @@ const rowToSecret = (r: Record<string, unknown>): Secret => ({
   id: r.id as string,
   workspaceId: (r.workspace_id as string) || null,
   name: r.name as string,
+  username: (r.username as string | null) ?? null,
   description: r.description as string,
   updatedAt: r.updated_at as string,
 });

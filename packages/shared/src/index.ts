@@ -189,7 +189,7 @@ export type PendingRequestBody =
       /** filed 事项的背景说明，Markdown */
       details?: string;
       /** MCP request_secret：卡片改为密码输入，值经 response 提交，Hub 存进 secrets 表后丢弃，不进 resolution / 事件 / 发回的消息 */
-      secret?: { name: string; shared: boolean };
+      secret?: { name: string; shared: boolean; withUsername?: true };
     };
 
 export type PendingRequest = PendingRequestBody & {
@@ -417,14 +417,15 @@ export type DeleteProjectEntryBody = { path: string; dir: boolean };
 export type SaveProjectFileBody = { path: string; content: string; expected?: string };
 
 
-/** 密钥：workspaceId 为 null 是 Shared，否则只对该项目可见。列表不含值，值单独经 GET /api/secrets/:id/value 取 */
-export type Secret = { id: string; workspaceId: string | null; name: string; description: string; updatedAt: string };
+/** 密钥：workspaceId 为 null 是 Shared，否则只对该项目可见。列表不含值，值单独经 GET /api/secrets/:id/value 取。
+ * username 非空表示一对账号密码，值是密码；账号不算机密，明文出现在列表和 list_secrets 里 */
+export type Secret = { id: string; workspaceId: string | null; name: string; username: string | null; description: string; updatedAt: string };
 /** 名字限定为环境变量风格，方便在 shell 里引用 */
 export const secretNamePattern = '^[A-Za-z_][A-Za-z0-9_]*$';
 /** POST /api/secrets：同一作用域同名即覆盖 */
-export type SaveSecretBody = { workspaceId: string | null; name: string; description: string; value: string };
+export type SaveSecretBody = { workspaceId: string | null; name: string; username: string | null; description: string; value: string };
 /** PATCH /api/secrets/:id：value 省略保留原值；改到的作用域已有同名时 409 */
-export type UpdateSecretBody = { workspaceId: string | null; description: string; value?: string };
+export type UpdateSecretBody = { workspaceId: string | null; username: string | null; description: string; value?: string };
 export type SecretValueResponse = { value: string };
 
 /** POST /api/presence：页面在前台时定时上报，离开前台时报 visible=false；有设备在前台就不推送到手机 */

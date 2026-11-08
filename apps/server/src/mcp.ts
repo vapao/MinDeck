@@ -25,7 +25,8 @@ const maxWaitSec = 600;
 const maxEntries = 40;
 const defaultLogLines = 100;
 const maxLogLines = 1000;
-const secretCommand = `node ${resolve(import.meta.dirname, '../../../scripts/secret.mjs')} get`;
+const secretScript = resolve(import.meta.dirname, '../../../scripts/secret.mjs');
+const secretCommand = `node ${secretScript} get`;
 
 // 管家 v1 只看和说：除了自己的四个工具，只给只读工具和 add_todo
 const stewardTools = new Set(['work_snapshot', 'publish_brief', 'remember', 'forget', 'list_workspaces', 'list_sessions', 'get_session', 'list_services', 'get_service_log', 'list_schedules', 'add_todo']);
@@ -243,29 +244,32 @@ export function createMcpServer(hub: Hub, store: Store, services: Services, sche
   }, ({ title, note, remindOn }) => json({ id: hub.createTodo({ title, note, remindOn: remindOn ?? null, cwd: isSteward ? null : store.getSession(callerId)!.cwd, sessionId: callerId }).id }));
 
   // 密钥值不经过 MCP：Agent 只拿到名字，用的时候在 shell 里由 secret.mjs 现取，值不进上下文
-  const secretUsage = `Use a secret only by substituting it inside a shell command, e.g. curl -H "Authorization: Bearer $(${secretCommand} NAME)" ...; run it from inside this project so private secrets resolve. Never print, echo, log, or write the value to a file, and use a secret only for what its description says.`;
+  // 浏览器脚本（如 ego-browser nodejs）不在 shell 里跑、cwd 不是项目，只能在脚本里起子进程取值并显式给 cwd
+  const secretUsage = (cwd: string) => `Use a secret only by substituting it inside a shell command, e.g. curl -H "Authorization: Bearer $(${secretCommand} NAME)" ...; run it from inside this project so private secrets resolve. In a browser automation script (e.g. ego-browser nodejs), read it inside the script and pass it straight to the page: const { execFileSync } = await import("node:child_process"); await page.fill(selector, execFileSync("node", [${JSON.stringify(secretScript)}, "get", "NAME"], { cwd: ${JSON.stringify(cwd)} }).toString()). For a secret with a username, the value is the password and the username is listed here in plain text. Never print, echo, log, return from page.evaluate, or write the value to a file, and use a secret only for what its description says.`;
 
   tool('request_secret', {
-    description: `Ask the user to enter a secret (API key, token, password) in AgentDeck instead of pasting it into the chat. First call list_secrets and reuse a matching one. Returns immediately; when the user saves it, a message arrives in this session, then use it as described in list_secrets. Never ask the user to paste a secret into the conversation.`,
+    description: `Ask the user to enter a secret (API key, token, password, or a username with its password) in AgentDeck instead of pasting it into the chat. First call list_secrets and reuse a matching one. Returns immediately; when the user saves it, a message arrives in this session, then use it as described in list_secrets. Never ask the user to paste a secret into the conversation.`,
     inputSchema: {
       name: z.string().regex(new RegExp(secretNamePattern)).describe('Environment-variable style, naming the service and, for private secrets, the project, e.g. GITHUB_TOKEN_AGENTDECK'),
       description: z.string().min(1).describe('What it is for and where it is used, e.g. "GitHub token for pushing to fizee/AgentDeck"; the only hint for choosing it later'),
       shared: z.boolean().optional().describe('Default false: private to this project. True only for secrets every project may use'),
+      withUsername: z.boolean().optional().describe('True for a login: the user enters a username and its password together; the secret value is the password'),
     },
-  }, ({ name, description, shared = false }) => {
+  }, ({ name, description, shared = false, withUsername = false }) => {
     if (!shared) project();
-    return json({ id: hub.fileSecretRequest(callerId, { name, description, shared }).id, filed: true });
+    return json({ id: hub.fileSecretRequest(callerId, { name, description, shared, withUsername }).id, filed: true });
   });
 
   tool('list_secrets', {
     description: 'List secrets this project can use (its private ones and shared ones), with what each is for. Values are never returned here.',
     inputSchema: {},
   }, () => {
-    const workspace = store.getWorkspaceByPath(hub.getSession(callerId).cwd);
+    const cwd = hub.getSession(callerId).cwd;
+    const workspace = store.getWorkspaceByPath(cwd);
     const visible = store.listSecrets().filter((s) => s.workspaceId === null || s.workspaceId === workspace?.id);
     // 同名时项目私有的优先，和 secret.mjs 一致
     const secrets = visible.filter((s) => s.workspaceId !== null || !visible.some((o) => o.workspaceId !== null && o.name === s.name));
-    return json({ secrets: secrets.map((s) => ({ name: s.name, description: s.description, scope: s.workspaceId ? 'private' : 'shared' })), usage: secretUsage });
+    return json({ secrets: secrets.map((s) => ({ name: s.name, ...(s.username ? { username: s.username } : {}), description: s.description, scope: s.workspaceId ? 'private' : 'shared' })), usage: secretUsage(cwd) });
   });
 
   tool('interrupt', {
