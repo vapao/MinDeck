@@ -484,4 +484,6 @@ export type ServerMessage =
   /** 订阅中的会话被删除；客户端应离开该页且不再重连 */
   | { type: 'session.deleted' }
   | { type: 'pong' }
-  | { type: 'error'; code: string; message: string };
+  | { type: 'error'; code: string; message: string }
+  /** 与手机推送同一时机、同一内容，发给所有报了在线状态的页面；页面不在前台时弹系统通知 */
+  | { type: 'notice'; sessionId: string; title: string; body: string };

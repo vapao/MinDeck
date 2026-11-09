@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { Session, SessionStatus } from '@agentdeck/shared'
+import type { ServerMessage, Session, SessionStatus } from '@agentdeck/shared'
 import { navigate } from '../router'
 
-// 会话列表本来就在 5s 轮询，比对前后状态后按窗口焦点选择站内提醒或系统通知。
-// 用浏览器 Notification API：页面开着（含"添加到程序坞"的 PWA 窗口）就能收到，关掉浏览器收不到——PC 主控端够用。
-// 不支持 Notification API 时仍提供站内提醒。
+// 站内提醒：会话列表本来就在 5s 轮询，比对前后状态，窗口在前台时提醒其他会话。
+// 系统通知：Hub 在推送手机的同一时机经在线状态 WS 发 notice（见 usePresence），窗口不在前台时用浏览器 Notification 弹出；
+// 页面开着（含"添加到程序坞"的 PWA 窗口）就能收到，关掉浏览器收不到——PC 主控端够用。
 
 export const notificationsSupported = 'Notification' in window
 
@@ -44,21 +44,11 @@ export function useNotifications(sessions: Session[] | undefined, activeId: stri
       if (was !== 'running' && was !== 'waiting_user') continue
       const text = outcomes[s.status]
       if (!text || s.status === was) continue
-      // 正盯着这个会话且窗口在前台时不弹
-      if (isForeground()) {
-        if (s.id !== activeId) {
-          const notice = { id: s.id, title: s.title ?? 'New session', text, project: s.cwd.split('/').pop() }
-          // eslint-disable-next-line react/set-state-in-effect -- 将轮询得到的外部状态变化追加到临时通知列表。
-          setNotices((items) => [...items.filter((item) => item.id !== s.id), notice])
-        }
-        continue
-      }
-      if (!notificationsSupported || Notification.permission !== 'granted') continue
-      const n = new Notification(`${s.title ?? 'New session'} · ${text}`, { body: s.cwd.split('/').pop(), tag: s.id })
-      n.onclick = () => {
-        window.focus()
-        navigate(`/s/${s.id}`)
-        n.close()
+      // 正盯着这个会话时不提醒；窗口不在前台时交给系统通知
+      if (isForeground() && s.id !== activeId) {
+        const notice = { id: s.id, title: s.title ?? 'New session', text, project: s.cwd.split('/').pop() }
+        // eslint-disable-next-line react/set-state-in-effect -- 将轮询得到的外部状态变化追加到临时通知列表。
+        setNotices((items) => [...items.filter((item) => item.id !== s.id), notice])
       }
     }
   }, [sessions, activeId])
@@ -125,6 +115,17 @@ export function usePresence(locked: boolean) {
       socket.onopen = () => {
         attempts = 0
         report.current()
+      }
+      socket.onmessage = (ev) => {
+        const msg = JSON.parse(ev.data as string) as ServerMessage
+        if (msg.type !== 'notice' || isForeground() || !notificationsSupported || Notification.permission !== 'granted') return
+        // 同 tag 替换旧通知时默认不再横幅提醒；旧通知还留在通知中心就等于静默，所以要 renotify（TS 的 DOM 类型里没有这个字段）
+        const n = new Notification(msg.title, { body: msg.body, tag: msg.sessionId, renotify: true } as NotificationOptions)
+        n.onclick = () => {
+          window.focus()
+          navigate(`/s/${msg.sessionId}`)
+          n.close()
+        }
       }
       socket.onclose = () => {
         if (!stopped) retryTimer = setTimeout(connect, Math.min(30_000, 1000 * 2 ** attempts++))

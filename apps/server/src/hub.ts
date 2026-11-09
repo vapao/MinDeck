@@ -119,13 +119,13 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
     const turn = events.slice(events.findLastIndex((e) => e.type === 'turn.started') + 1);
     if (status === 'waiting_user') {
       const pending = store.pendingBySession(sessionId).filter((p) => p.kind !== 'question' || p.delivery !== 'async');
-      push.send(`⏳ ${name}`, pending.map(pendingText).join('\n\n---\n\n') + push.sessionLink(sessionId));
+      push.send(`⏳ ${name}`, pending.map(pendingText).join('\n\n---\n\n'), sessionId);
     } else if (status === 'error') {
       const failure = turn.findLast((e) => e.type === 'turn.failed' || e.type === 'error');
-      push.send(`❌ ${name}`, ((failure?.payload as { message?: string } | undefined)?.message ?? 'Failed') + push.sessionLink(sessionId));
+      push.send(`❌ ${name}`, (failure?.payload as { message?: string } | undefined)?.message ?? 'Failed', sessionId);
     } else if (!turn.some((e) => e.type === 'turn.completed' && e.payload.reason === 'interrupted')) {
       const reply = turn.findLast((e) => e.type === 'message.completed')?.payload.text;
-      push.send(`✅ ${name}`, (reply ?? 'Finished') + push.sessionLink(sessionId));
+      push.send(`✅ ${name}`, reply ?? 'Finished', sessionId);
     }
   }
 
@@ -136,7 +136,7 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
 
   function pushQuestion(request: PendingRequest) {
     const session = getSession(request.sessionId);
-    push.send(`❓ ${session.title ?? 'New session'} · ${session.cwd.split('/').pop()}`, pendingText(request) + push.sessionLink(session.id));
+    push.send(`❓ ${session.title ?? 'New session'} · ${session.cwd.split('/').pop()}`, pendingText(request), session.id);
   }
 
   function notifyWatchers(childId: string, status: 'idle' | 'error') {
@@ -732,7 +732,7 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
       const session = getSession(sessionId);
       const row: Report = { ...report, id: randomUUID(), sessionId, createdAt: new Date().toISOString(), readAt: null };
       store.createReport(row);
-      push.send(`📋 ${report.title}`, `**${report.summary}**\n\n${report.body}\n\n_${session.title ?? 'New session'} · ${session.cwd.split('/').pop()}_${push.sessionLink(sessionId)}`);
+      push.send(`📋 ${report.title}`, `**${report.summary}**\n\n${report.body}\n\n_${session.title ?? 'New session'} · ${session.cwd.split('/').pop()}_`, sessionId);
       return row;
     },
 
