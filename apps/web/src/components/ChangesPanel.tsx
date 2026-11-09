@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { FileDiff, Folder, RefreshCw, Server } from 'lucide-react'
+import { ChevronDown, ChevronRight, FileDiff, Folder, RefreshCw, Server } from 'lucide-react'
 import type { ChangedFile } from '@agentdeck/shared'
 import { showDiff } from './FilePreview'
 import { FilesPanel } from './FilesPanel'
@@ -51,19 +51,24 @@ function FileStat({ f }: { f: ChangedFile }) {
   )
 }
 
-type TreeProps = { node: TreeNode; depth: number; onSelect: (path: string) => void }
-function Tree({ node, depth, onSelect }: TreeProps) {
+type TreeProps = { node: TreeNode; path: string; depth: number; collapsed: Set<string>; toggle: (path: string) => void; onSelect: (path: string) => void }
+function Tree({ node, path, depth, collapsed, toggle, onSelect }: TreeProps) {
   return (
     <>
-      {node.dirs.map((d) => (
-        <div key={d.name}>
-          <div className={styles.dir} style={{ paddingLeft: 8 + depth * 14 }}>
-            <Folder size={14} />
-            <span className={styles.dirName}>{d.name}</span>
+      {node.dirs.map((d) => {
+        const dirPath = path ? `${path}/${d.name}` : d.name
+        const open = !collapsed.has(dirPath)
+        return (
+          <div key={d.name}>
+            <button type="button" className={`${styles.file} ${styles.dir}`} style={{ paddingLeft: 8 + depth * 14 }} aria-expanded={open} onClick={() => toggle(dirPath)} title={dirPath}>
+              {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+              <Folder size={14} />
+              <span className={styles.dirName}>{d.name}</span>
+            </button>
+            {open && <Tree node={d} path={dirPath} depth={depth + 1} collapsed={collapsed} toggle={toggle} onSelect={onSelect} />}
           </div>
-          <Tree node={d} depth={depth + 1} onSelect={onSelect} />
-        </div>
-      ))}
+        )
+      })}
       {node.files.map((f) => (
         <button key={f.path} type="button" className={styles.file} style={{ paddingLeft: 8 + depth * 14 }} onClick={() => onSelect(f.path)} title={f.path}>
           <span className={styles.fileName}>{f.path.split('/').pop()}</span>
@@ -81,6 +86,8 @@ export function ChangesPanel({ sessionId, cwd, version, busy }: Props) {
   const activeSessions = sessions.data?.filter((s) => s.status === 'running' || s.status === 'waiting_user' || (s.backgroundTasks ?? 0) > 0).map((s) => s.id).sort().join(',')
   const [discarding, setDiscarding] = useState(false)
   const [tab, setTab] = useState<'changes' | 'files' | 'services'>('changes')
+  // 记折叠的目录而非展开的：新出现的改动目录默认展开
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set())
   // 事件密集时（一轮里连着几十次 Edit）合并成 1.5s 一次
   const { refetch } = changes
   useEffect(() => {
@@ -144,7 +151,7 @@ export function ChangesPanel({ sessionId, cwd, version, busy }: Props) {
         ) : files.length === 0 ? (
           <div className={styles.empty}>{changes.data ? 'Working tree clean' : '…'}</div>
         ) : (
-          <Tree node={buildTree(files)} depth={0} onSelect={(path) => showDiff(sessionId, path, discard)} />
+          <Tree node={buildTree(files)} path="" depth={0} collapsed={collapsed} toggle={(path) => setCollapsed((prev) => { const next = new Set(prev); if (next.has(path)) next.delete(path); else next.add(path); return next })} onSelect={(path) => showDiff(sessionId, path, discard)} />
         )}
       </div>
       </section>
