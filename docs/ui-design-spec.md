@@ -97,7 +97,7 @@ Files 工具栏提供 `FilePlus` / `FolderPlus` 图标，在项目根新建文�
 | `user_input.resolved` | `QuestionCard`（resolved） | 同审批 resolved 态，正文显示所选答案。 |
 | `turn.interrupted` | `InterruptedRow` | 虚线边框单行，`--surface-2` 底，方块图标 + "已中断 · 设备 · 时间"。 |
 | `error` | `ErrorCard` | `--danger-bg` 底、`--danger-border` 边，标题 danger，说明 text-2（含可恢复提示）。 |
-| `GET /api/usage`（5s 轮询，不走事件流） | `RateMeter` | 桌面侧栏底部、"项目 / 设置"之上，按 Provider 分组；每条：标签 `5h` / `week` + 4px 进度条（填充 `--text-2`，不用琥珀）+ 等宽 `42%` + 等宽重置倒计时 `2h14m`。 |
+| `GET /api/usage`（5s 轮询，不走事件流） | `RateMeter` | 桌面侧栏底部、"项目 / 设置"之上，按 Provider 分组；每条：标签 `5h` / `week` + 4px 进度条（填充 `--text-2`，不用琥珀）+ 等宽 `42%` + 等宽重置倒计时 `2h14m`。周额度条上加一条比进度条高的竖线（`--text`），标出按时间均匀消耗此刻应用到的位置；用量超过竖线时填充和百分比改 `--danger`。 |
 | 连接状态 | `ConnectionBanner` | `--surface-2` 底单行：刷新图标 + "已重新连接 · 回放 n 条事件（seq a → b）"。离线时同样式换文案。 |
 | 附件上传 | `AttachmentChip` | `--surface-3` 底、`--border-2` 边、6px 圆角：22px 缩略图 + 等宽文件名 + 大小/进度 + 移除按钮。 |
 | Provider | `ProviderChip` | 等宽、`--border-2` 描边、`--text-2`，内容 `claude · opus-5`。不上色。 |

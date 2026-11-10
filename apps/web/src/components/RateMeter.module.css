@@ -29,20 +29,37 @@
   color: var(--text-3);
 }
 .bar {
+  position: relative;
   flex: 1;
   height: 4px;
   border-radius: 2px;
   background: rgba(255, 255, 255, 0.08);
-  overflow: hidden;
 }
 .fill {
   height: 100%;
+  border-radius: 2px;
   background: var(--text-3);
+}
+/* 周额度的均匀消耗线，比进度条高出一截以便一眼对比 */
+.pace {
+  position: absolute;
+  top: -3px;
+  width: 2px;
+  height: 10px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--text);
+}
+.fill.over {
+  background: var(--danger);
 }
 .value {
   width: 32px;
   text-align: right;
   color: var(--text-2);
+}
+.value.over {
+  color: var(--danger);
 }
 .reset {
   width: 44px;
