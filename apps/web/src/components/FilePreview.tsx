@@ -102,6 +102,7 @@ function Preview({ sessionId, path, line, image, discard, onDismiss, navigation 
   const [imageError, setImageError] = useState(false)
   const [copied, setCopied] = useState(false)
   const imageRef = useRef<HTMLImageElement>(null)
+  const frameRef = useRef<HTMLIFrameElement>(null)
   const [dragging, setDragging] = useState(false)
   const drag = useRef<{ id: number; x: number; y: number; left: number; top: number } | null>(null)
   const dragged = useRef(false)
@@ -360,7 +361,7 @@ function Preview({ sessionId, path, line, image, discard, onDismiss, navigation 
         {file.kind === 'pdf' && <><object className={styles.pdf} data={url} type="application/pdf"><p>PDF preview is unavailable on this device.</p></object></>}
         {file.kind === 'audio' && <audio controls src={url} />}
         {file.kind === 'video' && <video className={styles.video} controls src={url} />}
-        {html && !source && !dirty && <iframe key={q.dataUpdatedAt} className={styles.html} src={htmlUrl} title={file.name} onLoad={(e) => bindHtmlImages(e.currentTarget)} />}
+        {html && !source && !dirty && <iframe ref={frameRef} key={q.dataUpdatedAt} className={styles.html} src={htmlUrl} title={file.name} onLoad={(e) => bindHtmlImages(e.currentTarget)} />}
         {file.content !== null && (!html || source || dirty) && <>
           {file.kind === 'markdown' && !source && !dirty ? <div className={styles.markdown}><Markdown remarkPlugins={[remarkGfm]} urlTransform={(value) => fileReference(value) ? value : defaultUrlTransform(value)} components={{ code: ({ className, children }) => {
             const language = /language-([^\s]+)/.exec(className ?? '')?.[1]
@@ -388,7 +389,17 @@ function Preview({ sessionId, path, line, image, discard, onDismiss, navigation 
       e.preventDefault()
       navigation.step(e.key === 'ArrowLeft' ? -1 : 1)
     }} aria-label={navigation ? 'Image preview' : 'File preview'}>{body}</dialog>
-  return <>{preview}{gallery && <Preview key={gallery.images[gallery.index].url} sessionId="" path={gallery.images[gallery.index].url} image={gallery.images[gallery.index]} onDismiss={() => setGallery(null)} navigation={{
+  return <>{preview}{gallery && <Preview key={gallery.images[gallery.index].url} sessionId="" path={gallery.images[gallery.index].url} image={gallery.images[gallery.index]} onDismiss={() => {
+    setGallery(null)
+    // Android Chrome：图片弹窗 showModal 期间报告 iframe 为 inert，关闭后 iframe 的滚动命中区域不刷新，滑动落到外层页面（下拉触发整页刷新）。
+    // 等图片弹窗从 DOM 移除后把 iframe 隐藏两帧再恢复，迫使重建；在 close 当下做或只隐藏一帧，真机验证均无效
+    setTimeout(() => {
+      const frame = frameRef.current
+      if (!frame) return
+      frame.style.visibility = 'hidden'
+      requestAnimationFrame(() => requestAnimationFrame(() => { frame.style.visibility = '' }))
+    })
+  }} navigation={{
     index: gallery.index, count: gallery.images.length,
     step: (offset) => setGallery((current) => current && ({ ...current, index: Math.max(0, Math.min(current.images.length - 1, current.index + offset)) })),
   }} />}</>
