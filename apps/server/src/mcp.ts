@@ -202,7 +202,7 @@ export function createMcpServer(hub: Hub, store: Store, services: Services, sche
 
   // Inbox：Agent 自主运行时找用户的唯一出口。提交即返回，不等用户，一轮不为等人挂着
   tool('ask_user', {
-    description: 'File a decision or question for the user in the AgentDeck Inbox, without waiting for the answer. Use it when you need a decision or information only the user has, especially in unattended runs where nobody watches this conversation. Then carry on with work that does not depend on the answer, or end your turn; do not wait or poll. The answer arrives later as a new message in this session. One question per call; do not file a question that is already open.',
+    description: 'File a decision or question for the user in the AgentDeck Inbox, without waiting for the answer. Use it when you need a decision or information only the user has, especially in unattended runs where nobody watches this conversation. Then carry on with work that does not depend on the answer, or end your turn; do not wait or poll. The answer arrives later as a new message in this session. One question per call; do not file a question that is already open. Put the current status in details instead of also filing a report.',
     inputSchema: {
       question: z.string().min(1).describe('One line the user can answer without opening this session'),
       details: z.string().optional().describe('Markdown: what you found, the evidence, and what happens with each choice'),
@@ -212,7 +212,7 @@ export function createMcpServer(hub: Hub, store: Store, services: Services, sche
   }, ({ question, details, options = [], multiSelect = false }) => json({ id: hub.fileQuestion(callerId, { question, details, options, multiSelect }).id, filed: true }));
 
   tool('report_to_user', {
-    description: 'File a report in the AgentDeck Inbox for the user to read later, e.g. the outcome of a scheduled or long-running task. The user reads it without opening this session, so make it self-contained and short. Not for questions: use ask_user for anything that needs an answer.',
+    description: 'File a report in the AgentDeck Inbox for the user to read later: the outcome when a scheduled or long-running task finishes or stops for good. The user reads it without opening this session, so make it self-contained and short. Not for questions or progress while waiting on the user: when you file ask_user, do not also report; put the status in its details.',
     inputSchema: {
       title: z.string().min(1),
       summary: z.string().min(1).describe('One line shown in the Inbox list, e.g. key numbers or the verdict'),

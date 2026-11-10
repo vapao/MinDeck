@@ -182,11 +182,11 @@ Files 支持在项目根目录或指定子目录新建空文件 / 文件夹，�
 - 三类事项：
   - **Blocking**：卡着一轮的审批和同步提问（会话 waiting_user），在 Inbox 详情里直接用原审批卡 / 提问卡处理。
   - **Decide**：异步提问——Agent 经 MCP `ask_user` 提交的待决定事项，以及 Codex 的非阻塞提问（规则 14）。答案作为一条用户消息发回原会话并唤醒它（运行中则插入当前轮）。可 Dismiss：不答就关掉，记为作废，不通知 Agent。
-  - **Report**：Agent 经 MCP `report_to_user` 提交的汇报，只读，Mark as read 后进 Done。
+  - **Report**：Agent 经 MCP `report_to_user` 提交的汇报，只读，Mark as read 后进 Done。只用于结果（任务完成或确定无法完成）；等用户时只发 `ask_user`，进度写进 details，同一件事不同时出现在 Decide 和 Report（工具说明里约束）。
 - `ask_user(question, details?, options?, multiSelect?)`：存为 `pending_requests` 里 `kind: 'question'`、`delivery: 'async'`、`filed: true` 的一行，不挂起调用方、不改会话状态，提交即返回。`filed` 事项 **Hub 重启不作废**（其余待处理请求照旧作废）；用户中断提交它的那一轮时作废（之前几轮提交的不动）；会话删除时随会话删除。会话流里显示为非阻塞提问卡（说明按纯文本），Inbox 里问题作标题、说明按 Markdown 渲染。
 - `report_to_user(title, summary, body)`：存 `reports` 表，随会话删除。两个工具 Provider 侧免审。
 - REST：`GET /api/inbox`（待处理请求 + 未读汇报；`?done=true` 为已处理的异步提问（带答案）与已读汇报，各最近 50 条）、`POST /api/pending/:id/dismiss`（只限异步提问）、`POST /api/reports/:id/read`。前端 5s 轮询，侧栏角标与手机 tab 角标共用。
-- Agent 是否使用这两个工具取决于它自己的判断和任务 prompt；定时任务的 prompt 里要写明"待决定事项用 ask_user 提交，结论用 report_to_user 汇报"。
+- Agent 是否使用这两个工具取决于它自己的判断和任务 prompt；定时任务的 prompt 里要写明"待决定事项用 ask_user 提交，结论用 report_to_user 汇报，等用户时不另发汇报"。
 - 新提问和汇报会推送到手机，见「推送到手机」。
 
 ## Automations 与唤醒（2026-11-04）
