@@ -98,6 +98,8 @@ export function useScreenLock() {
 export function usePresence(locked: boolean) {
   const lockedRef = useRef(locked)
   const report = useRef(() => {})
+  // 回到前台时撤掉已弹出的系统通知：macOS 设为"提醒"样式时会一直停在屏幕上
+  const shown = useRef(new Set<Notification>())
 
   useEffect(() => {
     let ws: WebSocket | null = null
@@ -121,6 +123,8 @@ export function usePresence(locked: boolean) {
         if (msg.type !== 'notice' || isForeground() || !notificationsSupported || Notification.permission !== 'granted') return
         // 同 tag 替换旧通知时默认不再横幅提醒；旧通知还留在通知中心就等于静默，所以要 renotify（TS 的 DOM 类型里没有这个字段）
         const n = new Notification(msg.title, { body: msg.body, tag: msg.sessionId, renotify: true } as NotificationOptions)
+        shown.current.add(n)
+        n.onclose = () => shown.current.delete(n)
         n.onclick = () => {
           window.focus()
           navigate(`/s/${msg.sessionId}`)
@@ -134,6 +138,7 @@ export function usePresence(locked: boolean) {
     const changed = () => {
       connect()
       report.current()
+      if (isForeground()) for (const n of shown.current) n.close()
     }
     window.addEventListener('focus', changed)
     window.addEventListener('blur', changed)
