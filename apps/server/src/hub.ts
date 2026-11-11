@@ -60,6 +60,8 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
   const compactHintTokens = 150_000;
   // 刚发过压缩提示的会话：提示那一轮结束时不再提示，否则 Agent 没预约、上下文不降就会一直循环
   const compactHinted = new Set<string>();
+  // 正在跑 Hub 发起的压缩提示或压缩（不带续跑）的会话：这类轮次的落点不推，真正的落点在它之前已经推过。用户或回调插话即清掉
+  const quietTurns = new Set<string>();
   // 各会话 Agent 自己起的后台任务数：Hub 重启时子进程连同后台任务一起没了，所以只放内存
   const background = new Map<string, number>();
   const repositoryWrites = new Map<string, string>();
@@ -102,20 +104,25 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
     const was = store.getSession(sessionId)?.status;
     store.setSessionStatus(sessionId, status);
     emit(sessionId, { type: 'session.status', payload: { status } });
-    // 只推一轮"在跑"之后的落点。父会话等着结果的子会话结束时不推（父会话收尾时才推），但等审批要推：父会话代批不了；管家的结果在管家页看
-    if ((was === 'running' || was === 'waiting_user') && status !== 'running' && status !== was && !(status !== 'waiting_user' && watchers.has(sessionId)) && !getSession(sessionId).steward) {
-      // 同步处理完再看：一轮结束时可能紧接着发出压缩，那就等压缩完的落点再推
-      setImmediate(() => pushStatus(sessionId, status));
+    const housekeeping = (status === 'idle' || status === 'error') && quietTurns.delete(sessionId);
+    // 只推一轮"在跑"之后的落点。父会话等着结果的子会话结束时不推（父会话收尾时才推），但等审批要推：父会话代批不了；管家的结果在管家页看。
+    // 父会话还在等子会话回报时的 idle 也不推（"已交给 xx 复核"），最后一个回报处理完才推；压缩提示和压缩那几轮的 idle 不推
+    const awaitsChild = [...watchers.values()].some((parents) => parents.has(sessionId));
+    if ((was === 'running' || was === 'waiting_user') && status !== 'running' && status !== was && !(status !== 'waiting_user' && watchers.has(sessionId)) && !(status === 'idle' && (housekeeping || awaitsChild)) && !getSession(sessionId).steward) {
+      // 同步处理完再看：一轮结束时可能紧接着发出带续跑的压缩，那就等续跑完的落点再推
+      const upTo = store.lastSeq(sessionId);
+      setImmediate(() => pushStatus(sessionId, status, upTo));
     }
     // 插入的追加指令处理完才算结束（Provider 只在那时报 turn 结束）；waiting_user 不回调：父会话代批不了，靠用户自己处理
     if (status === 'idle' || status === 'error') notifyWatchers(sessionId, status);
   }
 
-  function pushStatus(sessionId: string, status: SessionStatus) {
+  function pushStatus(sessionId: string, status: SessionStatus, upTo: number) {
     const session = store.getSession(sessionId);
-    if (!session || session.status !== status) return;
+    // 紧接着跑的是压缩提示 / 压缩时，这一轮就是真正的落点，按落点时的事件推
+    if (!session || (session.status !== status && !quietTurns.has(sessionId))) return;
     const name = `${session.title ?? 'New session'} · ${session.cwd.split('/').pop()}`;
-    const events = store.eventsAfter(sessionId, Math.max(0, store.lastSeq(sessionId) - 300));
+    const events = store.eventsAfter(sessionId, Math.max(0, upTo - 300)).filter((e) => e.seq <= upTo);
     const turn = events.slice(events.findLastIndex((e) => e.type === 'turn.started') + 1);
     if (status === 'waiting_user') {
       const pending = store.pendingBySession(sessionId).filter((p) => p.kind !== 'question' || p.delivery !== 'async');
@@ -150,7 +157,11 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
       const wakes = autoWakes.get(parentId) ?? 0;
       const limit = store.canSpawn(parentId) ? maxGrantedAutoWakes : maxAutoWakes;
       if (wakes >= limit) {
-        emit(parentId, { type: 'error', payload: { message: `Skipped the result of session ${childId}: ${limit} automatic wake-ups in a row without your input. Send a message to continue.` } });
+        const message = `Skipped the result of session ${childId}: ${limit} automatic wake-ups in a row without your input. Send a message to continue.`;
+        emit(parentId, { type: 'error', payload: { message } });
+        // 父会话之前等回报时的 idle 没推，这里不推用户就不知道它停住了
+        const parent = getSession(parentId);
+        if (!parent.steward) push.send(`❌ ${parent.title ?? 'New session'} · ${parent.cwd.split('/').pop()}`, message, parentId);
         continue;
       }
       autoWakes.set(parentId, wakes + 1);
@@ -195,6 +206,7 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
     pendingCompacts.delete(sessionId);
     contextTokens.delete(sessionId);
     compactHinted.delete(sessionId);
+    quietTurns.delete(sessionId);
     titleJobs.get(sessionId)?.abort();
     store.deleteSession(sessionId);
     // 表已一致，目录删失败也不回滚；残留会在下次删除同 id 时被 force 覆盖
@@ -315,6 +327,7 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
     try {
       if (pending) {
         sendMessage(sessionId, `/compact ${pending.instructions}`, [], 'agent');
+        quietTurns.add(sessionId);
         // 压缩已在跑，这条走插入路径排在压缩之后；用户中断压缩时随 cancelQueued 一起丢弃
         if (pending.continueWith) sendMessage(sessionId, pending.continueWith, [], 'agent');
       } else if (!hinted) {
@@ -334,6 +347,7 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
     if (session.provider === 'codex' || session.steward || tokens === undefined || tokens < compactHintTokens || background.has(sessionId)) return;
     compactHinted.add(sessionId);
     sendMessage(sessionId, `[AgentDeck] Your context is ${Math.round(tokens / 1000)}K tokens. Call compact_after_turn now with instructions on what to keep for whatever comes next in this session, then end your turn without doing anything else. Pass continueWith only if you stopped with unfinished steps to resume on your own.`, [], 'agent');
+    quietTurns.add(sessionId);
   }
 
   function dispatch(sessionId: string, provider: ProviderSession, { text, files }: { text: string; files: Attachment[] }) {
@@ -345,6 +359,7 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
   /** 异步提问的答案以用户消息送回：运行中插入当前轮，空闲时新开一轮 */
   function wake(session: Session, text: string) {
     const provider = ensureProvider(session);
+    quietTurns.delete(session.id);
     emit(session.id, { type: 'message.user', payload: { text, attachments: [] } });
     if (session.archivedAt) store.setSessionArchivedAt(session.id, null);
     if (session.status === 'running' || session.status === 'waiting_user') provider.send({ text, images: [] });
@@ -370,6 +385,7 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
     const fileOperation = writeBlocked(session.cwd);
     if (fileOperation) throw new HubError(409, `${fileOperation} in this workspace; try again when it finishes`);
     if (origin === 'user') autoWakes.delete(sessionId);
+    quietTurns.delete(sessionId);
     let files;
     try {
       files = attachments.forMessage(sessionId, attachmentIds);
