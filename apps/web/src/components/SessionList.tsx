@@ -166,7 +166,7 @@ function SessionList({ all, sessions, activeId, onSelect, actions, empty }: Prop
                     <span className={styles.titleRow}>
                       <span className={styles.title}>{s.title ?? 'New session'}</span>
                       {drafts.has(s.id) && <span className={styles.draft} title="Unsent draft">Draft</span>}
-                      <span className={styles.time}>{formatTime(s.updatedAt)}</span>
+                      <span className={styles.time}>{formatTime(s.updatedAt, true)}</span>
                     </span>
                     <span className={styles.metaRow}>
                       <code className={styles.chip}>{s.provider}</code>
