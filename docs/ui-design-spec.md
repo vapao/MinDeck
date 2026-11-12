@@ -12,7 +12,7 @@
 
 ## 2. Token
 
-实现为 `apps/web/src/styles/tokens.css` 里的 CSS 变量，组件样式只引用变量，不写裸色值。视觉基线于 2026-09-20 对齐 Turnwork（`~/Workspace/fizee/Turnwork`）：系统字体、13px 基准、半透明白描边、两档圆角、琥珀单强调色、克制的悬停态（120ms 过渡）。
+实现为 `apps/web/src/styles/tokens.css` 里的 CSS 变量，组件样式只引用变量，不写裸色值。视觉基线：系统字体、13px 基准、半透明白描边、两档圆角、琥珀单强调色、克制的悬停态（120ms 过渡）。
 
 ### 颜色
 

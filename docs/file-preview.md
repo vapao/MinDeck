@@ -58,7 +58,7 @@ bash scripts/install-finder-helper.sh
 
 在 AgentDeck Settings → Finder on this Mac 设置：
 
-- Mac Mini folder：例如 `/Users/you`
+- Hub folder：例如 `/Users/you`
 - Mounted folder on this Mac：例如 `/Volumes/aka`
 
 点击设置页底部的 Save changes 后，映射只保存在当前浏览器。同一浏览器更换 Hub 地址会有独立设置。映射按完整目录前缀匹配，不将 `/Users/aka-other` 当成 `/Users/aka` 的子目录。

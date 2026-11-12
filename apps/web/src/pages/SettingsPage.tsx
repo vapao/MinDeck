@@ -225,14 +225,14 @@ export function SettingsPage() {
           <section className={layout.section} aria-labelledby="finder-heading">
             <div className={layout.sectionHead}><h2 id="finder-heading">Finder on this Mac</h2></div>
             <label className={`${styles.field} ${layout.field}`}>
-              <span>Mac Mini folder</span>
+              <span>Hub folder</span>
               <input className={styles.input} value={localSettings.remote} onChange={(e) => { setLocalSettings({ ...localSettings, remote: e.target.value }); setLocalError('') }} placeholder="/Users/you" />
             </label>
             <label className={`${styles.field} ${layout.field}`}>
               <span>Mounted folder on this Mac</span>
               <input className={styles.input} value={localSettings.local} onChange={(e) => { setLocalSettings({ ...localSettings, local: e.target.value }); setLocalError('') }} placeholder="/Volumes/Your share" />
             </label>
-            <p className={layout.connectionInfo}>Saved in this browser only. Map a Mac Mini folder to its mounted path; clear the mounted folder to disable. Install AgentDeck Finder on your MacBook with <code>scripts/install-finder-helper.sh</code>.</p>
+            <p className={layout.connectionInfo}>Saved in this browser only. Map a folder on the Hub machine to its mounted path; clear the mounted folder to disable. Install AgentDeck Finder on this Mac with <code>scripts/install-finder-helper.sh</code>.</p>
           </section>
           <section className={layout.section} aria-labelledby="terminal-heading">
             <div className={layout.sectionHead}><h2 id="terminal-heading">iTerm2 on this Mac</h2></div>
