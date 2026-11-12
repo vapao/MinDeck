@@ -2,7 +2,9 @@
 
 [English](README.md) | 简体中文
 
-自托管的 Claude Code / Codex / DeepSeek 控制台。Agent 跑在一台常开的 Mac 上，你在笔记本、手机或任意浏览器里发消息、传截图、看流式输出、处理审批；Agent 可以按定时任务自己干活，有需要你决定或想汇报的事情会进 Inbox。
+自托管的 Claude Code / Codex / DeepSeek 控制台。装在你的 Mac 上，在浏览器里使用：发消息、传截图、看流式输出、处理审批；Agent 可以按定时任务自己干活，有需要你决定或想汇报的事情会进 Inbox。
+
+一台 Mac 就够用。配上 Tailscale 还可以从手机或另一台电脑访问，比如让 Agent 跑在常开的 Mac mini 上，在笔记本上操作。
 
 单用户自用，不是 SaaS，也没有账号体系。
 
@@ -68,9 +70,11 @@ scripts/launchd.sh status | logs | restart | uninstall
 
 launchd 不读 `~/.zshrc`。`install` 会把当前 shell 的代理变量（`http_proxy` 等）写进 plist；需要代理才能访问 Anthropic / OpenAI 时，先在 shell 里设好再 install，改了代理要重新 install。
 
-### 从其他设备访问
+Agent 只在 Mac 醒着时运行。笔记本合盖休眠后，进行中的会话和定时任务也会暂停；需要全天候运行的话，装在常开的 Mac（比如 Mac mini）上。
 
-Hub 只监听本机。推荐用 Tailscale Serve 在 tailnet 内提供 HTTPS（手机添加到主屏幕等 PWA 功能需要 HTTPS）：
+### 从其他设备访问（可选）
+
+只在运行 MinDeck 的这台 Mac 上使用的话可以跳过。Hub 只监听本机。推荐用 Tailscale Serve 在 tailnet 内提供 HTTPS（手机添加到主屏幕等 PWA 功能需要 HTTPS）：
 
 ```sh
 tailscale serve --bg --https=8450 8004
@@ -107,7 +111,7 @@ pnpm --filter @mindeck/server test
 
 ### Finder / iTerm2 联动（可选）
 
-在你**使用浏览器的那台 Mac** 上运行 `scripts/install-finder-helper.sh`（需要 Xcode Command Line Tools），然后在设置页配置 Hub 主机目录到本机挂载目录的映射、SSH 主机名。之后可以在会话里一键用 Finder 打开文件、用 iTerm2 SSH 到项目目录。
+适用于在另一台 Mac 上使用 MinDeck 的情况。在你**使用浏览器的那台 Mac** 上运行 `scripts/install-finder-helper.sh`（需要 Xcode Command Line Tools），然后在设置页配置 Hub 主机目录到本机挂载目录的映射、SSH 主机名。之后可以在会话里一键用 Finder 打开文件、用 iTerm2 SSH 到项目目录。
 
 ## License
 

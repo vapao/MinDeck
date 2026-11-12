@@ -2,7 +2,9 @@
 
 English | [简体中文](README.zh-CN.md)
 
-A self-hosted console for Claude Code, Codex and DeepSeek. Agents run on an always-on Mac; you send messages, share screenshots, watch streaming output and handle approvals from your laptop, phone or any browser. Agents can also work on a schedule and send whatever needs your decision or attention to an Inbox.
+A self-hosted console for Claude Code, Codex and DeepSeek. It runs on your Mac and you use it in the browser: send messages, share screenshots, watch streaming output and handle approvals. Agents can also work on a schedule and send whatever needs your decision or attention to an Inbox.
+
+One Mac is all you need. With Tailscale you can also reach it from your phone or another computer, for example keeping agents on an always-on Mac mini and driving them from a laptop.
 
 Single user, self-hosted. Not a SaaS, no accounts.
 
@@ -68,9 +70,11 @@ scripts/launchd.sh status | logs | restart | uninstall
 
 launchd does not read `~/.zshrc`. `install` copies the proxy variables (`http_proxy` and friends) from your current shell into the plist. If you need a proxy to reach Anthropic / OpenAI, set it in the shell before installing, and re-run `install` whenever it changes.
 
-### Access from other devices
+Agents only run while the Mac is awake. On a laptop that sleeps with the lid closed, running sessions and scheduled tasks pause too; for round-the-clock use, run MinDeck on an always-on Mac such as a Mac mini.
 
-The Hub only listens on localhost. Use Tailscale Serve to expose it over HTTPS inside your tailnet (PWA features such as adding to the home screen require HTTPS):
+### Access from other devices (optional)
+
+Skip this if you only use MinDeck on the Mac it runs on. The Hub only listens on localhost. Use Tailscale Serve to expose it over HTTPS inside your tailnet (PWA features such as adding to the home screen require HTTPS):
 
 ```sh
 tailscale serve --bg --https=8450 8004
@@ -107,7 +111,7 @@ Design and implementation docs in `docs/` are in Chinese: `features.md` covers e
 
 ### Finder / iTerm2 integration (optional)
 
-On **the Mac you browse from**, run `scripts/install-finder-helper.sh` (requires Xcode Command Line Tools). Then in Settings, map the Hub machine's folder to where it is mounted locally and set the SSH host. Sessions can then reveal files in Finder and open an iTerm2 SSH session in the project folder.
+For using MinDeck from a different Mac than the one running the Hub. On **the Mac you browse from**, run `scripts/install-finder-helper.sh` (requires Xcode Command Line Tools). Then in Settings, map the Hub machine's folder to where it is mounted locally and set the SSH host. Sessions can then reveal files in Finder and open an iTerm2 SSH session in the project folder.
 
 ## License
 
