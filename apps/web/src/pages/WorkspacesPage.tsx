@@ -19,7 +19,7 @@ export function WorkspacesPage() {
   const remove = useMutation({ mutationFn: api.deleteWorkspace, onSuccess: invalidate })
   const rename = useMutation({ mutationFn: ({ id, alias }: { id: string; alias: string }) => api.updateWorkspace(id, { alias }), onSuccess: invalidate })
   const [adding, setAdding] = useState(false)
-  // Finder / iTerm2 唤起的是 MacBook 上的 helper，与输入框底部一致只在桌面给
+  // Finder / Terminal 唤起浏览器这台 Mac 上的 helper，只在桌面显示
   const desktop = useMediaQuery('(min-width: 1024px)')
 
   const onRename = async (id: string, current: string) => {
@@ -64,7 +64,7 @@ export function WorkspacesPage() {
                     <button type="button" className={styles.rowButton} onClick={() => openProjectFinder(w.path)} aria-label="Open in Finder" title="Open this project folder in Finder">
                       <FolderOpen size={14} />
                     </button>
-                    <button type="button" className={styles.rowButton} onClick={() => openProjectTerminal(w.path)} aria-label="Open in iTerm2" title="Connect to this project over SSH in iTerm2">
+                    <button type="button" className={styles.rowButton} onClick={() => openProjectTerminal(w.path)} aria-label="Open in Terminal" title="Open a terminal in this project">
                       <SquareTerminal size={14} />
                     </button>
                   </>

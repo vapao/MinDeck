@@ -6,7 +6,8 @@ final class FinderDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func reveal(_ event: NSAppleEventDescriptor, reply: NSAppleEventDescriptor) {
-        defer { NSApp.terminate(nil) }
+        var terminate = true
+        defer { if terminate { NSApp.terminate(nil) } }
         guard let raw = event.paramDescriptor(forKeyword: keyDirectObject)?.stringValue,
               let url = URLComponents(string: raw), url.scheme == "mindeck-finder",
               let path = url.queryItems?.first(where: { $0.name == "path" })?.value,
@@ -19,18 +20,27 @@ final class FinderDelegate: NSObject, NSApplicationDelegate {
             openTerminal(host: host, path: path)
             return
         }
-        guard url.host == "reveal" else { return }
+        guard url.host == "reveal" || url.host == "local-terminal" else { return }
         var directory: ObjCBool = false
         guard FileManager.default.fileExists(atPath: path, isDirectory: &directory) else {
             let alert = NSAlert()
             alert.messageText = "File not found on this Mac"
-            alert.informativeText = "Check that the shared folder is mounted and the Finder mapping is correct.\n\n" + path
+            alert.informativeText = "Check that the path exists. For a remote folder, check its mount and Finder mapping.\n\n" + path
             NSApp.activate(ignoringOtherApps: true)
             alert.runModal()
             return
         }
         let file = URL(fileURLWithPath: path)
-        if directory.boolValue { NSWorkspace.shared.open(file) }
+        if url.host == "local-terminal" {
+            guard directory.boolValue,
+                  let terminal = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Terminal") else { return }
+            // 把目录 URL 交给 Terminal，不把路径拼进 shell 命令。
+            terminate = false
+            NSWorkspace.shared.open([file], withApplicationAt: terminal, configuration: NSWorkspace.OpenConfiguration()) { _, error in
+                if let error = error { self.showError("Could not open Terminal", error.localizedDescription) }
+                NSApp.terminate(nil)
+            }
+        } else if directory.boolValue { NSWorkspace.shared.open(file) }
         else { NSWorkspace.shared.activateFileViewerSelecting([file]) }
     }
 

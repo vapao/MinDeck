@@ -1,0 +1,50 @@
+name: Release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+jobs:
+  build:
+    strategy:
+      matrix:
+        runner: [macos-15, macos-15-intel]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.24.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.20.0
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Codex schema is generated (gitignored), and only needed by typecheck.
+      - run: npm install -g @openai/codex@0.160.1
+      - run: pnpm codex:schema
+      - run: pnpm typecheck
+      - run: pnpm build:release "$GITHUB_REF_NAME"
+        env:
+          MINDECK_REPOSITORY: ${{ github.repository }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.runner }}
+          path: |
+            dist/*.tar.gz
+            dist/*.sha256
+            dist/install.sh
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: release
+          merge-multiple: true
+      - run: gh release create "$GITHUB_REF_NAME" release/* --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}

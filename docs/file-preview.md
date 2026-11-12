@@ -46,9 +46,17 @@ Show hidden files 默认关闭，在当前浏览器 localStorage 记住；控制
 
 `PUT /api/sessions/:id/files/content`：请求体 `{ path, content }`，path 为预览返回的绝对路径，服务端换算回 cwd 相对路径后走与新建 / 删除相同的写入校验与工作区写锁（Agent 运行中拒绝保存），只覆盖已存在的普通文件，符号链接不可保存。不做并发冲突检测，保存直接覆盖磁盘当前内容；仅桌面端使用，不针对手机适配。
 
-## MacBook 一次性安装
+## 本机与远程模式
 
-在 **MacBook** 上取得本仓库的 `scripts/install-finder-helper.sh` 与 `scripts/finder-helper/main.swift`，保持相对目录不变，执行：
+Settings → Finder & Terminal → Hub location 支持 Auto / This Mac / Remote Mac，设置只保存于当前浏览器。Auto 在 `localhost`、`127.0.0.1`、`[::1]` 时按本机，其余按远程；通过 SSH 隧道访问远端 localhost 时手动选 Remote Mac。
+
+本机模式不需要目录映射或 SSH：Finder 使用原始绝对路径，Terminal 通过 macOS API 接收目录 URL，打开该目录的新终端，不把路径拼进 shell 命令。设置页隐藏远程映射和 SSH 字段；已有远程配置保留以便切回。项目行和输入框入口统一标作 Open in Terminal。
+
+安装版自动安装并注册已编译助手，不需要 Xcode，卸载安装版时一并移除。源码运行或仅作远程浏览器控制端的 Mac 仍可执行下述安装脚本。
+
+## 浏览器所在 Mac 一次性安装
+
+在**浏览器所在 Mac** 上取得本仓库的 `scripts/install-finder-helper.sh` 与 `scripts/finder-helper/main.swift`，保持相对目录不变，执行：
 
 ```sh
 bash scripts/install-finder-helper.sh
@@ -56,7 +64,7 @@ bash scripts/install-finder-helper.sh
 
 安装需要 Xcode Command Line Tools（`xcrun swiftc`）。安装到 `~/Applications/MinDeck Finder.app`，注册 `mindeck-finder:` 协议，无常驻进程或监听端口。移除此应用即可卸载。
 
-在 MinDeck Settings → Finder on this Mac 设置：
+在 Remote Mac 模式的 MinDeck Settings → Finder on this Mac 设置：
 
 - Hub folder：例如 `/Users/you`
 - Mounted folder on this Mac：例如 `/Volumes/aka`
@@ -71,7 +79,7 @@ bash scripts/install-finder-helper.sh
 
 ## 项目 SSH 终端
 
-桌面输入框底部的 Open in iTerm2 图标位于 Start fresh 左侧。Settings → iTerm2 on this Mac 中填写 MacBook `~/.ssh/config` 的主机别名（如 `mac-mini`），也可填写 `user@hostname`；端口、密钥等放在 SSH config 中。点击页尾 Save changes 后，该设置只保存在当前浏览器；未配置时按钮提示设置。
+远程模式下，桌面输入框底部的 Open in Terminal 图标位于 Start fresh 左侧。Settings → iTerm2 on this Mac 中填写 MacBook `~/.ssh/config` 的主机别名（如 `mac-mini`），也可填写 `user@hostname`；端口、密钥等放在 SSH config 中。点击页尾 Save changes 后，该设置只保存在当前浏览器；未配置时按钮提示设置。
 
 重新运行安装脚本更新辅助应用。首次调用可能要求允许 MinDeck Finder 控制 iTerm2；可在 macOS「系统设置 → 隐私与安全性 → 自动化」管理。辅助应用会在已有 iTerm2 窗口新建标签页，没有窗口则新建窗口，执行 SSH 并进入会话原始 cwd，随后启动远端登录 Shell。新建 session 先启动 `/bin/zsh -l`，再输入 SSH 命令；SSH 失败或结束后保留本地提示符，便于查看错误和重试。不会使用 Finder 映射，不会向已有 session 写命令。SSH 密码和主机确认在终端中处理。
 

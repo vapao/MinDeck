@@ -58,13 +58,18 @@ export function fileReference(href: string) {
 }
 const mappingKey = 'finder:mapping'
 function mapping() { return JSON.parse(localStorage.getItem(mappingKey) ?? '{"remote":"","local":""}') as { remote: string; local: string } }
-export type LocalSettings = { remote: string; local: string; sshHost: string }
-export function readLocalSettings(): LocalSettings { return { ...mapping(), sshHost: localStorage.getItem('terminal:sshHost') ?? '' } }
+export type LocalSettings = { mode: 'auto' | 'local' | 'remote'; remote: string; local: string; sshHost: string }
+export function readLocalSettings(): LocalSettings { return { mode: (localStorage.getItem('desktop:mode') as LocalSettings['mode']) ?? 'auto', ...mapping(), sshHost: localStorage.getItem('terminal:sshHost') ?? '' } }
 export function saveLocalSettings(value: LocalSettings) {
+  localStorage.setItem('desktop:mode', value.mode)
   localStorage.setItem(mappingKey, JSON.stringify({ remote: value.remote, local: value.local }))
   localStorage.setItem('terminal:sshHost', value.sshHost)
 }
+export function isLocalConnection(mode = readLocalSettings().mode) {
+  return mode === 'local' || (mode === 'auto' && ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname))
+}
 export function mappedPath(path: string) {
+  if (isLocalConnection()) return path
   const { remote, local } = mapping()
   const prefix = remote.replace(/\/+$/, '')
   if (!local || !remote || (path !== prefix && !path.startsWith(prefix + '/'))) return null
@@ -73,15 +78,19 @@ export function mappedPath(path: string) {
 export function openProjectFinder(path: string) {
   const local = mappedPath(path)
   if (!local) {
-    void dialog.alert({ title: 'Set up Finder', message: 'Configure this project’s folder mapping in Settings → Finder on this Mac, and install the MinDeck Finder helper on your MacBook.' })
+    void dialog.alert({ title: 'Set up Finder', message: 'Configure this project’s folder mapping in Settings → Finder on this Mac, and install the MinDeck Finder helper on this Mac.' })
     return
   }
   window.location.href = `mindeck-finder://reveal?path=${encodeURIComponent(local)}`
 }
 export function openProjectTerminal(path: string) {
+  if (isLocalConnection()) {
+    window.location.href = `mindeck-finder://local-terminal?path=${encodeURIComponent(path)}`
+    return
+  }
   const host = localStorage.getItem('terminal:sshHost') ?? ''
   if (!host) {
-    void dialog.alert({ title: 'Set up iTerm2', message: 'Set SSH host in Settings → iTerm2 on this Mac, and install the updated MinDeck Finder helper on your MacBook.' })
+    void dialog.alert({ title: 'Set up iTerm2', message: 'Set SSH host in Settings → iTerm2 on this Mac, and install the updated MinDeck Finder helper on this Mac.' })
     return
   }
   window.location.href = `mindeck-finder://terminal?host=${encodeURIComponent(host)}&path=${encodeURIComponent(path)}`

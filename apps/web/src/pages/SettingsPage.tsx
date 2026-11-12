@@ -5,7 +5,7 @@ import { getEffortOptions, modelOptions, permissionModeOptions, type ProviderId,
 import { api } from '../api'
 import { providerName } from '../format'
 import { backToTab } from '../router'
-import { readLocalSettings, saveLocalSettings } from '../components/FilePreview'
+import { isLocalConnection, readLocalSettings, saveLocalSettings, type LocalSettings } from '../components/FilePreview'
 import { Select } from '../components/Select'
 import { SecretsSection } from '../components/SecretsSection'
 import { dialog } from '../components/Dialog'
@@ -55,13 +55,13 @@ export function SettingsPage() {
   // 只在从非 bypass 切到 bypass 时打断确认；已经是 bypass 时改别的字段不用每次都问
   const onSave = async () => {
     if (!dirty) return
-    const nextLocal = { remote: localSettings.remote.trim(), local: localSettings.local.trim(), sshHost: localSettings.sshHost.trim() }
+    const nextLocal = { mode: localSettings.mode, remote: localSettings.remote.trim(), local: localSettings.local.trim(), sshHost: localSettings.sshHost.trim() }
     if (localDirty) {
-      if (!nextLocal.remote.startsWith('/') || (nextLocal.local && !nextLocal.local.startsWith('/'))) {
+      if (!isLocalConnection(nextLocal.mode) && nextLocal.local && (!nextLocal.remote.startsWith('/') || !nextLocal.local.startsWith('/'))) {
         setLocalError('Use absolute paths starting with / for the Finder mapping.')
         return
       }
-      if (nextLocal.sshHost && !/^[A-Za-z0-9][A-Za-z0-9._@-]*$/.test(nextLocal.sshHost)) {
+      if (!isLocalConnection(nextLocal.mode) && nextLocal.sshHost && !/^[A-Za-z0-9][A-Za-z0-9._@-]*$/.test(nextLocal.sshHost)) {
         setLocalError('Enter an SSH host alias or user@hostname, without spaces or command options.')
         return
       }
@@ -222,7 +222,18 @@ export function SettingsPage() {
             </label>
             <p className={layout.connectionInfo}>Used for the daily brief and the Steward conversation. Always asks for approval. A change applies from your next message, which starts a fresh thread; memory and the latest brief carry over.</p>
           </section>}
-          <section className={layout.section} aria-labelledby="finder-heading">
+          <section className={layout.section} aria-labelledby="desktop-heading">
+            <div className={layout.sectionHead}><h2 id="desktop-heading">Finder &amp; Terminal</h2></div>
+            <label className={`${styles.field} ${layout.field}`}>
+              <span>Hub location</span>
+              <Select ariaLabel="Hub location" value={localSettings.mode} onChange={(mode) => setLocalSettings({ ...localSettings, mode: mode as LocalSettings['mode'] })} options={[
+                { value: 'auto', label: 'Auto' }, { value: 'local', label: 'This Mac' }, { value: 'remote', label: 'Remote Mac' },
+              ]} />
+            </label>
+            <p className={layout.connectionInfo}>Saved in this browser only. Auto treats localhost and loopback addresses as this Mac. For an SSH tunnel, choose Remote Mac.</p>
+            {isLocalConnection(localSettings.mode) && <p className={layout.connectionInfo}>Finder opens local paths directly. Terminal opens a new window in the project folder. MinDeck Finder is included with the installer; for a source setup, run <code>scripts/install-finder-helper.sh</code> on this Mac.</p>}
+          </section>
+          {!isLocalConnection(localSettings.mode) && <><section className={layout.section} aria-labelledby="finder-heading">
             <div className={layout.sectionHead}><h2 id="finder-heading">Finder on this Mac</h2></div>
             <label className={`${styles.field} ${layout.field}`}>
               <span>Hub folder</span>
@@ -242,6 +253,7 @@ export function SettingsPage() {
             </label>
             <p className={layout.connectionInfo}>Use a host alias from ~/.ssh/config or user@hostname. Configure ports and keys in SSH config. Saved in this browser only; Finder mapping is not used.</p>
           </section>
+          </>}
           <div className={layout.footer}>
             <button type="button" className={styles.primary} disabled={!dirty || save.isPending} onClick={onSave}>
               Save changes

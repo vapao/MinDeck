@@ -522,7 +522,7 @@ export function Composer({ draftKey, disabled, sending, running, interrupting, o
               </span>
             )}
             {onFinder && <button type="button" className={styles.fresh} onClick={onFinder} aria-label="Open in Finder" title="Open this project folder in Finder"><FolderOpen size={16} /></button>}
-            {onTerminal && <button type="button" className={styles.fresh} onClick={onTerminal} aria-label="Open in iTerm2" title="Connect to this project over SSH in iTerm2"><SquareTerminal size={16} /></button>}
+            {onTerminal && <button type="button" className={styles.fresh} onClick={onTerminal} aria-label="Open in Terminal" title="Open a terminal in this project"><SquareTerminal size={16} /></button>}
             <button type="button" className={styles.fresh} onClick={onFresh} disabled={sending || !onFresh} aria-label="Start fresh" title="Start a new session in the same workspace with a fresh context">
               <MessageSquarePlus size={16} />
             </button>

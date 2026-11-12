@@ -40,11 +40,11 @@ const store = openStore(dbPath);
 const attachments = createAttachmentStore(store, uploadsDir);
 const push = createPush(store);
 const hub = createHub(store, attachments, (sessionId) => mindeckMcpFor(`http://127.0.0.1:${port}/mcp`, sessionId), push);
-const services = createServices(store, resolve(repoRoot, 'data/logs/services'));
+const services = createServices(store, resolve(dirname(dbPath), 'logs/services'));
 const steward = createSteward(store, hub, services, resolve(dirname(dbPath), 'steward'));
 const scheduler = createScheduler(store, hub, undefined, steward.tick);
-// 首次启动把本仓库种进去，否则新建会话页是空的
-if (store.listWorkspaces().length === 0) store.createWorkspace({ id: randomUUID(), path: repoRoot, alias: basename(repoRoot), createdAt: new Date().toISOString() });
+// 源码运行保留默认项目；安装版通过环境变量跳过，让用户在 Projects 添加目录。
+if (process.env.MINDECK_SEED_WORKSPACE !== '0' && store.listWorkspaces().length === 0) store.createWorkspace({ id: randomUUID(), path: repoRoot, alias: basename(repoRoot), createdAt: new Date().toISOString() });
 
 const app = Fastify({ logger: true });
 const instanceId = randomUUID();
