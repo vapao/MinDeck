@@ -183,7 +183,12 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .mark,
+  .mark {
+    width: 18px;
+    height: 18px;
+    margin-right: 8px;
+    vertical-align: -4px;
+  }
   .bellLabel {
     display: none;
   }
