@@ -21,7 +21,6 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       # Codex schema is generated (gitignored), and only needed by typecheck.
-      - run: npm install -g @openai/codex@0.160.1
       - run: pnpm codex:schema
       - run: pnpm typecheck
       - run: pnpm build:release "$GITHUB_REF_NAME"

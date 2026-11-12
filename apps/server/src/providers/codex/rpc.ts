@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { createRequire } from 'node:module';
 import type { ClientRequest, ServerNotification, ServerRequest } from './schema';
 
 // codex app-server 的 stdio JSONL 传输（方案 §2.1）：一行一条 JSON-RPC 2.0 消息，双向都能发 request。
@@ -21,7 +22,7 @@ export class RpcError extends Error {
 
 export function spawnAppServer({ onNotification, onRequest, onExit }: RpcHandlers) {
   // request_user_input 默认只在 Plan 模式可用；这个 feature flag 让它在默认模式也能用（P0 验证，见 §16.2）
-  const child = spawn('codex', ['app-server', '--enable', 'default_mode_request_user_input'], { stdio: ['pipe', 'pipe', 'inherit'] });
+  const child = spawn(process.execPath, [createRequire(import.meta.url).resolve('@openai/codex/bin/codex.js'), 'app-server', '--enable', 'default_mode_request_user_input'], { stdio: ['pipe', 'pipe', 'inherit'] });
   let nextId = 1;
   const pending = new Map<number, { resolve(v: unknown): void; reject(e: Error): void }>();
   let exited = false;
@@ -58,7 +59,7 @@ export function spawnAppServer({ onNotification, onRequest, onExit }: RpcHandler
     }
   });
 
-  // spawn 失败（如 PATH 里没有 codex）只触发 error 不触发 exit，等待中的请求也要在这里结束，否则界面一直转圈
+  // spawn 失败只触发 error 不触发 exit，等待中的请求也要在这里结束，否则界面一直转圈
   let failure: Error | undefined;
   const fail = (reason: Error) => {
     exited = true;

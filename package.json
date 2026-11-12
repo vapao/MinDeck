@@ -8,10 +8,11 @@
     "build": "pnpm --filter @mindeck/web build",
     "start": "pnpm --filter @mindeck/server start",
     "typecheck": "pnpm -r typecheck",
-    "codex:schema": "codex app-server generate-ts --out apps/server/src/providers/codex/schema",
+    "codex:schema": "pnpm --filter @mindeck/server codex:schema",
     "build:release": "node scripts/build-release.mjs"
   },
   "devDependencies": {
-    "esbuild": "0.28.2"
+    "esbuild": "0.28.2",
+    "yaml": "2.8.2"
   }
 }

@@ -4,6 +4,7 @@ import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { createServer } from 'node:net';
 import { setTimeout as delay } from 'node:timers/promises';
+import { createHash } from 'node:crypto';
 
 const source = resolve(import.meta.dirname, '..');
 const root = resolve(process.env.MINDECK_INSTALL_ROOT ?? resolve(homedir(), '.mindeck'));
@@ -33,7 +34,9 @@ async function stop() {
 }
 async function requireIdle() {
   if (!loaded()) return;
-  const response = await fetch(`http://127.0.0.1:${saved.port}/api/sessions`, { signal: AbortSignal.timeout(5000) });
+  let response;
+  try { response = await fetch(`http://127.0.0.1:${saved.port}/api/sessions`, { signal: AbortSignal.timeout(5000) }); }
+  catch (error) { if (error.cause?.code === 'ECONNREFUSED') return; throw error; }
   if (!response.ok) throw new Error(`Cannot check running sessions: HTTP ${response.status}`);
   const sessions = await response.json();
   if (sessions.some((s) => !['idle', 'error'].includes(s.status) || s.backgroundTasks)) throw new Error('Sessions are busy. Let them finish, then run this command again.');
@@ -44,7 +47,7 @@ if (process.argv[2] === 'uninstall') {
   await stop();
   rmSync(plist, { force: true });
   if (existsSync(helper)) run(register, ['-u', helper]);
-  for (const path of [app, helper, resolve(root, 'previous'), configPath]) rmSync(path, { recursive: true, force: true });
+  for (const path of [app, helper, resolve(root, 'previous'), resolve(root, 'app-new'), configPath]) rmSync(path, { recursive: true, force: true });
   console.log(`MinDeck uninstalled. Your data is kept at ${data}.`);
 } else if (process.argv[2] === 'install') {
   const release = JSON.parse(readFileSync(resolve(source, 'release.json'), 'utf8'));
@@ -60,6 +63,25 @@ if (process.argv[2] === 'uninstall') {
   const staged = resolve(root, 'app-new');
   rmSync(staged, { recursive: true, force: true });
   cpSync(source, staged, { recursive: true });
+  const installedRelease = resolve(app, 'release.json');
+  const installedPackages = existsSync(installedRelease) ? JSON.parse(readFileSync(installedRelease, 'utf8')).agentPackages ?? [] : [];
+  for (const pkg of release.agentPackages) {
+    const destination = resolve(staged, 'node_modules', pkg.name);
+    const installed = resolve(app, 'node_modules', pkg.name);
+    if (existsSync(resolve(installed, 'package.json')) && installedPackages.some((old) => old.name === pkg.name && old.version === pkg.version && old.integrity === pkg.integrity)) {
+      console.log(`Reusing ${pkg.name}@${pkg.version}`);
+      cpSync(installed, destination, { recursive: true });
+      continue;
+    }
+    console.log(`Downloading ${pkg.name}@${pkg.version} from npm…`);
+    const archive = resolve(staged, 'agent-package.tgz');
+    run('/usr/bin/curl', ['-fL', '--retry', '3', pkg.url, '-o', archive]);
+    const integrity = `sha512-${createHash('sha512').update(readFileSync(archive)).digest('base64')}`;
+    if (integrity !== pkg.integrity) throw new Error(`Lockfile integrity mismatch for ${pkg.name}; existing installation was not changed`);
+    mkdirSync(destination, { recursive: true });
+    run('/usr/bin/tar', ['-xzf', archive, '--strip-components=1', '-C', destination]);
+    rmSync(archive);
+  }
   await stop();
   rmSync(resolve(root, 'previous'), { recursive: true, force: true });
   if (existsSync(app)) renameSync(app, resolve(root, 'previous'));
@@ -107,10 +129,16 @@ if (process.argv[2] === 'uninstall') {
   cpSync(resolve(app, 'MinDeck Finder.app'), helper, { recursive: true });
   run(register, ['-f', helper]);
   rmSync(resolve(root, 'previous'), { recursive: true, force: true });
+  const quote = (value) => "'" + value.replaceAll("'", "'\\''") + "'";
   const claude = resolve(app, `node_modules/@anthropic-ai/claude-agent-sdk-darwin-${process.arch}/claude`);
   const auth = spawnSync(claude, ['auth', 'status'], { encoding: 'utf8', timeout: 15000 });
   if (auth.status === 0 && JSON.parse(auth.stdout).loggedIn) console.log('Claude Code is signed in.');
-  else console.log('Claude Code is not signed in. Run `claude auth login`, then start a session in MinDeck.');
+  else console.log(`Claude Code is not signed in. Run: ${quote(claude)} auth login`);
+  const node = resolve(app, 'bin/node');
+  const codex = resolve(app, 'node_modules/@openai/codex/bin/codex.js');
+  const codexAuth = spawnSync(node, [codex, 'login', 'status'], { encoding: 'utf8', timeout: 15000 });
+  if (codexAuth.status === 0) console.log('Codex is signed in.');
+  else console.log(`Codex is not signed in (optional). Run: ${quote(node)} ${quote(codex)} login`);
   console.log(`MinDeck ${release.version} is ready at ${url}\nAdd your first project on the Projects page.\nData: ${data}\nUninstall (keeps data): sh "${app}/scripts/uninstall.sh"`);
   if (process.env.MINDECK_OPEN_BROWSER !== '0') run('/usr/bin/open', [url]);
 } else throw new Error('Usage: install.mjs install|uninstall');

@@ -1,12 +1,12 @@
 # macOS 安装版
 
-安装版面向已经登录 Claude Code 的单机用户。无需预装 Node、git、pnpm 或 Xcode，无需构建；Codex 仍为可选的本机安装。使用 Release 中 `install.sh` 的下载链接执行 `curl -fsSL "$installer_url" | sh`，重复执行同一条 latest Release 链接就是升级。脚本完成后打开 `http://127.0.0.1:8004`，首次在 Projects 添加自己的目录。
+安装版面向已经登录 Claude Code 的单机用户。无需预装 Node、git、pnpm 或 Xcode，无需构建；安装器同时准备 Claude 与 Codex，Codex 登录可选。使用 Release 中 `install.sh` 的下载链接执行 `curl -fsSL "$installer_url" | sh`，重复执行同一条 latest Release 链接就是升级。脚本完成后打开 `http://127.0.0.1:8004`，首次在 Projects 添加自己的目录。
 
 仓库地址尚未确定：唯一默认值在 `scripts/release-config.json` 的 `repository`。GitHub Actions 使用 `github.repository` 注入实际地址；生成的安装脚本固定引用所属 tag 的包与校验文件，避免 latest 在下载过程中变化。发布后将该仓库的 latest Release 的 `install.sh` 链接放进 README。此变更没有修改两个 README。
 
 ## 目录与生命周期
 
-- `~/.mindeck/app/`：Node、服务端单文件 bundle、前端 dist、SDK 平台可执行文件、脚本和助手副本，升级整体替换。
+- `~/.mindeck/app/`：Node、服务端单文件 bundle、前端 dist、从 npm 安装的 Claude / Codex 平台可执行文件、脚本和助手副本，升级整体替换。
 - `~/.mindeck/data/`：SQLite、uploads、logs、steward；升级及卸载均保留。
 - `~/.mindeck/MinDeck Finder.app`：稳定路径的已编译助手，注册 `mindeck-finder:`；没有常驻进程。
 - `~/.mindeck/install.json`：安装版本、端口和 launchd label；升级沿用端口及 label。
@@ -14,7 +14,7 @@
 
 源码运行默认仍用仓库 `data/`、端口 8004，并添加仓库为默认项目。安装版设置现有 `MINDECK_DB` / `MINDECK_UPLOADS` / `MINDECK_WEB_DIST`，另设 `MINDECK_SEED_WORKSPACE=0` 跳过默认项目。服务日志跟随数据库目录的 `logs/services`，默认源码路径保持不变。
 
-升级先校验 SHA-256 和架构、检查服务空闲与端口冲突、复制新程序，随后停止旧 Hub、替换程序并启动。running / waiting_user 或后台任务存在时拒绝升级或卸载，提示结束任务后重跑；空闲检查不锁新请求，和源码更新一样不保证严格无中断升级。不会自动回滚数据库；新 Hub 启动失败会报出日志位置并保留上一版程序。未知错误直接退出。
+升级先校验 SHA-256 和架构、检查服务空闲与端口冲突、复制新程序，随后停止旧 Hub、替换程序并启动。running / waiting_user 或后台任务存在时拒绝升级或卸载，提示结束任务后重跑；空闲检查不锁新请求，和源码更新一样不保证严格无中断升级。不会自动回滚数据库；新 Hub 启动失败会报出日志位置并保留上一版程序。只有连接被拒（`ECONNREFUSED`，例如 Hub 崩溃循环）视为空闲，允许修复升级或卸载；HTTP 错误、超时等仍直接退出。
 
 已有同名 launchd 服务但没有本安装器的安装记录时拒绝覆盖，因此不会替换源码部署。端口占用也会在替换前报错。源码部署用户需自行选择迁移或用不同端口与 label 并存，不自动迁移数据。
 
@@ -24,15 +24,19 @@
 sh ~/.mindeck/app/scripts/uninstall.sh
 ```
 
-Claude 的原生会话仍由 Claude 自己管理；正常安装复用当前用户的 Claude Code 登录和配置。安装器会检查登录状态，未登录时提示运行 `claude auth login`。不会替用户登录或安装 Codex。
+Claude 的原生会话仍由 Claude 自己管理；正常安装复用当前用户的 Claude Code 登录和配置。安装器分别检查 Claude 的 `auth status` 和 Codex 的 `login status`，未登录时输出包内程序的完整登录命令（包括 Codex 启动器需要的包内 Node 路径）。两者未登录均提示而不阻断安装；不要求用户有全局 CLI，也不替用户登录。
 
 ## 打包与发布
 
-采用独立 Node 二进制 + 一个服务端 JS，保留 SQLite、动态包解析与 SDK 子进程的常规运行方式，无需 SEA 注入。SDK 原生二进制保留包路径，SDK 按其现有 resolver 查找；没有改 Provider 的会话或权限行为。
+采用独立 Node 二进制 + 一个服务端 JS，保留 SQLite、动态包解析与 SDK 子进程的常规运行方式，无需 SEA 注入。Claude SDK 与 Codex 主包在 `apps/server/package.json` 使用精确版本，平台包版本与 integrity 由 `pnpm-lock.yaml` 锁定。源码与安装版都使用依赖版本：Claude 由 SDK resolver 查找平台包；Codex 由 Hub 的 Node 执行依赖里的 `bin/codex.js`，再由官方启动器解析平台二进制，不查找 PATH 中的 CLI。
+
+Codex npm 主包只有 JS 启动器，平台包通过 npm alias 分发，例如 `@openai/codex-darwin-arm64` 指向 `@openai/codex@0.160.1-darwin-arm64`（[该版本 npm 元数据](https://registry.npmjs.org/@openai/codex/0.160.1)）。构建时将 launcher 放进包，另外从 lockfile 提取 Claude 与 Codex 当前架构平台包的精确版本和 SHA-512 写入 `release.json`。
+
+Release tar 不包含 Claude / Codex 平台二进制。安装器直接从 `registry.npmjs.org` 下载到暂存目录，校验 SHA-512 后才解压到 `app/node_modules/<平台包名>`；下载或校验失败不会停止、替换旧 Hub。升级时若旧版记录中的包名、版本、integrity 都一致且包仍存在，则复制复用。首次安装需要能访问 npm；使用本地 MinDeck tar 也仍需下载平台包。
 
 ```sh
 pnpm install --frozen-lockfile
-pnpm codex:schema  # 开发者/CI typecheck 需要，本机需 Codex
+pnpm codex:schema  # 使用依赖内 Codex；开发者/CI typecheck 需要
 pnpm typecheck
 pnpm build:release v0.1.0
 ```
@@ -43,9 +47,9 @@ pnpm build:release v0.1.0
 - 相应 `.sha256`
 - 已填入仓库和 tag 的 `install.sh`
 
-`.github/workflows/release.yml` 在推送 `v*` tag 时，分别用 `macos-15` 与 `macos-15-intel` 构建（架构标签见 [GitHub 官方 runner 文档](https://docs.github.com/en/actions/how-tos/write-workflows/choose-where-workflows-run/choose-the-runner-for-a-job)），再把两套包及安装脚本上传到 Release。不需要预先创建 Release。Node、SDK 平台包及 SDK 的许可说明随包提供。SDK 是按其许可使用的组件，发布前仍需维护者确认分发条款。
+`.github/workflows/release.yml` 在推送 `v*` tag 时，分别用 `macos-15` 与 `macos-15-intel` 构建（架构标签见 [GitHub 官方 runner 文档](https://docs.github.com/en/actions/how-tos/write-workflows/choose-where-workflows-run/choose-the-runner-for-a-job)），再把两套包及安装脚本上传到 Release。不需要预先创建 Release。Node 与 SDK JS 的许可说明随包提供，平台程序由用户安装时直接从官方 npm 包下载。
 
-构建机与运行系统的支持范围受所选 Node、SDK 与 Swift 系统框架限制；本次实测仅覆盖当前 Apple Silicon Mac，不能把 CI 的双架构配置视为 Intel 真机验收。
+构建机与运行系统的支持范围受所选 Node、SDK 与 Swift 系统框架限制；双架构发布需要分别验收，不能仅以 workflow 配置代替真机验证。
 
 ## 隔离验收
 
@@ -68,17 +72,6 @@ env HOME="$test_home" PATH=/usr/bin:/bin:/usr/sbin:/sbin \
 node scripts/test-installer.mjs dist/mindeck-darwin-arm64.tar.gz
 ```
 
-它使用带空格的临时 HOME、随机空闲端口与独立 label，验证无 Node/pnpm 的安装、空项目初始状态、升级后项目/会话/附件保留，以及卸载后数据库/附件/服务日志保留，以及同名非本安装器 launchd 配置不会被覆盖。finally 清理测试服务、助手注册和临时目录。原生 Finder / Terminal 和真实 Claude 对话另外手动验收。
+它使用带空格的临时 HOME、随机空闲端口与独立 label，验证无 Node/pnpm 的安装、空项目初始状态、升级后项目/会话/附件保留，以及卸载后数据库/附件/服务日志保留，以及同名非本安装器 launchd 配置不会被覆盖。还验证 Release 未夹带平台二进制、SHA-512 不匹配时旧 Hub 不受影响、同版本平台包复用，以及崩溃循环下可升级/卸载。finally 清理测试服务、助手注册和临时目录。
 
-2026-11-12 实测记录：
-
-- Apple Silicon，发布包约 132 MiB；服务端 bundle 约 4.4 MiB。
-- 首装本地包 4.36 秒，升级第二版本 5.82 秒，卸载 0.60 秒；不含 GitHub 网络下载。另一次不关闭自动开页的升级成功在默认浏览器打开测试地址，验收后关闭该标签。
-- PATH 不含 Node / pnpm，用包内 Node 启动 launchd 服务；独立端口 18004、临时 HOME、label `com.mindeck.installer-test`。
-- 浏览器从零添加项目、创建 Claude 会话，真实回复「MinDeck 安装版验证成功。」。临时 HOME 中旧凭证第一次失败，换为当前有效凭证副本后成功；未修改生产认证。
-- 升级前上传图片，升级后核对完整会话元信息和图片原始字节一致；浏览器刷新可查看已有消息。
-- Finder 原生窗口显示测试项目；Terminal 新 shell 的 cwd 为测试项目；原生界面工具拒绝访问 Terminal，因此使用进程 cwd 验证而未读取其窗口。Auto 与 Remote Mac 切换、保存、刷新均正确。
-- 本机测试地址已有旧 Service Worker，首次导航仍显示旧壳，刷新后使用新版本。升级时现有标签可能也需刷新。
-- GitHub 上传/下载链路、Intel 真机、无 Command Line Tools 的全新 macOS、远程 SSH 主机实连未覆盖。
-
-测试清理：卸载测试 label 与 plist、注销临时助手，验证保留的 SQLite（18 条事件）和图片后删除整个临时 HOME（含凭证副本），关闭测试浏览器与 Finder 窗口，停止测试终端 shell。生产 Hub 的 PID `39269` 与实例 ID 均未变化，main 的两个 README 校验值未变化。
+真实对话验收：在隔离 HOME 中登录两个包内 CLI，再在独立端口的 Hub 各创建一条 Claude / Codex 会话并发送不调用工具的短消息。源码验收也须指定独立 `MINDECK_PORT`、`MINDECK_DB`、`MINDECK_UPLOADS` 和临时 HOME；通过进程命令行核对 Codex 来自项目依赖，并用该路径的 `--version` 核对版本。测试完成后卸载临时服务并删除临时 HOME。Finder / Terminal 联动另外手动验收。

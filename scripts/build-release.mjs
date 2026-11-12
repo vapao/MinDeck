@@ -1,4 +1,5 @@
 import { build } from 'esbuild';
+import { parse } from 'yaml';
 import { createRequire } from 'node:module';
 import { execFileSync } from 'node:child_process';
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -26,10 +27,25 @@ await build({
 });
 cpSync(resolve(root, 'apps/web/dist'), resolve(stage, 'apps/web/dist'), { recursive: true });
 const require = createRequire(resolve(root, 'apps/server/package.json'));
-const sdkRequire = createRequire(require.resolve('@anthropic-ai/claude-agent-sdk'));
-const nativeName = `@anthropic-ai/claude-agent-sdk-darwin-${process.arch}`;
-const native = dirname(sdkRequire.resolve(`${nativeName}/package.json`));
-cpSync(native, resolve(stage, 'node_modules', nativeName), { recursive: true });
+const lock = parse(readFileSync(resolve(root, 'pnpm-lock.yaml'), 'utf8'));
+const sdk = JSON.parse(readFileSync(resolve(dirname(require.resolve('@anthropic-ai/claude-agent-sdk')), 'package.json')));
+const codexRoot = dirname(require.resolve('@openai/codex/package.json'));
+const codex = JSON.parse(readFileSync(resolve(codexRoot, 'package.json')));
+// Ship only the JS launcher. The installer gets native packages directly from npm.
+cpSync(codexRoot, resolve(stage, 'node_modules/@openai/codex'), { recursive: true });
+const agentPackages = [sdk, codex].map((pkg) => {
+  const locked = lock.importers['apps/server'].dependencies[pkg.name].version.split('(')[0];
+  if (locked !== pkg.version) throw new Error(`${pkg.name} is not the lockfile version`);
+  const name = `${pkg.name}-darwin-${process.arch}`;
+  const dependency = pkg.optionalDependencies[name];
+  const spec = dependency.startsWith('npm:') ? dependency.slice(4) : `${name}@${dependency}`;
+  const at = spec.lastIndexOf('@');
+  const registryName = spec.slice(0, at);
+  const version = spec.slice(at + 1);
+  const integrity = lock.packages[spec]?.resolution.integrity;
+  if (!integrity?.startsWith('sha512-')) throw new Error(`Missing lockfile SHA-512 for ${spec}`);
+  return { name, version, integrity, url: `https://registry.npmjs.org/${registryName}/-/${registryName.split('/').pop()}-${version}.tgz` };
+});
 mkdirSync(resolve(stage, 'scripts'), { recursive: true });
 for (const name of ['secret.mjs', 'install.mjs', 'uninstall.sh']) cpSync(resolve(root, 'scripts', name), resolve(stage, 'scripts', name));
 
@@ -48,7 +64,7 @@ mkdirSync(resolve(stage, 'licenses'), { recursive: true });
 cpSync(resolve(cache, `node-v${config.nodeVersion}-darwin-${process.arch}/LICENSE`), resolve(stage, 'licenses/Node.txt'));
 cpSync(resolve(dirname(require.resolve('@anthropic-ai/claude-agent-sdk')), 'README.md'), resolve(stage, 'licenses/Claude-Agent-SDK.md'));
 run('bash', ['scripts/install-finder-helper.sh', '--build', resolve(stage, 'MinDeck Finder.app')]);
-writeFileSync(resolve(stage, 'release.json'), JSON.stringify({ version, repository, nodeVersion: config.nodeVersion, arch: process.arch }) + '\n');
+writeFileSync(resolve(stage, 'release.json'), JSON.stringify({ version, repository, nodeVersion: config.nodeVersion, arch: process.arch, agentPackages }) + '\n');
 const archive = `${stage}.tar.gz`;
 run('tar', ['-czf', archive, '-C', stage, '.'], { env: { ...process.env, COPYFILE_DISABLE: '1' } });
 writeFileSync(`${archive}.sha256`, `${createHash('sha256').update(readFileSync(archive)).digest('hex')}  ${archive.split('/').pop()}\n`);
