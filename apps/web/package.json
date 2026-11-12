@@ -1,5 +1,5 @@
 {
-  "name": "@agentdeck/web",
+  "name": "@mindeck/web",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -11,7 +11,7 @@
     "typecheck": "tsc -b"
   },
   "dependencies": {
-    "@agentdeck/shared": "workspace:*",
+    "@mindeck/shared": "workspace:*",
     "@codemirror/commands": "^6.11.1",
     "@codemirror/language": "^6.13.1",
     "@codemirror/language-data": "^6.5.2",

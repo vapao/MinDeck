@@ -11,7 +11,7 @@ if (command !== 'get' || !name) {
   process.exit(2);
 }
 
-const db = new DatabaseSync(process.env.AGENTDECK_DB ?? resolve(import.meta.dirname, '../data/agentdeck.db'), { readOnly: true });
+const db = new DatabaseSync(process.env.MINDECK_DB ?? resolve(import.meta.dirname, '../data/mindeck.db'), { readOnly: true });
 const cwd = process.cwd();
 // process.cwd() 是解析过软链接的真实路径，项目路径也要解析后再比；目录已不存在的项目照原样比
 const workspace = db.prepare('SELECT id, path FROM workspaces').all()
@@ -20,7 +20,7 @@ const workspace = db.prepare('SELECT id, path FROM workspaces').all()
   .sort((a, b) => b.real.length - a.real.length)[0];
 const row = db.prepare(`SELECT value FROM secrets WHERE name = ? AND workspace_id IN (?, '') ORDER BY workspace_id = '' LIMIT 1`).get(name, workspace?.id ?? '');
 if (!row) {
-  console.error(`Secret ${name} not found for ${workspace ? workspace.path : `${cwd} (not inside an AgentDeck project, so only shared secrets apply)`}; see list_secrets`);
+  console.error(`Secret ${name} not found for ${workspace ? workspace.path : `${cwd} (not inside a MinDeck project, so only shared secrets apply)`}; see list_secrets`);
   process.exit(1);
 }
 process.stdout.write(row.value);

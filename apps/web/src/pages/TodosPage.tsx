@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Check, Plus, Trash2 } from 'lucide-react'
-import type { Todo } from '@agentdeck/shared'
+import type { Todo } from '@mindeck/shared'
 import { api } from '../api'
 import { navigate } from '../router'
 import { dialog } from '../components/Dialog'

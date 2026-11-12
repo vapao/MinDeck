@@ -21,7 +21,7 @@ export function SessionListPage() {
       <header className={styles.brand}>
         <span className={styles.brandName}>
           <img className={styles.mark} src="/favicon.svg" alt="" />
-          AgentDeck
+          MinDeck
         </span>
         <span className={styles.nav}>
           <button type="button" className={styles.navButton} onClick={() => openNewSession()} aria-label="New session">

@@ -1,10 +1,10 @@
 #!/bin/zsh
 # Hub 常驻（方案 §11.3：launchd 自动拉起）。用法：scripts/launchd.sh install | uninstall | update | update-when-idle | restart | status | logs
-# install 会先构建前端，再写 ~/Library/LaunchAgents/com.agentdeck.hub.plist 并加载（改了代理配置要重新 install）。
+# install 会先构建前端，再写 ~/Library/LaunchAgents/com.mindeck.hub.plist 并加载（改了代理配置要重新 install）。
 # 改了代码后 update：重新构建前端并重启 Hub，不动 plist；只改了 server 端用 restart 即可（tsx 直接跑源码）。
 set -euo pipefail
 
-label=com.agentdeck.hub
+label=com.mindeck.hub
 root=${0:A:h:h}
 plist=$HOME/Library/LaunchAgents/$label.plist
 log=$root/data/logs/hub.log

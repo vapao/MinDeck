@@ -18,7 +18,7 @@ const groupAlive = (pgid: number) => {
 // 规则：停止服务必须杀掉整个进程组（pnpm → vite / tsx 这类子进程），否则孤儿进程静默占着端口；
 // Hub 重启（新的 createServices）后仍能认出还在跑的服务，而不是当成已停止再起一份。
 test('stop kills the whole process group, and a restarted hub still sees it running', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'agentdeck-services-'));
+  const dir = mkdtempSync(join(tmpdir(), 'mindeck-services-'));
   try {
     const store = openStore(':memory:');
     store.createWorkspace({ id: 'w', path: dir, alias: 'w', createdAt: new Date().toISOString() });

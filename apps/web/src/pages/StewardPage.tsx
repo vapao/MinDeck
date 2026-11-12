@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type UIEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronLeft, ChevronRight, Pencil, Plus, Sparkles, Trash2 } from 'lucide-react'
-import type { ProviderId, Resolution, StewardResponse } from '@agentdeck/shared'
+import type { ProviderId, Resolution, StewardResponse } from '@mindeck/shared'
 import { api } from '../api'
 import { formatEffort, formatModel, providerName } from '../format'
 import { navigate } from '../router'

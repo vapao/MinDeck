@@ -8,7 +8,7 @@ import { inspect } from 'node:util';
 
 const root = resolve(import.meta.dirname, '..');
 const log = resolve(root, 'data/logs/update-when-idle.log');
-const dataDir = dirname(process.env.AGENTDECK_DB ?? resolve(root, 'data/agentdeck.db'));
+const dataDir = dirname(process.env.MINDECK_DB ?? resolve(root, 'data/mindeck.db'));
 const statusPath = resolve(dataDir, 'update-status.json');
 const lockPath = resolve(dataDir, 'update-when-idle.pid');
 
@@ -56,7 +56,7 @@ if (process.argv[2] !== '--worker') {
   process.once('exit', () => rmSync(lockPath, { force: true }));
 
   const deadline = Date.now() + 10 * 60 * 1000;
-  const baseUrl = `http://127.0.0.1:${process.env.AGENTDECK_PORT ?? 8004}`;
+  const baseUrl = `http://127.0.0.1:${process.env.MINDECK_PORT ?? 8004}`;
   const status = { id: randomUUID(), pid: process.pid, requestedAt: new Date().toISOString() };
   const report = (message) => console.log(`[${new Date().toISOString()} PID ${process.pid}] ${message}`);
   let phase = 'waiting';

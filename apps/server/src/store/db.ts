@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
-import type { AgentEvent, Attachment, EventType, PendingRequest, PendingRequestBody, PermissionMode, ProviderEvent, Report, Resolution, Schedule, ScheduleConfig, Secret, ServiceConfig, Session, SessionStatus, Settings, StewardBrief, StewardMemory, Todo, UnfinishedSession, Wakeup, Workspace } from '@agentdeck/shared';
+import type { AgentEvent, Attachment, EventType, PendingRequest, PendingRequestBody, PermissionMode, ProviderEvent, Report, Resolution, Schedule, ScheduleConfig, Secret, ServiceConfig, Session, SessionStatus, Settings, StewardBrief, StewardMemory, Todo, UnfinishedSession, Wakeup, Workspace } from '@mindeck/shared';
 
 export type Store = ReturnType<typeof openStore>;
 /** pid 是服务进程组的组长；startedAt 是它在 ps 里的启动时间，用来识别 pid 是否已被别的进程复用 */

@@ -1,4 +1,4 @@
-import type { ClientMessage, ServerMessage } from '@agentdeck/shared';
+import type { ClientMessage, ServerMessage } from '@mindeck/shared';
 import type { Store } from './store/db';
 
 // 推送到手机（Spug 推送，国行安卓收不到 Web Push）：没有页面在前台、电脑也不在用（锁屏、合盖、没开页面）时才推。

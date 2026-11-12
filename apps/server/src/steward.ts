@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync } from 'node:fs';
-import type { Session, StewardBrief, StewardMemory, StewardResponse } from '@agentdeck/shared';
+import type { Session, StewardBrief, StewardMemory, StewardResponse } from '@mindeck/shared';
 import type { Store } from './store/db';
 import type { Services } from './services';
 import { HubError, type createHub } from './hub';
@@ -22,10 +22,10 @@ const localDate = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pa
 const local = (iso: string | null) => (iso ? `${localDate(new Date(iso))} ${pad(new Date(iso).getHours())}:${pad(new Date(iso).getMinutes())}` : null);
 const clip = (text: string, max: number) => (text.length > max ? `${text.slice(0, max)}…` : text);
 
-const instructions = (briefTime: string) => `You are the user's steward in AgentDeck, a self-hosted console where the user runs many Claude / Codex / DeepSeek coding sessions across projects. Your job is to keep track of the state of their work and tell them what needs their attention, so they don't have to open sessions one by one.
+const instructions = (briefTime: string) => `You are the user's steward in MinDeck, a self-hosted console where the user runs many Claude / Codex / DeepSeek coding sessions across projects. Your job is to keep track of the state of their work and tell them what needs their attention, so they don't have to open sessions one by one.
 
 How you work:
-- AgentDeck asks you for a brief every weekday at ${briefTime} (host local time) and whenever the user clicks Run brief; no scheduled task is needed for it.
+- MinDeck asks you for a brief every weekday at ${briefTime} (host local time) and whenever the user clicks Run brief; no scheduled task is needed for it.
 - You can only look and advise. You cannot start, message or stop sessions, or change services and scheduled tasks; tell the user what to do instead. Use add_todo when the user asks you to note something down.
 - For the current state call work_snapshot (sessions, approvals and questions waiting for the user, unread reports, todos, scheduled tasks, services, uncommitted files). Use get_session to read a session's conversation when you need details. Never answer about the state of work from memory.
 - Link a session as [title](session:ID) so the user can open it.
@@ -33,7 +33,7 @@ How you work:
 - This conversation moves to a fresh thread every day and when it grows long. Each thread starts with your memory, the latest brief and the end of the previous thread. Do not mention this to the user.
 - Be concise and lead with what needs the user. Reply in the user's language (Simplified Chinese unless your memory says otherwise).`;
 
-const briefRequest = (reason: string, snapshot: unknown) => `[AgentDeck] Time for the brief (${reason}). Current state:
+const briefRequest = (reason: string, snapshot: unknown) => `[MinDeck] Time for the brief (${reason}). Current state:
 
 ${JSON.stringify(snapshot)}
 
@@ -86,7 +86,7 @@ export function createSteward(store: Store, hub: Hub, services: Services, dir: s
       store.setSessionTitle(session.id, `Steward · ${localDate(now)}`);
       prefix = `${setup(latest)}\n\n`;
     } else if (memoryStale.has(session.id)) {
-      prefix = `[AgentDeck] The user edited your memory. It now reads:\n${memoryList()}\n\n---\n\n`;
+      prefix = `[MinDeck] The user edited your memory. It now reads:\n${memoryList()}\n\n---\n\n`;
     }
     try {
       const result = hub.sendMessage(session.id, text, [], 'user', prefix + providerText);
@@ -132,7 +132,7 @@ export function createSteward(store: Store, hub: Hub, services: Services, dir: s
   }
 
   async function brief(reason: string) {
-    return send(`[AgentDeck] Brief requested (${reason})`, briefRequest(reason, await snapshot()));
+    return send(`[MinDeck] Brief requested (${reason})`, briefRequest(reason, await snapshot()));
   }
 
   return {

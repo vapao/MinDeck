@@ -12,7 +12,7 @@ import { join } from 'node:path';
 for (const k of Object.keys(process.env)) if (/^CLAUDE/.test(k)) delete process.env[k];
 delete process.env.ANTHROPIC_API_KEY;
 
-const CWD = realpathSync(mkdtempSync(join(tmpdir(), 'agentdeck-p0-fork-')));
+const CWD = realpathSync(mkdtempSync(join(tmpdir(), 'mindeck-p0-fork-')));
 const log = (tag, o) => console.log(`[${tag}]`, typeof o === 'string' ? o : JSON.stringify(o).slice(0, 600));
 const prompts = [
   { text: 'Remember the codeword APPLE. Reply with OK only, no tools.' },
@@ -95,7 +95,7 @@ function appServer() {
     request,
     on: (h) => handlers.add(h),
     async init() {
-      await request('initialize', { clientInfo: { name: 'agentdeck-harness', title: null, version: '0.0.0' }, capabilities: { experimentalApi: true, requestAttestation: false } });
+      await request('initialize', { clientInfo: { name: 'mindeck-harness', title: null, version: '0.0.0' }, capabilities: { experimentalApi: true, requestAttestation: false } });
       write({ method: 'initialized', params: {} });
     },
     kill: () => child.kill(),

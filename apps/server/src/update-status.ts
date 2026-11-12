@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import type { UpdateStatus } from '@agentdeck/shared';
+import type { UpdateStatus } from '@mindeck/shared';
 
 export function readUpdateStatus(path: string): UpdateStatus | null {
   let status: UpdateStatus;

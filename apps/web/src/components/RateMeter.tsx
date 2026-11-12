@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import type { ProviderId, UsageInfo } from '@agentdeck/shared'
+import type { ProviderId, UsageInfo } from '@mindeck/shared'
 import { api } from '../api'
 import { providerName } from '../format'
 import styles from './RateMeter.module.css'

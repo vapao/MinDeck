@@ -1,5 +1,5 @@
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk';
-import type { ProviderEvent, ProviderOutput } from '@agentdeck/shared';
+import type { ProviderEvent, ProviderOutput } from '@mindeck/shared';
 import { summarizeToolInput } from '../summary';
 
 // SDK 消息 → 统一事件。只显式映射 §7.2 需要的子集，其余直接丢弃（AGENTS.md 规则 5）。

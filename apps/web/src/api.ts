@@ -1,8 +1,8 @@
-import type { ProjectFilesResponse, CreateServiceBody, ListServicesResponse, Service, ServiceLogResponse, UpdateServiceBody, CreateSessionBody, CreateSessionResponse, CreateWorkspaceBody, DeleteSessionResponse, DiffResponse, EntriesResponse, ForkSessionBody, ForkSessionResponse, FileResponse, InterruptResponse, ListChangesResponse, ListDirsResponse, ListSessionsResponse, ListWorkspacesResponse, ResolvePendingBody, ResolvePendingResponse, SendMessageBody, SendMessageResponse, SettingsResponse, SkillsResponse, UpdateSessionBody, UpdateSessionResponse, UpdateSettingsBody, UpdateWorkspaceBody, UploadAttachmentResponse, UsageResponse, Workspace } from '@agentdeck/shared'
-import type { CreateTodoBody, InboxResponse, ListTodosResponse, Todo, TodoDraftResponse, UpdateTodoBody, ListSchedulesResponse, ListWakeupsResponse, RunScheduleResponse, Schedule, ScheduleConfig, UpdateStatusResponse } from '@agentdeck/shared'
-import type { StewardMessageBody, StewardMessageResponse, StewardMemory, StewardResponse } from '@agentdeck/shared'
-import type { SaveSecretBody, Secret, SecretValueResponse, UpdateSecretBody } from '@agentdeck/shared'
-import type { CreateProjectEntryBody, DeleteProjectEntryBody, DiscardChangeBody, SaveProjectFileBody } from '@agentdeck/shared'
+import type { ProjectFilesResponse, CreateServiceBody, ListServicesResponse, Service, ServiceLogResponse, UpdateServiceBody, CreateSessionBody, CreateSessionResponse, CreateWorkspaceBody, DeleteSessionResponse, DiffResponse, EntriesResponse, ForkSessionBody, ForkSessionResponse, FileResponse, InterruptResponse, ListChangesResponse, ListDirsResponse, ListSessionsResponse, ListWorkspacesResponse, ResolvePendingBody, ResolvePendingResponse, SendMessageBody, SendMessageResponse, SettingsResponse, SkillsResponse, UpdateSessionBody, UpdateSessionResponse, UpdateSettingsBody, UpdateWorkspaceBody, UploadAttachmentResponse, UsageResponse, Workspace } from '@mindeck/shared'
+import type { CreateTodoBody, InboxResponse, ListTodosResponse, Todo, TodoDraftResponse, UpdateTodoBody, ListSchedulesResponse, ListWakeupsResponse, RunScheduleResponse, Schedule, ScheduleConfig, UpdateStatusResponse } from '@mindeck/shared'
+import type { StewardMessageBody, StewardMessageResponse, StewardMemory, StewardResponse } from '@mindeck/shared'
+import type { SaveSecretBody, Secret, SecretValueResponse, UpdateSecretBody } from '@mindeck/shared'
+import type { CreateProjectEntryBody, DeleteProjectEntryBody, DiscardChangeBody, SaveProjectFileBody } from '@mindeck/shared'
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   // 只有 JSON body 才声明 content-type：FormData 由浏览器自己设 multipart boundary；无 body 的 DELETE 带上会被 Fastify 按空 JSON 拒绝

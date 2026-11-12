@@ -1,4 +1,4 @@
-# AgentDeck
+# MinDeck
 
 English | [简体中文](README.zh-CN.md)
 
@@ -34,12 +34,12 @@ Single user, self-hosted. Not a SaaS, no accounts.
 | DeepSeek (optional) | API key entered in Settings |
 | Remote access (optional) | [Tailscale](https://tailscale.com/), for HTTPS access from other devices |
 
-AgentDeck drives Claude Code and Codex with your own local login. It is meant for personal self-hosting; make sure your use complies with Anthropic's and OpenAI's terms.
+MinDeck drives Claude Code and Codex with your own local login. It is meant for personal self-hosting; make sure your use complies with Anthropic's and OpenAI's terms.
 
 ## Quick start
 
 ```sh
-git clone <repo> agentdeck && cd agentdeck
+git clone <repo> mindeck && cd mindeck
 pnpm install
 pnpm build      # builds the web app; the Hub serves it directly
 pnpm start      # starts the Hub on http://127.0.0.1:8004
@@ -51,10 +51,10 @@ Open http://127.0.0.1:8004. On first start the repository's own directory is add
 
 | Variable | Default | |
 |---|---|---|
-| `AGENTDECK_PORT` | `8004` | Hub port, bound to 127.0.0.1 only |
-| `AGENTDECK_DB` | `data/agentdeck.db` | SQLite database |
-| `AGENTDECK_UPLOADS` | `data/uploads` | Attachments |
-| `AGENTDECK_WEB_DIST` | `apps/web/dist` | Built web app; if missing, only the API is served |
+| `MINDECK_PORT` | `8004` | Hub port, bound to 127.0.0.1 only |
+| `MINDECK_DB` | `data/mindeck.db` | SQLite database |
+| `MINDECK_UPLOADS` | `data/uploads` | Attachments |
+| `MINDECK_WEB_DIST` | `apps/web/dist` | Built web app; if missing, only the API is served |
 
 All data lives under `data/` (gitignored).
 
@@ -80,14 +80,14 @@ Then open `https://<machine>.<tailnet>.ts.net:8450` from any device in the tailn
 
 ## Security model (please read)
 
-AgentDeck has **no login or authentication**. Access control relies entirely on listening on 127.0.0.1 and exposing it only on a trusted private network such as Tailscale. Anyone who can open the page can:
+MinDeck has **no login or authentication**. Access control relies entirely on listening on 127.0.0.1 and exposing it only on a trusted private network such as Tailscale. Anyone who can open the page can:
 
 - start agents in any project inside your home folder, including in bypass mode (commands run without approval)
 - run arbitrary shell commands through the Services feature
 - read and write files in your projects
 - read saved secrets and the DeepSeek API key
 
-Secrets and the DeepSeek API key are stored unencrypted in `data/agentdeck.db`; anyone who can read that file can read them.
+Secrets and the DeepSeek API key are stored unencrypted in `data/mindeck.db`; anyone who can read that file can read them.
 
 **Do not** put it behind a public reverse proxy, bind it to `0.0.0.0`, or expose it with Tailscale Funnel.
 
@@ -95,13 +95,13 @@ Secrets and the DeepSeek API key are stored unencrypted in `data/agentdeck.db`; 
 
 ```sh
 pnpm dev:server          # Hub (tsx watch), port 8004 by default
-pnpm dev:web             # Vite on 5180, proxies to AGENTDECK_PORT (default 8004)
+pnpm dev:web             # Vite on 5180, proxies to MINDECK_PORT (default 8004)
 pnpm codex:schema        # generates Codex protocol types; required before typecheck (needs codex installed)
 pnpm typecheck
-pnpm --filter @agentdeck/server test
+pnpm --filter @mindeck/server test
 ```
 
-If a Hub is already running as a service, develop on another port and give both sides the same value: `AGENTDECK_PORT=8024 pnpm dev:server` and `AGENTDECK_PORT=8024 pnpm dev:web`.
+If a Hub is already running as a service, develop on another port and give both sides the same value: `MINDECK_PORT=8024 pnpm dev:server` and `MINDECK_PORT=8024 pnpm dev:web`.
 
 Design and implementation docs in `docs/` are in Chinese: `features.md` covers each feature's behavior and limits, `remote_agent_hub_technical_plan.md` the architecture and protocol. Conventions for AI coding assistants are in `AGENTS.md`.
 

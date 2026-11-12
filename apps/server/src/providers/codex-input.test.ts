@@ -6,13 +6,13 @@ import { join } from 'node:path';
 import { setTimeout } from 'node:timers/promises';
 import { createHub } from '../hub';
 import { createPush } from '../push';
-import { agentdeckMcpFor } from '../mcp';
+import { mindeckMcpFor } from '../mcp';
 import { openStore } from '../store/db';
 import { createAttachmentStore } from '../store/attachments';
 
 // 真实捕获的 async agentMessage 形状；验证答案运行中 steer 进当前轮、空闲时新开一轮，且不重复发送。
 test('async agent questions become cards and answers reach both active and idle turns exactly once', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'agentdeck-input-'));
+  const dir = mkdtempSync(join(tmpdir(), 'mindeck-input-'));
   const previousPath = process.env.PATH;
   writeFileSync(join(dir, 'codex'), `#!/usr/bin/env node
 const { createInterface } = require('node:readline');
@@ -49,7 +49,7 @@ createInterface({ input: process.stdin }).on('line', (line) => {
 `, { mode: 0o755 });
   process.env.PATH = `${dir}:${previousPath}`;
   const store = openStore(':memory:');
-  const hub = createHub(store, createAttachmentStore(store, join(dir, 'uploads')), (id) => agentdeckMcpFor('http://127.0.0.1:0/mcp', id), createPush(store));
+  const hub = createHub(store, createAttachmentStore(store, join(dir, 'uploads')), (id) => mindeckMcpFor('http://127.0.0.1:0/mcp', id), createPush(store));
   const until = async (check: () => boolean) => {
     for (let i = 0; i < 200; i++) { if (check()) return; await setTimeout(10); }
     assert.fail('Timed out waiting for fake app-server');

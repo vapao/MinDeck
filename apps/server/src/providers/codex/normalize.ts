@@ -1,4 +1,4 @@
-import type { ProviderEvent, ProviderOutput } from '@agentdeck/shared';
+import type { ProviderEvent, ProviderOutput } from '@mindeck/shared';
 import { summarizeToolInput } from '../summary';
 import type { ServerNotification } from './schema';
 import type { ThreadItem } from './schema/v2';

@@ -1,12 +1,12 @@
 {
-  "name": "agentdeck",
+  "name": "mindeck",
   "private": true,
   "engines": { "node": ">=24" },
   "scripts": {
-    "dev:server": "pnpm --filter @agentdeck/server dev",
-    "dev:web": "pnpm --filter @agentdeck/web dev",
-    "build": "pnpm --filter @agentdeck/web build",
-    "start": "pnpm --filter @agentdeck/server start",
+    "dev:server": "pnpm --filter @mindeck/server dev",
+    "dev:web": "pnpm --filter @mindeck/web dev",
+    "build": "pnpm --filter @mindeck/web build",
+    "start": "pnpm --filter @mindeck/server start",
     "typecheck": "pnpm -r typecheck",
     "codex:schema": "codex app-server generate-ts --out apps/server/src/providers/codex/schema"
   }

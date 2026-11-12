@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { ProviderOutput } from '@agentdeck/shared';
+import type { ProviderOutput } from '@mindeck/shared';
 import { shutdownCodex, startCodexSession } from './codex';
 
 test('Codex honors the selected model on start and resume, and refuses a different model', { timeout: 10_000 }, async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'agentdeck-model-'));
+  const dir = mkdtempSync(join(tmpdir(), 'mindeck-model-'));
   const previousPath = process.env.PATH;
   writeFileSync(join(dir, 'codex'), String.raw`#!/usr/bin/env node
 const { createInterface } = require('node:readline');
@@ -45,7 +45,7 @@ createInterface({ input: process.stdin }).on('line', (line) => {
       const done = new Promise<void>((resolve, reject) => { resolveDone = resolve; rejectDone = reject; });
       const session = startCodexSession({
         cwd: dir, permissionMode: 'approval', ...options,
-        agentdeckMcp: { url: 'http://127.0.0.1:0/mcp', headers: {}, timeoutSec: 1, autoApprove: [] },
+        mindeckMcp: { url: 'http://127.0.0.1:0/mcp', headers: {}, timeoutSec: 1, autoApprove: [] },
         onEvent(event) {
           events.push(event);
           if (event.type === 'turn.completed') resolveDone();

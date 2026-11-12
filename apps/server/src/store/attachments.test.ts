@@ -9,7 +9,7 @@ import { createAttachmentStore } from './attachments';
 // 规则（AGENTS.md 规则 7 / 方案 §9.2）：附件路径只由服务端生成，客户端文件名不参与路径；
 // 一条消息只能引用属于本 session 的附件，越界引用整体拒绝。
 test('attachment path is server-generated and references are session-scoped', () => {
-  const root = mkdtempSync(join(tmpdir(), 'agentdeck-att-'));
+  const root = mkdtempSync(join(tmpdir(), 'mindeck-att-'));
   try {
     const store = openStore(':memory:');
     const now = new Date().toISOString();
@@ -35,7 +35,7 @@ test('attachment path is server-generated and references are session-scoped', ()
 
 // 规则（切片 9）：删除会话后 data/ 里不留孤儿数据——四张表的行和上传目录一起消失，其他会话不受影响。
 test('deleting a session leaves no rows or files behind', () => {
-  const root = mkdtempSync(join(tmpdir(), 'agentdeck-del-'));
+  const root = mkdtempSync(join(tmpdir(), 'mindeck-del-'));
   try {
     const store = openStore(':memory:');
     const now = new Date().toISOString();

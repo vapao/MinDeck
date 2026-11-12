@@ -9,12 +9,12 @@ import { createHub } from '../hub';
 import { createPush } from '../push';
 import { openStore } from '../store/db';
 import { createAttachmentStore } from '../store/attachments';
-import { agentdeckMcpFor } from '../mcp';
+import { mindeckMcpFor } from '../mcp';
 
 const git = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8' });
 const unlocked = async (_root: string, write: () => Promise<void>) => write();
 async function repository(t: TestContext, commit = true) {
-  const root = await realpath(await mkdtemp(join(tmpdir(), 'agentdeck-discard-')));
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'mindeck-discard-')));
   t.after(() => rm(root, { recursive: true, force: true }));
   git(root, 'init', '-q');
   git(root, 'config', 'user.email', 'test@example.com');
@@ -159,7 +159,7 @@ test('discard treats wildcard names literally and never writes through a leaf sy
 test('repository writes reject active sessions and exclude new turns and concurrent discards', async (t) => {
   const root = await repository(t);
   const store = openStore(':memory:');
-  const hub = createHub(store, createAttachmentStore(store, join(root, 'uploads')), (id) => agentdeckMcpFor('http://127.0.0.1:0/mcp', id), createPush(store));
+  const hub = createHub(store, createAttachmentStore(store, join(root, 'uploads')), (id) => mindeckMcpFor('http://127.0.0.1:0/mcp', id), createPush(store));
   t.after(() => { hub.close(); store.close(); });
   store.createWorkspace({ id: 'root', path: root, alias: 'root', createdAt: new Date().toISOString() });
   store.createWorkspace({ id: 'child', path: join(root, 'src'), alias: 'child', createdAt: new Date().toISOString() });

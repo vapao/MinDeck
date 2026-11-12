@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlarmClock, ArrowUpRight, ChevronLeft, CircleHelp, FileText, Folder, Hourglass, Inbox, Plus, ShieldAlert } from 'lucide-react'
-import type { InboxResponse, PendingRequest, Report, Resolution, Session, Todo, UnfinishedSession } from '@agentdeck/shared'
+import type { InboxResponse, PendingRequest, Report, Resolution, Session, Todo, UnfinishedSession } from '@mindeck/shared'
 import { api } from '../api'
 import { formatModel } from '../format'
 import { navigate, usePathname } from '../router'

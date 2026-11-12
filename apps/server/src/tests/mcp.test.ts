@@ -12,13 +12,13 @@ import { createHub } from '../hub';
 import { createPush } from '../push';
 import { createServices } from '../services';
 import { createScheduler } from '../schedules';
-import { agentdeckMcpFor, createMcpServer } from '../mcp';
+import { mindeckMcpFor, createMcpServer } from '../mcp';
 
 // 规则（2026-09-23 与开发者确认）：Agent 经 MCP 派生会话必须由用户在调用方会话的审批卡上批准；拒绝或审批作废都不能建出会话。
 test('create_session needs approval and leaves no empty session', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'agentdeck-mcp-'));
+  const dir = mkdtempSync(join(tmpdir(), 'mindeck-mcp-'));
   const store = openStore(':memory:');
-  const hub = createHub(store, createAttachmentStore(store, join(dir, 'uploads')), (id) => agentdeckMcpFor('http://127.0.0.1:0/mcp', id), createPush(store));
+  const hub = createHub(store, createAttachmentStore(store, join(dir, 'uploads')), (id) => mindeckMcpFor('http://127.0.0.1:0/mcp', id), createPush(store));
   const services = createServices(store, join(dir, 'logs'));
   try {
     store.createWorkspace({ id: 'workspace', path: dir, alias: 'test', createdAt: new Date().toISOString() });
@@ -61,9 +61,9 @@ test('create_session needs approval and leaves no empty session', async () => {
 
 // 规则：move_session 不能让隶属关系成环（挂到自己或后代下），否则侧栏展开和连子树删除会死循环。
 test('move_session rejects cycles', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'agentdeck-mcp-'));
+  const dir = mkdtempSync(join(tmpdir(), 'mindeck-mcp-'));
   const store = openStore(':memory:');
-  const hub = createHub(store, createAttachmentStore(store, join(dir, 'uploads')), (id) => agentdeckMcpFor('http://127.0.0.1:0/mcp', id), createPush(store));
+  const hub = createHub(store, createAttachmentStore(store, join(dir, 'uploads')), (id) => mindeckMcpFor('http://127.0.0.1:0/mcp', id), createPush(store));
   try {
     store.createWorkspace({ id: 'workspace', path: dir, alias: 'test', createdAt: new Date().toISOString() });
     const a = hub.createSession('claude', dir);

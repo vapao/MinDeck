@@ -1,5 +1,5 @@
 import { Check, GitBranch, Square } from 'lucide-react'
-import type { TurnEndReason } from '@agentdeck/shared'
+import type { TurnEndReason } from '@mindeck/shared'
 import { formatTime } from '../format'
 import { CopyMessage } from './AssistantMessage'
 import { formatElapsed, useElapsed } from './useElapsed'

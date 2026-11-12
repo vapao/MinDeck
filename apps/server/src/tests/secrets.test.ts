@@ -8,14 +8,14 @@ import { openStore } from '../store/db';
 import { createAttachmentStore } from '../store/attachments';
 import { createHub } from '../hub';
 import { createPush } from '../push';
-import { agentdeckMcpFor } from '../mcp';
+import { mindeckMcpFor } from '../mcp';
 
 // 规则（2026-11-08 与开发者确认）：request_secret 提交的值只存在 secrets 表里，不进 pending_requests、事件流或发回会话的消息。
 test('a submitted secret value is stored only in the secrets table', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'agentdeck-secrets-'));
-  const dbPath = join(dir, 'agentdeck.db');
+  const dir = mkdtempSync(join(tmpdir(), 'mindeck-secrets-'));
+  const dbPath = join(dir, 'mindeck.db');
   const store = openStore(dbPath);
-  const hub = createHub(store, createAttachmentStore(store, join(dir, 'uploads')), (id) => agentdeckMcpFor('http://127.0.0.1:0/mcp', id), createPush(store));
+  const hub = createHub(store, createAttachmentStore(store, join(dir, 'uploads')), (id) => mindeckMcpFor('http://127.0.0.1:0/mcp', id), createPush(store));
   const value = 'sk-test-7f3a9c1e';
   try {
     store.createWorkspace({ id: 'workspace', path: dir, alias: 'test', createdAt: new Date().toISOString() });

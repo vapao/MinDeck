@@ -1,4 +1,4 @@
-import type { Attachment } from '@agentdeck/shared'
+import type { Attachment } from '@mindeck/shared'
 import { GitBranch } from 'lucide-react'
 import { api } from '../api'
 import { showImage } from './FilePreview'

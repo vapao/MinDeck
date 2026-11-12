@@ -1,4 +1,4 @@
-# AgentDeck
+# MinDeck
 
 Mac Mini 上自托管的 Claude / Codex / DeepSeek 多端控制台：Agent 在 Mac Mini 上跑，MacBook / iPhone / 浏览器通过 Tailscale 发消息、传截图、看流式输出、处理审批。单用户，不做 SaaS。**MacBook 桌面浏览器是主控制端**，手机只是辅助，不追求全功能。
 
@@ -28,7 +28,7 @@ Mac Mini 上自托管的 Claude / Codex / DeepSeek 多端控制台：Agent 在 M
 
 ```
 pnpm dev:server | dev:web | build | start | typecheck
-pnpm --filter @agentdeck/server test
+pnpm --filter @mindeck/server test
 pnpm codex:schema    # 按本机 codex 版本生成 schema（已 gitignore）
 scripts/launchd.sh install | uninstall | update | update-when-idle | restart | status | logs
 cd apps/server && node scripts/p0-{claude,codex}-harness.mjs              # 以下均真实消耗额度
@@ -56,9 +56,9 @@ cd apps/server && node scripts/p0-{mcp,fork}-harness.mjs claude|codex
 
 - YAGNI；Provider 在 `apps/server/src/providers/` 里是目录，不拆包。
 - 只在规则被明确固定、破坏会静默失败时写测试。UI、时序、样式不写测试。错误只在真正边界处理。
-- 端口：Hub 8004（只监听 127.0.0.1）、vite 5180、Tailscale HTTPS 8450。生产 `tailscale serve --bg --https=8450 8004`；手机看 HMR 时临时改映 5180，用完切回。本地开发前先 `scripts/launchd.sh uninstall` 或改 `AGENTDECK_PORT`。
+- 端口：Hub 8004（只监听 127.0.0.1）、vite 5180、Tailscale HTTPS 8450。生产 `tailscale serve --bg --https=8450 8004`；手机看 HMR 时临时改映 5180，用完切回。本地开发前先 `scripts/launchd.sh uninstall` 或改 `MINDECK_PORT`。
 - launchd 不读 `~/.zshrc`：`install` 把当前 shell 的代理变量写进 plist（缺了 Claude 报 `403 Request not allowed`），并把 `~/.local/bin` 加进 PATH。改代理要重新 install。
-- 改完代码：在 AgentDeck 会话内用 `scripts/launchd.sh update-when-idle`，启动一次性后台进程，所有会话空闲后构建并重启；不要自行编写延迟重启脚本。日志在 `data/logs/update-when-idle.log`，命令返回 PID 可用 `kill` 取消。外部终端确认可立即重启时仍用 `update`。
+- 改完代码：在 MinDeck 会话内用 `scripts/launchd.sh update-when-idle`，启动一次性后台进程，所有会话空闲后构建并重启；不要自行编写延迟重启脚本。日志在 `data/logs/update-when-idle.log`，命令返回 PID 可用 `kill` 取消。外部终端确认可立即重启时仍用 `update`。
 - WS 握手校验 Origin 与 Host 一致，Node 脚本不带 Origin 可直连。数据在 `data/`（SQLite、`uploads/<sessionId>/`、日志），已 gitignore。
 - 提交前 `pnpm typecheck`；conventional commit，不加 Co-Authored-By。
 - 回复与文档用简体中文；界面文案默认英文。

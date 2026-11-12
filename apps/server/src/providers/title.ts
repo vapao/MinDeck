@@ -2,7 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { query } from '@anthropic-ai/claude-agent-sdk';
-import type { TitleSettings } from '@agentdeck/shared';
+import type { TitleSettings } from '@mindeck/shared';
 import { childEnv } from './claude';
 import { generateCodexTitle } from './codex';
 
@@ -34,7 +34,7 @@ export async function askSideModel(config: TitleSettings, instructions: string, 
       const body = await res.json() as { content: Array<{ type: string; text?: string }> };
       return body.content.filter((b) => b.type === 'text').map((b) => b.text ?? '').join('');
     }
-    const cwd = await mkdtemp(join(tmpdir(), 'agentdeck-title-'));
+    const cwd = await mkdtemp(join(tmpdir(), 'mindeck-title-'));
     try {
       return config.provider === 'codex' ? await generateCodexTitle(cwd, config.model, prompt, instructions, controller.signal) : await generateClaudeTitle(cwd, config.model, prompt, instructions, controller);
     } finally {

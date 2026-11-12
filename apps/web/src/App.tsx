@@ -74,7 +74,7 @@ function Sidebar({ activeId, pathname, screenLock }: { activeId?: string; pathna
       <div className={styles.brand}>
         <span className={styles.brandName}>
           <img className={styles.mark} src="/favicon.svg" alt="" />
-          AgentDeck
+          MinDeck
         </span>
         {notificationsSupported && notify.permission === 'default' && (
           <button type="button" className={styles.bell} onClick={notify.request} aria-label="Enable notifications" title="System notification when a session needs approval or finishes">

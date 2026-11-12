@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Eye, EyeOff, KeyRound, Pencil, Plus, Trash2, X } from 'lucide-react'
-import { secretNamePattern, type Secret } from '@agentdeck/shared'
+import { secretNamePattern, type Secret } from '@mindeck/shared'
 import { api } from '../api'
 import { dialog } from './Dialog'
 import { Select } from './Select'
@@ -62,7 +62,7 @@ export function SecretsSection() {
         </div>
       ))}
       {error && <div className={manage.error}>{error.message}</div>}
-      <p className={settings.connectionInfo}>Agents ask for secrets with request_secret and read them in shell commands without seeing the value in chat. This is not isolation: any agent on this Hub can read every secret from the database. Secrets are stored in plain text in data/agentdeck.db.</p>
+      <p className={settings.connectionInfo}>Agents ask for secrets with request_secret and read them in shell commands without seeing the value in chat. This is not isolation: any agent on this Hub can read every secret from the database. Secrets are stored in plain text in data/mindeck.db.</p>
       {editing && <SecretDialog secret={editing === 'new' ? null : editing} onClose={() => setEditing(null)} onSaved={(id) => setRevealed(({ [id]: _, ...rest }) => rest)} />}
     </section>
   )
@@ -106,7 +106,7 @@ function SecretDialog({ secret, onClose, onSaved }: { secret: Secret | null; onC
           {!secret && (
             <label className={form.field}>
               <span>Name</span>
-              <input className={manage.input} value={name} autoFocus placeholder="GITHUB_TOKEN_AGENTDECK" autoCapitalize="none" spellCheck={false} onChange={(e) => setName(e.target.value)} />
+              <input className={manage.input} value={name} autoFocus placeholder="GITHUB_TOKEN_MINDECK" autoCapitalize="none" spellCheck={false} onChange={(e) => setName(e.target.value)} />
             </label>
           )}
           <div className={form.field}>

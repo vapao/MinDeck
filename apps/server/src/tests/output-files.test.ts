@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { outputFile } from '../output-files';
 
 test('output files allow paths outside cwd, bound text reads and do not serve HTML as a document', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'agentdeck-output-'));
+  const dir = await mkdtemp(join(tmpdir(), 'mindeck-output-'));
   try {
     const path = join(dir, '中文 # file.html');
     await writeFile(path, '<script>alert(1)</script>');

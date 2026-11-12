@@ -1,10 +1,10 @@
 import { useEffect, useSyncExternalStore } from 'react'
-import type { Session } from '@agentdeck/shared'
+import type { Session } from '@mindeck/shared'
 
 // "跑完了但还没看过"按浏览器记在 localStorage（会话 id → 上次看到时的 updatedAt），不动服务端：
 // 桌面浏览器是主控端，跨设备的已读同步不值得加表加接口。判定与 useNotifications 的"正盯着就不弹"同一条规则。
 
-const seenKey = 'agentdeck.seen'
+const seenKey = 'mindeck.seen'
 const listeners = new Set<() => void>()
 let cache: string = localStorage.getItem(seenKey) ?? '{}'
 const subscribe = (cb: () => void) => {

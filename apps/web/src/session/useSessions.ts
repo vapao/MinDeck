@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import type { Session } from '@agentdeck/shared'
+import type { Session } from '@mindeck/shared'
 import { api } from '../api'
 import { backToTab, navigate } from '../router'
 import { dialog } from '../components/Dialog'

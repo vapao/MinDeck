@@ -2,7 +2,7 @@ import { execFileSync, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { closeSync, existsSync, mkdirSync, openSync, readSync, rmSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import type { CreateServiceBody, Service, ServiceConfig, ServiceLogResponse } from '@agentdeck/shared';
+import type { CreateServiceBody, Service, ServiceConfig, ServiceLogResponse } from '@mindeck/shared';
 import type { ServiceRow, Store } from './store/db';
 import { HubError } from './hub';
 

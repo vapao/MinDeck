@@ -73,18 +73,18 @@ export function mappedPath(path: string) {
 export function openProjectFinder(path: string) {
   const local = mappedPath(path)
   if (!local) {
-    void dialog.alert({ title: 'Set up Finder', message: 'Configure this project’s folder mapping in Settings → Finder on this Mac, and install the AgentDeck Finder helper on your MacBook.' })
+    void dialog.alert({ title: 'Set up Finder', message: 'Configure this project’s folder mapping in Settings → Finder on this Mac, and install the MinDeck Finder helper on your MacBook.' })
     return
   }
-  window.location.href = `agentdeck-finder://reveal?path=${encodeURIComponent(local)}`
+  window.location.href = `mindeck-finder://reveal?path=${encodeURIComponent(local)}`
 }
 export function openProjectTerminal(path: string) {
   const host = localStorage.getItem('terminal:sshHost') ?? ''
   if (!host) {
-    void dialog.alert({ title: 'Set up iTerm2', message: 'Set SSH host in Settings → iTerm2 on this Mac, and install the updated AgentDeck Finder helper on your MacBook.' })
+    void dialog.alert({ title: 'Set up iTerm2', message: 'Set SSH host in Settings → iTerm2 on this Mac, and install the updated MinDeck Finder helper on your MacBook.' })
     return
   }
-  window.location.href = `agentdeck-finder://terminal?host=${encodeURIComponent(host)}&path=${encodeURIComponent(path)}`
+  window.location.href = `mindeck-finder://terminal?host=${encodeURIComponent(host)}&path=${encodeURIComponent(path)}`
 }
 export function FilePreviewHost() {
   const { selected } = usePreviewState()
@@ -379,7 +379,7 @@ function Preview({ sessionId, path, line, image, discard, onDismiss, navigation 
     {file && !dirty && <footer className={`${modal.actions} ${styles.footer}`}>
       {html && <a className={`${modal.secondary} ${styles.action}`} href={htmlUrl} target="_blank" rel="noreferrer">Open in new tab</a>}
       {file.content !== null && <button className={`${modal.secondary} ${styles.copyButton}`} onClick={() => { void navigator.clipboard.writeText(file.content!).then(() => setCopied(true)) }}>{copied ? <Check size={14} /> : <Copy size={14} />}{copied ? 'Copied' : 'Copy text'}</button>}
-      {local && <a className={`${modal.primary} ${styles.action}`} onClick={dismiss} href={`agentdeck-finder://reveal?path=${encodeURIComponent(local)}`}>Show in Finder</a>}
+      {local && <a className={`${modal.primary} ${styles.action}`} onClick={dismiss} href={`mindeck-finder://reveal?path=${encodeURIComponent(local)}`}>Show in Finder</a>}
       {file.kind !== 'directory' && <a className={`${modal.secondary} ${styles.action}`} onClick={dismiss} href={image?.url ?? api.outputUrl(sessionId, path, true)} download={file.name}>Download</a>}
     </footer>}
     </>}

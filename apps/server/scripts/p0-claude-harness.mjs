@@ -12,7 +12,7 @@ import { join } from 'node:path';
 for (const k of Object.keys(process.env)) if (/^CLAUDE/.test(k)) delete process.env[k];
 delete process.env.ANTHROPIC_API_KEY; // 关键验证：不给 API Key，看 SDK 用什么凭据
 
-const CWD = mkdtempSync(join(tmpdir(), 'agentdeck-p0-'));
+const CWD = mkdtempSync(join(tmpdir(), 'mindeck-p0-'));
 const log = (tag, o) => console.log(`[${tag}]`, typeof o === 'string' ? o : JSON.stringify(o));
 
 // 生成一张 64x64 纯红色 PNG（无外部依赖）

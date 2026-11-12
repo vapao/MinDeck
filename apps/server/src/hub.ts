@@ -2,10 +2,10 @@ import { askSideModel, generateTitle } from './providers/title';
 import { randomUUID } from 'node:crypto';
 import { realpathSync } from 'node:fs';
 import { resolve, sep } from 'node:path';
-import { getEffortOptions, isCompactCommand, modelOptions, permissionModeOptions, type AgentEvent, type Attachment, type MessageDelta, type PendingRequest, type PendingRequestBody, type PermissionMode, type ProviderEvent, type ProviderOutput, type CreateTodoBody, type Report, type Resolution, type Todo, type TodoDraftResponse, type UpdateTodoBody, type Wakeup, type Session, type SessionStatus, type Settings, type UpdateSettingsBody, type UsageInfo } from '@agentdeck/shared';
+import { getEffortOptions, isCompactCommand, modelOptions, permissionModeOptions, type AgentEvent, type Attachment, type MessageDelta, type PendingRequest, type PendingRequestBody, type PermissionMode, type ProviderEvent, type ProviderOutput, type CreateTodoBody, type Report, type Resolution, type Todo, type TodoDraftResponse, type UpdateTodoBody, type Wakeup, type Session, type SessionStatus, type Settings, type UpdateSettingsBody, type UsageInfo } from '@mindeck/shared';
 import type { Store } from './store/db';
 import type { AttachmentStore } from './store/attachments';
-import type { AgentdeckMcp, ProviderSession, StartOptions } from './providers/types';
+import type { MindeckMcp, ProviderSession, StartOptions } from './providers/types';
 import { forkClaudeSession, startClaudeSession } from './providers/claude';
 import { forkCodexThread, shutdownCodex, startCodexSession } from './providers/codex';
 import { summarizeToolInput } from './providers/summary';
@@ -36,7 +36,7 @@ const draftInstructions = `From the tail of a conversation between a developer a
 const overlaps = (a: string, b: string) => a === b || a.startsWith(b + sep) || b.startsWith(a + sep);
 
 // Hub：Session 元数据 + append-only 事件流 + 多端 fan-out。Provider 会话在首条消息时才拉起。
-export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (sessionId: string) => AgentdeckMcp, push: Push) {
+export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (sessionId: string) => MindeckMcp, push: Push) {
   const live = new Map<string, ProviderSession>();
   /** 订阅者收到的是落库后的事件（带 seq）或不落库的流式片段 */
   type LiveMessage = { type: 'event'; event: AgentEvent } | MessageDelta;
@@ -170,7 +170,7 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
       const interrupted = events.some((e) => e.type === 'turn.completed' && e.payload.reason === 'interrupted');
       const outcome = status === 'error' ? 'failed' : interrupted ? 'was interrupted' : 'finished';
       const text = [
-        `[AgentDeck] Session ${childId} (${child.provider}${child.title ? `, "${child.title}"` : ''}) ${outcome}.`,
+        `[MinDeck] Session ${childId} (${child.provider}${child.title ? `, "${child.title}"` : ''}) ${outcome}.`,
         reply ? `Last reply:\n${reply}` : 'No reply.',
         `Use get_session with afterSeq ${sinceSeq} for details.`,
       ].join('\n\n');
@@ -278,7 +278,7 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
       model: session.model ?? undefined,
       effort: session.effort ?? undefined,
       permissionMode: session.permissionMode,
-      agentdeckMcp: mcpFor(session.id),
+      mindeckMcp: mcpFor(session.id),
       onPending: (body, signal) => createPending(session.id, body, signal),
       onEvent(event) {
         // 会话已被删除：Provider 收尾时可能还有零星消息，直接丢弃，不能再往已删的 session 写
@@ -346,7 +346,7 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
     // 管家靠换会话控制上下文（steward.ts），不让用户看到压缩
     if (session.provider === 'codex' || session.steward || tokens === undefined || tokens < compactHintTokens || background.has(sessionId)) return;
     compactHinted.add(sessionId);
-    sendMessage(sessionId, `[AgentDeck] Your context is ${Math.round(tokens / 1000)}K tokens. Call compact_after_turn now with instructions on what to keep for whatever comes next in this session, then end your turn without doing anything else. Pass continueWith only if you stopped with unfinished steps to resume on your own.`, [], 'agent');
+    sendMessage(sessionId, `[MinDeck] Your context is ${Math.round(tokens / 1000)}K tokens. Call compact_after_turn now with instructions on what to keep for whatever comes next in this session, then end your turn without doing anything else. Pass continueWith only if you stopped with unfinished steps to resume on your own.`, [], 'agent');
     quietTurns.add(sessionId);
   }
 
@@ -707,7 +707,7 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
         if (new Date(w.at) > now) break;
         if (!store.deleteWakeup(w.id)) continue;
         try {
-          sendMessage(w.sessionId, `[AgentDeck] Wake-up you scheduled at ${new Date(w.createdAt).toLocaleString('en-GB')}: ${w.note}`, [], 'agent');
+          sendMessage(w.sessionId, `[MinDeck] Wake-up you scheduled at ${new Date(w.createdAt).toLocaleString('en-GB')}: ${w.note}`, [], 'agent');
         } catch (err) {
           emit(w.sessionId, { type: 'error', payload: { message: `Skipped a scheduled wake-up (${w.note}): ${(err as Error).message}` } });
         }
@@ -853,10 +853,10 @@ export function createHub(store: Store, attachments: AttachmentStore, mcpFor: (s
         if (request.secret.withUsername && !username) throw new HubError(400, 'Username is empty');
         const session = getSession(request.sessionId);
         const workspace = request.secret.shared ? null : store.getWorkspaceByPath(session.cwd);
-        if (workspace === undefined) throw new HubError(400, `${session.cwd} is no longer an AgentDeck project; save it as Shared from Settings instead`);
+        if (workspace === undefined) throw new HubError(400, `${session.cwd} is no longer a MinDeck project; save it as Shared from Settings instead`);
         if (!settle(requestId, { kind: 'question', answers: {} })) throw new HubError(409, 'Already handled elsewhere');
         store.saveSecret(workspace?.id ?? null, request.secret.name, username, request.details ?? '', value);
-        wake(getSession(session.id), `[AgentDeck] The user saved secret ${request.secret.name}${username ? ` (password for username ${username})` : ''}, ${request.secret.shared ? 'shared' : 'private to this project'}. See list_secrets for how to use it.`);
+        wake(getSession(session.id), `[MinDeck] The user saved secret ${request.secret.name}${username ? ` (password for username ${username})` : ''}, ${request.secret.shared ? 'shared' : 'private to this project'}. See list_secrets for how to use it.`);
         return store.lastSeq(request.sessionId);
       }
       if (!settle(requestId, resolution)) throw new HubError(409, 'Already handled elsewhere');

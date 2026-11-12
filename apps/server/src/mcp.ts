@@ -4,12 +4,12 @@ import type { FastifyInstance } from 'fastify';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { z } from 'zod';
-import { effortOptions, modelOptions, secretNamePattern, type AgentEvent, type ScheduleConfig } from '@agentdeck/shared';
+import { effortOptions, modelOptions, secretNamePattern, type AgentEvent, type ScheduleConfig } from '@mindeck/shared';
 import { HubError, type createHub } from './hub';
 import type { Store } from './store/db';
 import type { Services } from './services';
 import type { createScheduler } from './schedules';
-import type { AgentdeckMcp } from './providers/types';
+import type { MindeckMcp } from './providers/types';
 import type { Steward } from './steward';
 
 // 会话编排 MCP：只给 Hub 自己拉起的 Provider 会话用，调用方靠按会话注入的请求头识别（外部客户端不支持，没有会话可挂派生审批卡）。
@@ -18,7 +18,7 @@ import type { Steward } from './steward';
 type Hub = ReturnType<typeof createHub>;
 type Scheduler = ReturnType<typeof createScheduler>;
 
-const callerHeader = 'x-agentdeck-session';
+const callerHeader = 'x-mindeck-session';
 // 派生要等人审批，可能挂很久；超时由 Provider 侧断开请求，审批卡随之作废
 const toolTimeoutSec = 24 * 3600;
 const maxWaitSec = 600;
@@ -34,14 +34,14 @@ const stewardTools = new Set(['work_snapshot', 'publish_brief', 'remember', 'for
 /** Provider 侧免审批的工具：只读的，create_session 与定时任务写操作（它们由 Hub 自己弹审批卡，不再让 Provider 先审一次），以及只影响自己会话或只是交给用户看的 compact_after_turn / ask_user / report_to_user / wake_later / add_todo / request_secret / list_secrets（不返回值） */
 const autoApprove = ['work_snapshot', 'publish_brief', 'remember', 'forget', 'list_workspaces', 'list_sessions', 'get_session', 'create_session', 'list_services', 'get_service_log', 'compact_after_turn', 'ask_user', 'report_to_user', 'wake_later', 'add_todo', 'request_secret', 'list_secrets', 'list_schedules', 'create_schedule', 'update_schedule', 'delete_schedule'];
 
-export function agentdeckMcpFor(url: string, sessionId: string): AgentdeckMcp {
+export function mindeckMcpFor(url: string, sessionId: string): MindeckMcp {
   return { url, headers: { [callerHeader]: sessionId }, timeoutSec: toolTimeoutSec, autoApprove };
 }
 
 export function registerMcpRoute(app: FastifyInstance, hub: Hub, store: Store, services: Services, scheduler: Scheduler, steward: Steward) {
   app.post('/mcp', async (req, reply) => {
     const callerId = req.headers[callerHeader];
-    if (typeof callerId !== 'string' || !store.getSession(callerId)) return reply.code(403).send({ message: 'AgentDeck MCP is only available to AgentDeck sessions' });
+    if (typeof callerId !== 'string' || !store.getSession(callerId)) return reply.code(403).send({ message: 'MinDeck MCP is only available to MinDeck sessions' });
     // 调用方断开（工具超时、轮被中断）时作废还在等的审批 / 等待
     const controller = new AbortController();
     reply.raw.on('close', () => controller.abort());
@@ -60,7 +60,7 @@ export function registerMcpRoute(app: FastifyInstance, hub: Hub, store: Store, s
 const json = (value: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(value, null, 2) }] });
 
 export function createMcpServer(hub: Hub, store: Store, services: Services, scheduler: Scheduler, callerId: string, signal: AbortSignal, steward?: Steward): McpServer {
-  const server = new McpServer({ name: 'agentdeck', version: '0.0.0' });
+  const server = new McpServer({ name: 'mindeck', version: '0.0.0' });
   const isSteward = !!store.getSession(callerId)?.steward;
   // 管家会话只注册 stewardTools 里的工具；转型保留 registerTool 按 inputSchema 推导回调参数
   const tool = ((name: string, ...rest: unknown[]) => {
@@ -73,7 +73,7 @@ export function createMcpServer(hub: Hub, store: Store, services: Services, sche
   const project = (path?: string) => {
     const cwd = path ?? hub.getSession(callerId).cwd;
     const workspace = store.getWorkspaceByPath(cwd);
-    if (!workspace) throw new HubError(400, `${cwd} is not an AgentDeck project; see list_workspaces`);
+    if (!workspace) throw new HubError(400, `${cwd} is not a MinDeck project; see list_workspaces`);
     return workspace;
   };
   // 定时任务会在无人值守时执行，写操作每次都由 Hub 弹卡，不提供"本会话允许"
@@ -85,12 +85,12 @@ export function createMcpServer(hub: Hub, store: Store, services: Services, sche
   const scheduleView = ({ workspaceId, ...s }: ScheduleConfig & Record<string, unknown>) => ({ ...s, workspace: store.getWorkspace(workspaceId)?.path ?? null, model: s.model || 'Default', effort: s.effort || 'Default' });
 
   tool('list_workspaces', {
-    description: 'List AgentDeck projects. New sessions can only be created in one of these paths.',
+    description: 'List MinDeck projects. New sessions can only be created in one of these paths.',
     inputSchema: {},
   }, () => json(store.listWorkspaces().map((w) => ({ path: w.path, alias: w.alias }))));
 
   tool('list_sessions', {
-    description: 'List AgentDeck sessions, most recently updated first (at most 50). Your own session is marked self: true.',
+    description: 'List MinDeck sessions, most recently updated first (at most 50). Your own session is marked self: true.',
     inputSchema: {
       workspace: z.string().optional().describe('Only sessions in this project path'),
       status: z.enum(['idle', 'running', 'waiting_user', 'error']).optional(),
@@ -101,25 +101,25 @@ export function createMcpServer(hub: Hub, store: Store, services: Services, sche
     .map((s) => ({ id: s.id, provider: s.provider, workspace: s.cwd, title: s.title, status: s.status, archived: !!s.archivedAt, updatedAt: s.updatedAt, ...(s.id === callerId ? { self: true } : {}) }))));
 
   tool('create_session', {
-    description: 'Delegate a task to a new AgentDeck session. Write the prompt as a handoff brief built from this conversation: the goal, the plan and decisions already agreed, scope boundaries, and open questions. Do not investigate the repository to write the prompt; the new session explores on its own. Do not restate project rules from AGENTS.md / CLAUDE.md; the new session loads them. Do not add work the user did not ask for. The user must approve in AgentDeck (unless they already allowed it for this session); the call blocks until they do. Model and effort default to AgentDeck settings; permission mode always does. Returns the new session id.',
+    description: 'Delegate a task to a new MinDeck session. Write the prompt as a handoff brief built from this conversation: the goal, the plan and decisions already agreed, scope boundaries, and open questions. Do not investigate the repository to write the prompt; the new session explores on its own. Do not restate project rules from AGENTS.md / CLAUDE.md; the new session loads them. Do not add work the user did not ask for. The user must approve in MinDeck (unless they already allowed it for this session); the call blocks until they do. Model and effort default to MinDeck settings; permission mode always does. Returns the new session id.',
     inputSchema: {
       provider: z.enum(['claude', 'codex', 'deepseek']),
       prompt: z.string().min(1).describe('First message for the new session'),
       workspace: z.string().optional().describe('Project path from list_workspaces; defaults to your own project'),
-      model: z.string().optional().describe(`Only when the user asked for a specific model; defaults to AgentDeck settings. ${Object.entries(modelOptions).map(([p, options]) => `${p}: ${options.map((o) => o.value).join(', ')}`).join('; ')}`),
-      effort: z.string().optional().describe(`Only when the user asked for a specific thinking effort; defaults to AgentDeck settings. claude: ${effortOptions.claude.map((o) => o.value).join(', ')}; codex: ${effortOptions.codex.map((o) => o.value).join(', ')} (ultra not on every model); deepseek: none`),
+      model: z.string().optional().describe(`Only when the user asked for a specific model; defaults to MinDeck settings. ${Object.entries(modelOptions).map(([p, options]) => `${p}: ${options.map((o) => o.value).join(', ')}`).join('; ')}`),
+      effort: z.string().optional().describe(`Only when the user asked for a specific thinking effort; defaults to MinDeck settings. claude: ${effortOptions.claude.map((o) => o.value).join(', ')}; codex: ${effortOptions.codex.map((o) => o.value).join(', ')} (ultra not on every model); deepseek: none`),
       notify: z.boolean().optional().describe('Default false. Set true only when you need the result to continue your own work (e.g. the user asked you to compare, summarize, or build on it); the result then arrives later as a new message. Either way, do not wait or poll for the session — carry on with any remaining work.'),
     },
   }, async ({ provider, prompt, workspace, model, effort, notify = false }) => {
     const cwd = workspace ?? hub.getSession(callerId).cwd;
     // 先校验再弹卡，不让人批一张注定失败的请求
-    if (!store.getWorkspaceByPath(cwd)) throw new HubError(400, `${cwd} is not an AgentDeck project; see list_workspaces`);
-    if (provider === 'deepseek' && !hub.settings().deepseek.apiKeyConfigured) throw new HubError(400, 'DeepSeek API Key is not configured in AgentDeck settings');
+    if (!store.getWorkspaceByPath(cwd)) throw new HubError(400, `${cwd} is not a MinDeck project; see list_workspaces`);
+    if (provider === 'deepseek' && !hub.settings().deepseek.apiKeyConfigured) throw new HubError(400, 'DeepSeek API Key is not configured in MinDeck settings');
     // 解析成具体值再上审批卡：批准的就是实际要用的，审批期间改设置也不会换掉
     const config = hub.resolveSessionConfig(provider, { model, effort });
     if (!hub.canSpawn(callerId)) {
       const resolution = await hub.createPending(callerId, {
-        kind: 'approval', toolName: 'AgentDeck: create session', toolUseId: randomUUID(), input: { provider, workspace: cwd, model: config.model ?? 'Default', effort: config.effort ?? 'Default', prompt },
+        kind: 'approval', toolName: 'MinDeck: create session', toolUseId: randomUUID(), input: { provider, workspace: cwd, model: config.model ?? 'Default', effort: config.effort ?? 'Default', prompt },
         description: 'Start a new session with the permission mode from Settings',
         sessionAllowPatterns: ['create_session'], suggestions: [],
       }, signal);
@@ -202,7 +202,7 @@ export function createMcpServer(hub: Hub, store: Store, services: Services, sche
 
   // Inbox：Agent 自主运行时找用户的唯一出口。提交即返回，不等用户，一轮不为等人挂着
   tool('ask_user', {
-    description: 'File a decision or question for the user in the AgentDeck Inbox, without waiting for the answer. Use it when you need a decision or information only the user has, especially in unattended runs where nobody watches this conversation. Then carry on with work that does not depend on the answer, or end your turn; do not wait or poll. The answer arrives later as a new message in this session. One question per call; do not file a question that is already open. Put the current status in details instead of also filing a report.',
+    description: 'File a decision or question for the user in the MinDeck Inbox, without waiting for the answer. Use it when you need a decision or information only the user has, especially in unattended runs where nobody watches this conversation. Then carry on with work that does not depend on the answer, or end your turn; do not wait or poll. The answer arrives later as a new message in this session. One question per call; do not file a question that is already open. Put the current status in details instead of also filing a report.',
     inputSchema: {
       question: z.string().min(1).describe('One line the user can answer without opening this session'),
       details: z.string().optional().describe('Markdown: what you found, the evidence, and what happens with each choice'),
@@ -212,7 +212,7 @@ export function createMcpServer(hub: Hub, store: Store, services: Services, sche
   }, ({ question, details, options = [], multiSelect = false }) => json({ id: hub.fileQuestion(callerId, { question, details, options, multiSelect }).id, filed: true }));
 
   tool('report_to_user', {
-    description: 'File a report in the AgentDeck Inbox for the user to read later: the outcome when a scheduled or long-running task finishes or stops for good. The user reads it without opening this session, so make it self-contained and short. Not for questions or progress while waiting on the user: when you file ask_user, do not also report; put the status in its details.',
+    description: 'File a report in the MinDeck Inbox for the user to read later: the outcome when a scheduled or long-running task finishes or stops for good. The user reads it without opening this session, so make it self-contained and short. Not for questions or progress while waiting on the user: when you file ask_user, do not also report; put the status in its details.',
     inputSchema: {
       title: z.string().min(1),
       summary: z.string().min(1).describe('One line shown in the Inbox list, e.g. key numbers or the verdict'),
@@ -221,11 +221,11 @@ export function createMcpServer(hub: Hub, store: Store, services: Services, sche
   }, ({ title, summary, body }) => json({ id: hub.fileReport(callerId, { title, summary, body }).id }));
 
   tool('wake_later', {
-    description: 'Schedule this session to be woken up later, then end your turn instead of waiting, sleeping or polling (e.g. to check CI, a deploy or a reply in 30 minutes). At that time the note arrives as a new message in this session, with this conversation intact. Give exactly one of inMinutes or at. The user can see and cancel pending wake-ups in AgentDeck.',
+    description: 'Schedule this session to be woken up later, then end your turn instead of waiting, sleeping or polling (e.g. to check CI, a deploy or a reply in 30 minutes). At that time the note arrives as a new message in this session, with this conversation intact. Give exactly one of inMinutes or at. The user can see and cancel pending wake-ups in MinDeck.',
     inputSchema: {
       note: z.string().min(1).describe('What to check or do when woken up'),
       inMinutes: z.number().int().min(1).optional(),
-      at: z.string().optional().describe('YYYY-MM-DDTHH:mm, local time of the AgentDeck host'),
+      at: z.string().optional().describe('YYYY-MM-DDTHH:mm, local time of the MinDeck host'),
     },
   }, ({ note, inMinutes, at }) => {
     if ((inMinutes === undefined) === (at === undefined)) throw new HubError(400, 'Give exactly one of inMinutes or at');
@@ -235,11 +235,11 @@ export function createMcpServer(hub: Hub, store: Store, services: Services, sche
   });
 
   tool('add_todo', {
-    description: "Add an item to the user's AgentDeck to-do list, for something the user should come back to later rather than decide now: e.g. the user asks you to note something down, or a follow-up that is not due yet. It is linked to this session and project. With remindOn it shows up in the user's Inbox from that date. For a decision needed now use ask_user; for something you will check yourself use wake_later.",
+    description: "Add an item to the user's MinDeck to-do list, for something the user should come back to later rather than decide now: e.g. the user asks you to note something down, or a follow-up that is not due yet. It is linked to this session and project. With remindOn it shows up in the user's Inbox from that date. For a decision needed now use ask_user; for something you will check yourself use wake_later.",
     inputSchema: {
       title: z.string().min(1).describe('The task, short enough for a list row'),
       note: z.string().optional().describe('Context needed to pick it up again'),
-      remindOn: z.string().optional().describe('YYYY-MM-DD, local date of the AgentDeck host'),
+      remindOn: z.string().optional().describe('YYYY-MM-DD, local date of the MinDeck host'),
     },
   }, ({ title, note, remindOn }) => json({ id: hub.createTodo({ title, note, remindOn: remindOn ?? null, cwd: isSteward ? null : store.getSession(callerId)!.cwd, sessionId: callerId }).id }));
 
@@ -248,10 +248,10 @@ export function createMcpServer(hub: Hub, store: Store, services: Services, sche
   const secretUsage = (cwd: string) => `Use a secret only by substituting it inside a shell command, e.g. curl -H "Authorization: Bearer $(${secretCommand} NAME)" ...; run it from inside this project so private secrets resolve. In a browser automation script (e.g. ego-browser nodejs), read it inside the script and pass it straight to the page: const { execFileSync } = await import("node:child_process"); await page.fill(selector, execFileSync("node", [${JSON.stringify(secretScript)}, "get", "NAME"], { cwd: ${JSON.stringify(cwd)} }).toString()). For a secret with a username, the value is the password and the username is listed here in plain text. Never print, echo, log, return from page.evaluate, or write the value to a file, and use a secret only for what its description says.`;
 
   tool('request_secret', {
-    description: `Ask the user to enter a secret (API key, token, password, or a username with its password) in AgentDeck instead of pasting it into the chat. First call list_secrets and reuse a matching one. Returns immediately; when the user saves it, a message arrives in this session, then use it as described in list_secrets. Never ask the user to paste a secret into the conversation.`,
+    description: `Ask the user to enter a secret (API key, token, password, or a username with its password) in MinDeck instead of pasting it into the chat. First call list_secrets and reuse a matching one. Returns immediately; when the user saves it, a message arrives in this session, then use it as described in list_secrets. Never ask the user to paste a secret into the conversation.`,
     inputSchema: {
-      name: z.string().regex(new RegExp(secretNamePattern)).describe('Environment-variable style, naming the service and, for private secrets, the project, e.g. GITHUB_TOKEN_AGENTDECK'),
-      description: z.string().min(1).describe('What it is for and where it is used, e.g. "GitHub token for pushing to fizee/AgentDeck"; the only hint for choosing it later'),
+      name: z.string().regex(new RegExp(secretNamePattern)).describe('Environment-variable style, naming the service and, for private secrets, the project, e.g. GITHUB_TOKEN_MINDECK'),
+      description: z.string().min(1).describe('What it is for and where it is used, e.g. "GitHub token for pushing to fizee/MinDeck"; the only hint for choosing it later'),
       shared: z.boolean().optional().describe('Default false: private to this project. True only for secrets every project may use'),
       withUsername: z.boolean().optional().describe('True for a login: the user enters a username and its password together; the secret value is the password'),
     },
@@ -282,7 +282,7 @@ export function createMcpServer(hub: Hub, store: Store, services: Services, sche
   });
 
   tool('list_services', {
-    description: 'List development services in an AgentDeck project, including their ids, commands, working subdirectories, links, and running state.',
+    description: 'List development services in a MinDeck project, including their ids, commands, working subdirectories, links, and running state.',
     inputSchema: { workspace: z.string().optional().describe('Project path from list_workspaces; defaults to your own project') },
   }, ({ workspace }) => {
     const { id } = project(workspace);
@@ -296,7 +296,7 @@ export function createMcpServer(hub: Hub, store: Store, services: Services, sche
       name: z.string().min(1),
       command: z.string().min(1),
       subdir: z.string().optional().describe('Working directory relative to the project root; defaults to the root'),
-      url: z.string().optional().describe('Link to display in AgentDeck; defaults to empty'),
+      url: z.string().optional().describe('Link to display in MinDeck; defaults to empty'),
       workspace: z.string().optional().describe('Project path from list_workspaces; defaults to your own project'),
     },
   }, ({ name, command, subdir = '', url = '', workspace }) => json(services.create({ workspaceId: project(workspace).id, name, command, subdir, url })));
@@ -352,7 +352,7 @@ export function createMcpServer(hub: Hub, store: Store, services: Services, sche
     return json({ ...log, text: parts.slice(-lines).join('\n') + (trailingNewline ? '\n' : ''), truncated });
   });
 
-  const timeDesc = "once: YYYY-MM-DDTHH:mm; daily / weekdays (Mon–Fri, public holidays not skipped): HH:mm. Local time of the AgentDeck host";
+  const timeDesc = "once: YYYY-MM-DDTHH:mm; daily / weekdays (Mon–Fri, public holidays not skipped): HH:mm. Local time of the MinDeck host";
 
   tool('list_schedules', {
     description: 'List scheduled tasks. Each run starts a new session in the project and sends the prompt.',
@@ -360,7 +360,7 @@ export function createMcpServer(hub: Hub, store: Store, services: Services, sche
   }, () => json(scheduler.list().map(scheduleView)));
 
   tool('create_schedule', {
-    description: 'Create a scheduled task that, at each run, starts a new session in a project and sends the prompt. Only when the user asked for it. Write the prompt as a self-contained brief: the run has no access to this conversation. The user must approve in AgentDeck. Model and effort default to AgentDeck settings; permission mode always does.',
+    description: 'Create a scheduled task that, at each run, starts a new session in a project and sends the prompt. Only when the user asked for it. Write the prompt as a self-contained brief: the run has no access to this conversation. The user must approve in MinDeck. Model and effort default to MinDeck settings; permission mode always does.',
     inputSchema: {
       name: z.string().min(1),
       provider: z.enum(['claude', 'codex', 'deepseek']),
@@ -375,12 +375,12 @@ export function createMcpServer(hub: Hub, store: Store, services: Services, sche
     const resolved = hub.resolveSessionConfig(provider, { model, effort });
     const config: ScheduleConfig = { name, provider, workspaceId: project(workspace).id, model: resolved.model ?? '', effort: resolved.effort ?? '', permissionMode: resolved.permissionMode, prompt, kind, time, enabled: true };
     scheduler.validate(config);
-    await approve('AgentDeck: create scheduled task', scheduleView(config), 'Create a scheduled task that runs unattended with the permission mode shown');
+    await approve('MinDeck: create scheduled task', scheduleView(config), 'Create a scheduled task that runs unattended with the permission mode shown');
     return json(scheduleView(scheduler.create(config)));
   });
 
   tool('update_schedule', {
-    description: 'Update only the supplied fields of a scheduled task. The user must approve in AgentDeck. Changing provider resets model and effort to that provider\'s AgentDeck settings unless supplied. Permission mode cannot be changed here.',
+    description: 'Update only the supplied fields of a scheduled task. The user must approve in MinDeck. Changing provider resets model and effort to that provider\'s MinDeck settings unless supplied. Permission mode cannot be changed here.',
     inputSchema: {
       id: z.string(),
       name: z.string().min(1).optional(),
@@ -404,24 +404,24 @@ export function createMcpServer(hub: Hub, store: Store, services: Services, sche
       prompt: rest.prompt ?? current.prompt, kind: rest.kind ?? current.kind, time: rest.time ?? current.time, enabled: rest.enabled ?? current.enabled,
     };
     scheduler.validate(config);
-    await approve('AgentDeck: update scheduled task', scheduleView(config), `Update scheduled task "${current.name}"`);
+    await approve('MinDeck: update scheduled task', scheduleView(config), `Update scheduled task "${current.name}"`);
     return json(scheduleView(scheduler.update(id, config)));
   });
 
   tool('delete_schedule', {
-    description: 'Delete a scheduled task. The user must approve in AgentDeck.',
+    description: 'Delete a scheduled task. The user must approve in MinDeck.',
     inputSchema: { id: z.string() },
   }, async ({ id }) => {
     const current = scheduler.list().find((s) => s.id === id);
     if (!current) throw new HubError(404, 'Scheduled task not found');
-    await approve('AgentDeck: delete scheduled task', scheduleView(current), `Delete scheduled task "${current.name}"`);
+    await approve('MinDeck: delete scheduled task', scheduleView(current), `Delete scheduled task "${current.name}"`);
     scheduler.remove(id);
     return json({ ok: true });
   });
 
   if (isSteward && steward) {
     tool('work_snapshot', {
-      description: 'Current state of the user\'s work in AgentDeck: recent sessions (status, project, unfinished-work summary), approvals and questions waiting for the user, unread reports, open todos, scheduled tasks, services, and uncommitted files per project. Times are local to the AgentDeck host.',
+      description: 'Current state of the user\'s work in MinDeck: recent sessions (status, project, unfinished-work summary), approvals and questions waiting for the user, unread reports, open todos, scheduled tasks, services, and uncommitted files per project. Times are local to the MinDeck host.',
       inputSchema: {},
     }, async () => json(await steward.snapshot()));
 

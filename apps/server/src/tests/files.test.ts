@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { createProjectEntry, deleteProjectEntry, listProjectFiles, saveProjectFile } from '../files';
 
 test('project directory browsing cannot escape cwd through paths or symlinks', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'agentdeck-files-'));
+  const dir = await mkdtemp(join(tmpdir(), 'mindeck-files-'));
   const root = join(dir, 'project');
   try {
     await mkdir(root);
@@ -23,7 +23,7 @@ test('project directory browsing cannot escape cwd through paths or symlinks', a
 });
 
 async function workspace(t: TestContext) {
-  const base = await mkdtemp(join(tmpdir(), 'agentdeck-file-writes-'));
+  const base = await mkdtemp(join(tmpdir(), 'mindeck-file-writes-'));
   t.after(() => rm(base, { recursive: true, force: true }));
   const root = join(base, 'project');
   const outside = join(base, 'outside');

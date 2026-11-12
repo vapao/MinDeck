@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { Schedule, ScheduleConfig } from '@agentdeck/shared';
+import type { Schedule, ScheduleConfig } from '@mindeck/shared';
 import type { Store } from './store/db';
 import { HubError, type createHub } from './hub';
 
@@ -82,7 +82,7 @@ export function createScheduler(store: Store, hub: Hub, now = () => new Date(), 
       if (!store.claimScheduleRun(s.id, s.nextRunAt, next, s.kind !== 'once')) continue;
       if (t.getTime() - new Date(s.nextRunAt).getTime() > catchUpMs) {
         const due = new Date(s.nextRunAt);
-        store.recordScheduleRun(s.id, t.toISOString(), null, `Missed the run at ${localDate(due)} ${localTime(due)}: AgentDeck was not running`);
+        store.recordScheduleRun(s.id, t.toISOString(), null, `Missed the run at ${localDate(due)} ${localTime(due)}: MinDeck was not running`);
       } else run(s);
     }
   }

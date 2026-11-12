@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { isCompactCommand, skillToken, type ApprovalDecision, type ProviderOutput, type QuestionSpec, type Resolution } from '@agentdeck/shared';
+import { isCompactCommand, skillToken, type ApprovalDecision, type ProviderOutput, type QuestionSpec, type Resolution } from '@mindeck/shared';
 import type { ProviderSession, StartOptions } from '../types';
 import { RpcError, spawnAppServer, type AppServerRpc } from './rpc';
 import { createNormalizer, stripShellWrapper } from './normalize';
@@ -32,7 +32,7 @@ function appServer() {
     },
     async onRequest(r) {
       const t = threads.get(threadIdOf(r.params) ?? '');
-      if (!t) throw new RpcError(-32001, 'Thread does not belong to any AgentDeck session');
+      if (!t) throw new RpcError(-32001, 'Thread does not belong to any MinDeck session');
       return t.onRequest(r);
     },
     onExit(error) {
@@ -42,7 +42,7 @@ function appServer() {
     },
   });
   const ready = rpc
-    .request('initialize', { clientInfo: { name: 'agentdeck', title: 'AgentDeck', version: '0.0.0' }, capabilities: { experimentalApi: true, requestAttestation: false } })
+    .request('initialize', { clientInfo: { name: 'mindeck', title: 'MinDeck', version: '0.0.0' }, capabilities: { experimentalApi: true, requestAttestation: false } })
     .then(() => rpc.notify('initialized', {}));
   shared = { rpc, ready, threads };
   return shared;
@@ -62,7 +62,7 @@ export function shutdownCodex() {
   shared?.rpc.kill();
 }
 
-export function startCodexSession({ cwd, resume, model, effort, permissionMode, agentdeckMcp, onEvent, onPending, onExit }: StartOptions): ProviderSession {
+export function startCodexSession({ cwd, resume, model, effort, permissionMode, mindeckMcp, onEvent, onPending, onExit }: StartOptions): ProviderSession {
   const { rpc, ready, threads } = appServer();
   const { normalize } = createNormalizer();
   let threadId: string | null = null;
@@ -139,7 +139,7 @@ export function startCodexSession({ cwd, resume, model, effort, permissionMode, 
           // approval 模式下 MCP 工具调用的审批以 elicitation 到达（P0 §16.3），靠 _meta.codex_approval_kind 区分；真正向用户要表单数据的 elicitation 仍不支持
           const p = r.params;
           const meta = p._meta as { codex_approval_kind?: string; tool_params?: unknown } | null;
-          if (meta?.codex_approval_kind !== 'mcp_tool_call') throw new RpcError(-32601, 'AgentDeck does not support MCP elicitation');
+          if (meta?.codex_approval_kind !== 'mcp_tool_call') throw new RpcError(-32601, 'MinDeck does not support MCP elicitation');
           const res = await onPending(
             { kind: 'approval', toolName: `mcp:${p.serverName}`, toolUseId: randomUUID(), input: meta.tool_params ?? {}, description: p.message, sessionAllowPatterns: [], suggestions: [] },
             abort.signal,
@@ -149,7 +149,7 @@ export function startCodexSession({ cwd, resume, model, effort, permissionMode, 
         }
         default:
           // 其余服务端请求（MCP elicitation、动态工具等）一律按不支持回复，Codex 会把该调用当失败继续
-          throw new RpcError(-32601, `AgentDeck does not support ${r.method}`);
+          throw new RpcError(-32601, `MinDeck does not support ${r.method}`);
       }
     },
     onExit(error) {
@@ -159,7 +159,7 @@ export function startCodexSession({ cwd, resume, model, effort, permissionMode, 
   };
 
   // 本机 ~/.codex/config.toml 是 approval_policy=never + danger-full-access（AGENTS.md 规则 10）：thread 级显式覆盖，并校验回包。
-  // bypass 是会话级选了"完全跳过审批"时才用，等价本机那份危险配置，风险自负（AgentDeck 设置里配的）
+  // bypass 是会话级选了"完全跳过审批"时才用，等价本机那份危险配置，风险自负（MinDeck 设置里配的）
   const bypass = permissionMode === 'bypass';
   const policy = {
     cwd,
@@ -168,11 +168,11 @@ export function startCodexSession({ cwd, resume, model, effort, permissionMode, 
     sandbox: (bypass ? 'danger-full-access' : 'workspace-write') as 'danger-full-access' | 'workspace-write',
     approvalsReviewer: 'user' as const,
     config: {
-      'mcp_servers.agentdeck': {
-        url: agentdeckMcp.url,
-        http_headers: agentdeckMcp.headers,
-        tool_timeout_sec: agentdeckMcp.timeoutSec,
-        tools: Object.fromEntries(agentdeckMcp.autoApprove.map((t) => [t, { approval_mode: 'approve' }])),
+      'mcp_servers.mindeck': {
+        url: mindeckMcp.url,
+        http_headers: mindeckMcp.headers,
+        tool_timeout_sec: mindeckMcp.timeoutSec,
+        tools: Object.fromEntries(mindeckMcp.autoApprove.map((t) => [t, { approval_mode: 'approve' }])),
       },
     },
   };

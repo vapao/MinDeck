@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { ServerMessage, Session, SessionStatus } from '@agentdeck/shared'
+import type { ServerMessage, Session, SessionStatus } from '@mindeck/shared'
 import { navigate } from '../router'
 
 // 站内提醒：会话列表本来就在 5s 轮询，比对前后状态，窗口在前台时提醒其他会话。

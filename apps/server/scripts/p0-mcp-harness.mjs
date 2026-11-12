@@ -13,14 +13,14 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { z } from 'zod';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 
-const CWD = mkdtempSync(join(tmpdir(), 'agentdeck-p0-mcp-'));
+const CWD = mkdtempSync(join(tmpdir(), 'mindeck-p0-mcp-'));
 const SLOW_SEC = 90;
 const log = (tag, o) => console.log(`[${tag}]`, typeof o === 'string' ? o : JSON.stringify(o).slice(0, 600));
 
 // 无状态 Streamable HTTP：每个请求一个 server + transport
 const http = createServer(async (req, res) => {
-  const caller = req.headers['x-agentdeck-session'];
-  const server = new McpServer({ name: 'agentdeck', version: '0.0.0' });
+  const caller = req.headers['x-mindeck-session'];
+  const server = new McpServer({ name: 'mindeck', version: '0.0.0' });
   server.registerTool('whoami', { description: 'Return the caller id', inputSchema: {} }, async () => {
     log('mcp', `whoami caller=${caller}`);
     return { content: [{ type: 'text', text: `caller=${caller}` }] };
@@ -43,17 +43,17 @@ await new Promise((r) => http.listen(0, '127.0.0.1', r));
 const URL_ = `http://127.0.0.1:${http.address().port}/mcp`;
 log('p0', `mcp at ${URL_}, cwd ${CWD}`);
 
-const PROMPT_1 = 'Call the agentdeck whoami tool and reply with its exact output only.';
-const PROMPT_2 = `Call the agentdeck slow tool with seconds=${SLOW_SEC} and reply with its exact output only.`;
+const PROMPT_1 = 'Call the mindeck whoami tool and reply with its exact output only.';
+const PROMPT_2 = `Call the mindeck slow tool with seconds=${SLOW_SEC} and reply with its exact output only.`;
 
 async function claude() {
-  for (const [name, prompt, allowed] of [['whoami (not allowlisted)', PROMPT_1, []], ['slow (allowlisted)', PROMPT_2, ['mcp__agentdeck__slow']]]) {
+  for (const [name, prompt, allowed] of [['whoami (not allowlisted)', PROMPT_1, []], ['slow (allowlisted)', PROMPT_2, ['mcp__mindeck__slow']]]) {
     log('claude', `--- ${name}`);
     const q = query({
       prompt,
       options: {
         cwd: CWD, permissionMode: 'default', settingSources: [], allowedTools: allowed, maxTurns: 4,
-        mcpServers: { agentdeck: { type: 'http', url: URL_, headers: { 'X-AgentDeck-Session': 'claude-s1' }, timeout: 30 * 60_000, alwaysLoad: true } },
+        mcpServers: { mindeck: { type: 'http', url: URL_, headers: { 'X-MinDeck-Session': 'claude-s1' }, timeout: 30 * 60_000, alwaysLoad: true } },
         canUseTool: async (toolName, input) => {
           log('claude.canUseTool', { toolName, input });
           return { behavior: 'allow', updatedInput: input };
@@ -93,13 +93,13 @@ async function codex() {
     }
   });
   const request = (method, params) => { const id = nextId++; write({ id, method, params }); return new Promise((resolve, reject) => pending.set(id, { resolve, reject })); };
-  await request('initialize', { clientInfo: { name: 'agentdeck-p0', title: 'p0', version: '0' }, capabilities: { experimentalApi: true, requestAttestation: false } });
+  await request('initialize', { clientInfo: { name: 'mindeck-p0', title: 'p0', version: '0' }, capabilities: { experimentalApi: true, requestAttestation: false } });
   write({ method: 'initialized', params: {} });
   // variant：on-request 下给 whoami 配 approval_mode = approve；bypass 下看是否还发 elicitation
   const bypass = process.argv[3] === 'bypass';
   const res = await request('thread/start', {
     cwd: CWD, approvalPolicy: bypass ? 'never' : 'on-request', sandbox: bypass ? 'danger-full-access' : 'workspace-write', approvalsReviewer: 'user', ephemeral: true,
-    config: { 'mcp_servers.agentdeck': { url: URL_, http_headers: { 'X-AgentDeck-Session': 'codex-s1' }, tool_timeout_sec: 1800, tools: { whoami: { approval_mode: 'approve' } } } },
+    config: { 'mcp_servers.mindeck': { url: URL_, http_headers: { 'X-MinDeck-Session': 'codex-s1' }, tool_timeout_sec: 1800, tools: { whoami: { approval_mode: 'approve' } } } },
   });
   log('codex.thread', { approvalPolicy: res.approvalPolicy, sandbox: res.sandbox.type });
   for (const prompt of process.argv[3] ? [PROMPT_1, PROMPT_1.replace('whoami', 'slow tool with seconds=1, then the whoami')] : [PROMPT_1, PROMPT_2]) {

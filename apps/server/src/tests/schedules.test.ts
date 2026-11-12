@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import type { ScheduleConfig } from '@agentdeck/shared';
+import type { ScheduleConfig } from '@mindeck/shared';
 import { openStore } from '../store/db';
 import { createScheduler, nextRun } from '../schedules';
 

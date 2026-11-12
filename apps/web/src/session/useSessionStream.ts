@@ -1,5 +1,5 @@
 import { useEffect, useReducer, useRef } from 'react'
-import type { AgentEvent, ApprovalDecision, Attachment, PendingRequest, QuestionAnswers, ServerMessage, Session, SessionStatus, TurnEndReason } from '@agentdeck/shared'
+import type { AgentEvent, ApprovalDecision, Attachment, PendingRequest, QuestionAnswers, ServerMessage, Session, SessionStatus, TurnEndReason } from '@mindeck/shared'
 
 // 会话页的实时状态 = 对事件流做 reduce（方案 §13.1）。一个 seq 只处理一次，重放与 live 共用同一条路径。
 

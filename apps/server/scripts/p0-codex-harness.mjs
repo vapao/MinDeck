@@ -9,7 +9,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-const CWD = mkdtempSync(join(tmpdir(), 'agentdeck-p0-codex-'));
+const CWD = mkdtempSync(join(tmpdir(), 'mindeck-p0-codex-'));
 const log = (tag, o) => console.log(`[${tag}]`, typeof o === 'string' ? o : JSON.stringify(o).slice(0, 800));
 
 // 生成一张 64x64 纯红色 PNG（无外部依赖）
@@ -90,7 +90,7 @@ async function run(step, threadId) {
     },
   });
 
-  await server.request('initialize', { clientInfo: { name: 'agentdeck-harness', title: null, version: '0.0.0' }, capabilities: { experimentalApi: true, requestAttestation: false } });
+  await server.request('initialize', { clientInfo: { name: 'mindeck-harness', title: null, version: '0.0.0' }, capabilities: { experimentalApi: true, requestAttestation: false } });
   server.notify('initialized', {});
 
   // 关键：本机 ~/.codex/config.toml 是 approval_policy=never + danger-full-access，必须在 thread 级显式覆盖
@@ -129,10 +129,10 @@ const threadId = await run(async (turn, text) => {
   await turn([text('这张图片是什么颜色？只回答颜色。'), { type: 'localImage', path: imgPath }]);
 
   log('step', '2. 沙箱外写文件 → 审批 accept');
-  await turn([text('请执行 shell 命令 `echo probe > ~/agentdeck-p0-codex.txt`，不要解释。')]);
+  await turn([text('请执行 shell 命令 `echo probe > ~/mindeck-p0-codex.txt`，不要解释。')]);
 
   log('step', '3. 再写一次 → 审批 decline，看 turn 是否正常结束');
-  await turn([text('请执行 shell 命令 `echo again > ~/agentdeck-p0-codex-2.txt`，不要解释。如果被拒绝，回复"已拒绝"即可。')]);
+  await turn([text('请执行 shell 命令 `echo again > ~/mindeck-p0-codex-2.txt`，不要解释。如果被拒绝，回复"已拒绝"即可。')]);
 
   log('step', '4. requestUserInput');
   await turn([text('在动手之前，请用 request_user_input 工具问我一个问题：想用哪种语言写 hello world？给出 Python / Go 两个选项。拿到答案后只回复我选的语言，不要写代码。')]);

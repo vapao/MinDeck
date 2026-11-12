@@ -3,8 +3,8 @@ import { defineConfig } from 'vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
 // 端口：前端 5180，后端 8004，Tailscale HTTPS 8450
-// 代理跟随 AGENTDECK_PORT，否则改了后端端口的本地开发会静默连到生产 Hub
-const hub = `127.0.0.1:${process.env.AGENTDECK_PORT ?? 8004}`
+// 代理跟随 MINDECK_PORT，否则改了后端端口的本地开发会静默连到生产 Hub
+const hub = `127.0.0.1:${process.env.MINDECK_PORT ?? 8004}`
 export default defineConfig({
   plugins: [
     react(),
@@ -12,8 +12,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
       manifest: {
-        name: 'AgentDeck',
-        short_name: 'AgentDeck',
+        name: 'MinDeck',
+        short_name: 'MinDeck',
         description: 'Multi-device console for Claude / Codex',
         lang: 'zh-CN',
         display: 'standalone',

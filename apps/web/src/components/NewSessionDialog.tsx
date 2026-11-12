@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { X } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { getEffortOptions, modelOptions, permissionModeOptions, type PermissionMode, type ProviderId } from '@agentdeck/shared'
+import { getEffortOptions, modelOptions, permissionModeOptions, type PermissionMode, type ProviderId } from '@mindeck/shared'
 import { api } from '../api'
 import { providerName } from '../format'
 import { navigate } from '../router'

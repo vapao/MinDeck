@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronDown, ChevronRight, FileDiff, Folder, RefreshCw, Server } from 'lucide-react'
-import type { ChangedFile } from '@agentdeck/shared'
+import type { ChangedFile } from '@mindeck/shared'
 import { showDiff } from './FilePreview'
 import { FilesPanel } from './FilesPanel'
 import { ServicesPanel, useServices } from './ServicesPanel'

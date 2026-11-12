@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { CircleHelp, KeyRound } from 'lucide-react'
-import type { PendingRequest, ProviderId, QuestionAnswers } from '@agentdeck/shared'
+import type { PendingRequest, ProviderId, QuestionAnswers } from '@mindeck/shared'
 import { formatTime } from '../format'
 import type { PendingState } from '../session/useSessionStream'
 import styles from './pendingCard.module.css'

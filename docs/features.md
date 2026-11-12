@@ -22,7 +22,7 @@
 - 站内提醒沿用会话列表每 5 秒轮询比对状态；首次加载只记录基线。running / waiting_user 变为等待处理、完成或失败时提醒，同状态不重复；不到 5 秒的一轮会漏掉。
 - 页面可见且窗口有焦点才算前台：当前会话不提醒，其他会话在右下角显示站内提醒，不依赖系统通知权限；提醒持续停留，不自动消失，点击进入对应会话或手动关闭后移除，同会话只保留最新一条，进入该会话时也移除提醒。
 - 系统通知（2026-11-09 改）：与手机推送同一时机、同一内容（见"推送到手机"的"什么时候推"），Hub 经在线状态 WS 发 `notice` 给所有页面，页面不在前台（含当前打开的会话）且已授权时用浏览器 `Notification` 弹出，正文去掉 Markdown 标记、截到 300 字；同会话同 tag 替换，带 `renotify` 仍会提醒。点击唤起窗口并进入对应会话；窗口回到前台时撤掉本页已弹出的全部系统通知（含其他会话的，macOS "提醒"样式不会再停在屏幕上），状态以侧栏为准。页面关闭后不通知，未接 Web Push。
-- macOS 上即使从"添加到程序坞"的独立窗口打开，系统通知也以 Google Chrome 名义发出：系统设置 → 通知里 Chrome 关着会全部静默丢弃（AgentDeck 那一项开着没用）；第二行网址是 Chrome 强制显示的来源，去不掉。
+- macOS 上即使从"添加到程序坞"的独立窗口打开，系统通知也以 Google Chrome 名义发出：系统设置 → 通知里 Chrome 关着会全部静默丢弃（MinDeck 那一项开着没用）；第二行网址是 Chrome 强制显示的来源，去不掉。
 
 ## 切片 8：项目与设置
 
@@ -80,7 +80,7 @@ diff 弹窗底部提供 `Discard changes`；列表不显示回退按钮，必须
 ## 空闲后更新 Hub
 
 - `scripts/launchd.sh update-when-idle`：先确认 launchd 服务已加载，再启动独立的一次性后台进程，立即返回 PID 和日志路径，不占用 Agent 会话等待。日志追加到 `data/logs/update-when-idle.log`，等待期间可用 `kill <PID>` 取消。
-- 每 2 秒读取本机 `/api/sessions`（端口沿用 `AGENTDECK_PORT`，默认 8004），只有所有会话均为 idle / error 且没有后台任务才构建；running / waiting_user 和后台任务都阻止更新。构建后再次等空闲，再调用现有 `restart`。
+- 每 2 秒读取本机 `/api/sessions`（端口沿用 `MINDECK_PORT`，默认 8004），只有所有会话均为 idle / error 且没有后台任务才构建；running / waiting_user 和后台任务都阻止更新。构建后再次等空闲，再调用现有 `restart`。
 - 空闲检查共用从进程启动起的 10 分钟期限；连接拒绝、连接重置、套接字断开或请求超时会在阶段期限内限时重试（最多 60 秒）；HTTP / 数据错误、重连超时或构建失败会记录具体阶段、接口和原因并退出，不重启。构建命令自身不受该期限强制终止。同一时间只允许一个后台更新任务，重复调用不会再次安排；不是常驻任务，机器重启后不恢复。
 - 后台任务原子写入 `data/update-status.json`，`GET /api/update-status` 返回最近一次更新及本次 Hub 的实例 ID；重启后最多等待 60 秒，确认新实例可访问才记成功。失败、取消或后台进程意外停止都会显示失败。
 - 顶部独立更新通知每 5 秒查询更新状态，显示等待 / 构建 / 重启 / 成功 / 失败和时间；不会自动消失，关闭只针对本次更新的当前阶段，后续结果仍会出现。关闭浏览器后重开仍可查看未关闭的最近结果；成功提供 Refresh 按钮，不主动刷新页面。状态文件与 SQLite 位于同目录，日志仍在项目 `data/logs/`。
@@ -91,10 +91,10 @@ diff 弹窗底部提供 `Discard changes`；列表不显示回退按钮，必须
 `POST /mcp` 无状态 Streamable HTTP（`src/mcp.ts`）：`list_workspaces` / `list_sessions` / `create_session(provider, prompt, workspace?)` / `get_session(id, afterSeq?, waitSec?)`（最多 40 条；`waitSec` ≤ 600）/ `send_message` / `interrupt` / `move_session(id, parent?)`。
 
 - **读取范围**：`get_session` 的记录只含用户消息、助手回复、错误和中断，不含工具调用；筛选后取最近 40 条，超过时标记 `truncated`。另外返回当前状态和待处理的审批 / 问题；`nextSeq` 用于后续增量读取。
-- **只给 Hub 拉起的会话用**：按会话注入（Claude `mcpServers`、Codex thread `config.mcp_servers`），请求头 `x-agentdeck-session` 标识调用方，缺失或未知 403。请求头不是安全边界（REST 无鉴权）。
+- **只给 Hub 拉起的会话用**：按会话注入（Claude `mcpServers`、Codex thread `config.mcp_servers`），请求头 `x-mindeck-session` 标识调用方，缺失或未知 403。请求头不是安全边界（REST 无鉴权）。
 - **派生必须审批**：`create_session` 由 Hub 在调用方会话弹审批卡（与权限模式无关），批准后按设置默认值建会话并发首条消息。派生授权（该会话之后派生免审批，供用户离开时让监督会话自主派活）有两个入口：会话顶栏的开关（事先打开需二次确认，可随时关掉），或卡上的"本会话允许"。授权落库、只给该会话、子会话和分叉不继承，Hub 重启后仍有效，关掉开关或删除会话即失效；子会话仍按设置默认权限模式跑，无人值守需先把默认改成 bypass。`send_message` / `interrupt` / `move_session` 按调用方权限模式走 Provider 审批（Codex 为 elicitation，见方案 §16.3）；只读工具与 `create_session` 在 Provider 侧免审。不能对自己的会话 send / interrupt / 等待。
 - **定位**：把对话里已定的需求整理成交接单派给新会话，用户之后接管；prompt 取材于对话，不为写 prompt 查仓库、不转述项目规则、不加活。
-- **结果回调**：`notify` 默认 false，仅父会话需要结果才能继续时开启；不等待 / 轮询。子会话本轮处理完（idle / error）时 Hub 发 `[AgentDeck] Session … finished`（含最后回复）给父会话；回调只在内存，Hub 重启即丢。同一父会话在用户未发消息时最多被自动唤醒 5 次（有派生授权时 30 次），超出改记 error，用户发消息后清零。
+- **结果回调**：`notify` 默认 false，仅父会话需要结果才能继续时开启；不等待 / 轮询。子会话本轮处理完（idle / error）时 Hub 发 `[MinDeck] Session … finished`（含最后回复）给父会话；回调只在内存，Hub 重启即丢。同一父会话在用户未发消息时最多被自动唤醒 5 次（有派生授权时 30 次），超出改记 error，用户发消息后清零。
 - **预约压缩**：`compact_after_turn(instructions)` 只作用于调用方自己的会话（Claude / DeepSeek；Codex 400），Provider 侧免审。Hub 在内存记下，本轮正常结束（idle）时以 `agent` 身份发 `/compact <instructions>`；本轮中断 / 失败则作废，发送失败（如工作区有文件操作）记一条 error 不重试，Hub 重启即丢。压缩期间到达的 `notify` 回调照常插入，SDK 排在压缩之后、在新上下文里处理，整段只报一次 `turn.completed`（已用 SDK 0.3.284 验证）。用户中断压缩那一轮时排队中的回调随 `cancelQueued` 丢弃，父会话可用 `get_session` 补读。
 - **自适应压缩提示**：Agent 看不到自己的上下文用量，由 Hub 判断阈值。Hub 在内存记各会话最近一次 `context.updated`；Claude / DeepSeek 会话一轮正常结束（idle）时若 ≥ 150K、本轮没预约压缩、没有后台任务，Hub 以 `agent` 身份单独发一条提示，要求它调 `compact_after_turn` 写明要保留什么后结束本轮，不让它判断要不要压（压缩约等于多跑一个请求，之后的请求都少带大量上下文）。提示那一轮结束时不再提示，Agent 没预约就等下一轮。代价：会话多跑提示和压缩两轮（这两轮的落点不通知，Finished 通知在提示前就按真正那轮的回复发出）；提示与回复在聊天界面可见。发出 `/compact`（预约或手动）时清掉记录，等压缩后的新值。Hub 重启后要等下一次上下文上报。
 - **压缩后续跑**：`compact_after_turn` 可选 `continueWith`。Hub 发出 `/compact` 后紧接着以 `agent` 身份插入这条消息，与压缩期间到达的回调同一路径，排在压缩之后处理；用户中断压缩时一并丢弃。等子会话回调或用户回话时不需要传。
@@ -193,7 +193,7 @@ Files 支持在项目根目录或指定子目录新建空文件 / 文件夹，�
 
 - 定时任务执行时新建的会话记 `scheduleId`（`sessions.schedule_id`）。它们**不进 Active 侧栏**，只在 Automations 页该任务的 Recent runs 里（最近 6 次，按创建时间倒序）；正在跑、等你（waiting_user）、Inbox 里有它的事项、或正在看时才出现在侧栏。分叉出来的会话不带 `scheduleId`，回到侧栏。归档后照常在 Inactive。
 - Recent runs 芯片：日期 + 状态点（蓝 = 运行中、琥珀 = 等你或有未处理事项并注明条数、红 = 出错、绿 = 正常结束），点击进会话。错过 / 执行失败仍只显示在任务的 `lastError`。
-- MCP `wake_later(note, inMinutes | at)`（二选一，`at` 为本机时区 `YYYY-MM-DDTHH:mm`，须晚于现在；Provider 侧免审）：存 `wakeups` 表，到点由调度器（30 秒一次的 tick）把 `[AgentDeck] Wake-up you scheduled at …: <note>` 作为消息发回同一会话（运行中则插入当前轮）。先删后发，同一个最多发一次；Hub 停机期间到点的启动后照发；发不出去（如项目正在做文件操作）在会话里记一条 error，不重试。用户中断某一轮时，这一轮预约的唤醒作废；会话删除时一起删。
+- MCP `wake_later(note, inMinutes | at)`（二选一，`at` 为本机时区 `YYYY-MM-DDTHH:mm`，须晚于现在；Provider 侧免审）：存 `wakeups` 表，到点由调度器（30 秒一次的 tick）把 `[MinDeck] Wake-up you scheduled at …: <note>` 作为消息发回同一会话（运行中则插入当前轮）。先删后发，同一个最多发一次；Hub 停机期间到点的启动后照发；发不出去（如项目正在做文件操作）在会话里记一条 error，不重试。用户中断某一轮时，这一轮预约的唤醒作废；会话删除时一起删。
 - Automations 页的 Upcoming wake-ups 列出全部待触发唤醒（时间、note、会话），可取消（`GET /api/wakeups`、`DELETE /api/wakeups/:id`）。Agent 侧没有取消工具。
 - 未做：自动唤醒的次数上限（bypass 会话可以无限续约，靠 Upcoming 列表人工发现）。
 
@@ -215,7 +215,7 @@ Files 支持在项目根目录或指定子目录新建空文件 / 文件夹，�
 
 解决"Agent 要密钥时只能贴进对话，或让用户自己建文件"。目标是让值不进对话和日志，Agent 下次能自己找到并使用；**不是隔离**。
 
-- **存储**：`secrets` 表（`workspace_id` 为 `''` 是 Shared，否则只对该项目可见；`(workspace_id, name)` 唯一，同一作用域同名即覆盖）。`username` 非空表示一对账号密码，值是密码；账号不算机密，明文显示在 Settings 和 `list_secrets` 里。值明文存在 `data/agentdeck.db`，拷库 / 备份会连同密钥一起带走。删除项目时其私有密钥一并删除。
+- **存储**：`secrets` 表（`workspace_id` 为 `''` 是 Shared，否则只对该项目可见；`(workspace_id, name)` 唯一，同一作用域同名即覆盖）。`username` 非空表示一对账号密码，值是密码；账号不算机密，明文显示在 Settings 和 `list_secrets` 里。值明文存在 `data/mindeck.db`，拷库 / 备份会连同密钥一起带走。删除项目时其私有密钥一并删除。
 - **请求**：MCP `request_secret(name, description, shared?, withUsername?)`，`withUsername` 时卡片多一个明文 Username 框（经 `answers.username` 提交），名字限环境变量风格，默认本项目私有（调用方 cwd 必须是项目）。走 `ask_user` 同一套 filed 异步提问（`kind: 'question'` 带 `secret` 字段），会话流与 Inbox 显示为密码输入卡；名字、说明、作用域只读，填错就 Dismiss 让 Agent 重提。保存后以一条只含名字的消息唤醒会话。
 - **值只在 `secrets` 表里**（有测试）：卡片提交的值经 `resolution.response` 传到 Hub，Hub 存表后以 `answers: {}` 结算，`pending_requests`、`user_input.resolved` 事件、发回会话的消息都不带值。
 - **查与用**：MCP `list_secrets` 只返回本项目私有和 Shared 的名字、说明、作用域（同名私有优先），不返回值，附带用法。Agent 在 shell 里用 `$(node <repo>/scripts/secret.mjs get NAME)` 取值，脚本按当前目录（解析软链接后取最长匹配的项目）判断作用域，读不到时非零退出。浏览器自动化脚本（如 `ego-browser nodejs`）不继承 shell 环境、cwd 是 `/`，`usage` 里给出在脚本内 `execFileSync` 调 `secret.mjs`（显式传项目 `cwd`）后直接 `page.fill` 的写法；已实测 `page.fill` 失败的报错和页面快照都不带填入的值。

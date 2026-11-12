@@ -1,13 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { forkSession, importSessionToStore, query, type CanUseTool, type EffortLevel, type PermissionResult, type PermissionUpdate, type Query, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
-import { skillToken, type QuestionSpec } from '@agentdeck/shared';
+import { skillToken, type QuestionSpec } from '@mindeck/shared';
 import type { ProviderSession, StartOptions } from '../types';
 import { createNormalizer } from './normalize';
 
 // 一个 Streaming Input 长驻 session（方案 §6.1）。消息通过 inbox 推入，SDK 消息经 normalizer 转成统一事件回调出去。
-export function startClaudeSession({ cwd, resume, model, effort, permissionMode, deepseek, agentdeckMcp, onEvent, onPending, onExit }: StartOptions): ProviderSession {
-  // bypass：会话级选了"完全跳过审批"（AgentDeck 设置里配的，不是本机 ~/.claude/settings.json 那份）
+export function startClaudeSession({ cwd, resume, model, effort, permissionMode, deepseek, mindeckMcp, onEvent, onPending, onExit }: StartOptions): ProviderSession {
+  // bypass：会话级选了"完全跳过审批"（MinDeck 设置里配的，不是本机 ~/.claude/settings.json 那份）
   const sdkPermissionMode = permissionMode === 'bypass' ? 'bypassPermissions' : 'default';
   const connectionEnv = deepseek ? deepseekEnv(deepseek, model ?? 'deepseek-flash') : undefined;
   const inbox = createInbox();
@@ -16,7 +16,7 @@ export function startClaudeSession({ cwd, resume, model, effort, permissionMode,
   // 审批与 AskUserQuestion 都从这里进来（方案 §6.4）；AskUserQuestion 的回答通过 updatedInput.answers 交还
   const canUseTool: CanUseTool = async (toolName, input, { signal, suggestions = [], toolUseID, title, description, decisionReason }) => {
     // 放在这里而不是 allowedTools：后者会让 SDK 对每个会话打一条 canUseTool 被遮蔽的警告
-    if (agentdeckMcp.autoApprove.some((t) => toolName === `mcp__agentdeck__${t}`)) return { behavior: 'allow', updatedInput: input };
+    if (mindeckMcp.autoApprove.some((t) => toolName === `mcp__mindeck__${t}`)) return { behavior: 'allow', updatedInput: input };
     if (toolName === 'AskUserQuestion') {
       const questions = input.questions as QuestionSpec[];
       const r = await onPending({ kind: 'question', toolUseId: toolUseID, questions }, signal);
@@ -60,7 +60,7 @@ export function startClaudeSession({ cwd, resume, model, effort, permissionMode,
       // 会压过 permissionMode 选项，所以用 flag 层（最高优先级）把它按会话强制回来，并在 init 回包里复核（AGENTS.md 规则 2）
       settingSources: ['user', 'project'],
       settings: { permissions: { defaultMode: sdkPermissionMode }, ...(connectionEnv ? { env: connectionEnv } : {}) },
-      mcpServers: { agentdeck: { type: 'http', url: agentdeckMcp.url, headers: agentdeckMcp.headers, timeout: agentdeckMcp.timeoutSec * 1000, alwaysLoad: true } },
+      mcpServers: { mindeck: { type: 'http', url: mindeckMcp.url, headers: mindeckMcp.headers, timeout: mindeckMcp.timeoutSec * 1000, alwaysLoad: true } },
       canUseTool,
     },
   });
@@ -208,7 +208,7 @@ export async function verifyDeepseekConnection(cwd: string, connection: { baseUr
   }
 }
 
-const deny = (): PermissionResult => ({ behavior: 'deny', message: 'The user denied this action in AgentDeck' });
+const deny = (): PermissionResult => ({ behavior: 'deny', message: 'The user denied this action in MinDeck' });
 
 // 把 Provider 建议的规则压成 UI 可读的 pattern，例如 Bash(git status:*)
 function describeRules(suggestions: PermissionUpdate[]): string[] {

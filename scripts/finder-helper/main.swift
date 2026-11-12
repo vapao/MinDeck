@@ -8,7 +8,7 @@ final class FinderDelegate: NSObject, NSApplicationDelegate {
     @objc func reveal(_ event: NSAppleEventDescriptor, reply: NSAppleEventDescriptor) {
         defer { NSApp.terminate(nil) }
         guard let raw = event.paramDescriptor(forKeyword: keyDirectObject)?.stringValue,
-              let url = URLComponents(string: raw), url.scheme == "agentdeck-finder",
+              let url = URLComponents(string: raw), url.scheme == "mindeck-finder",
               let path = url.queryItems?.first(where: { $0.name == "path" })?.value,
               path.hasPrefix("/"), !path.contains("\0") else { return }
         if url.host == "terminal" {
@@ -64,7 +64,7 @@ final class FinderDelegate: NSObject, NSApplicationDelegate {
         var error: NSDictionary?
         script.executeAndReturnError(&error)
         if let error = error {
-            showError("Could not open iTerm2", "Allow AgentDeck Finder to control iTerm2 in System Settings → Privacy & Security → Automation.\n\n" + error.description)
+            showError("Could not open iTerm2", "Allow MinDeck Finder to control iTerm2 in System Settings → Privacy & Security → Automation.\n\n" + error.description)
         }
     }
 

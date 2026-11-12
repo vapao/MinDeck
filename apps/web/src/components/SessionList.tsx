@@ -1,7 +1,7 @@
 import { useState, useSyncExternalStore, type ReactNode } from 'react'
 import { ChevronDown, ChevronRight, Eye, EyeOff, Plus, Trash2 } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { Session, SessionStatus } from '@agentdeck/shared'
+import type { Session, SessionStatus } from '@mindeck/shared'
 import { api } from '../api'
 import { formatTime } from '../format'
 import { navigate } from '../router'
@@ -19,7 +19,7 @@ import styles from './SessionList.module.css'
 const statusText: Record<Exclude<SessionStatus, 'idle'>, string> = { running: 'Running', waiting_user: 'Waiting for you', error: 'Error' }
 
 // 折叠状态按 cwd 记在 localStorage，桌面侧栏与移动端列表页共享
-const collapsedKey = 'agentdeck.collapsed'
+const collapsedKey = 'mindeck.collapsed'
 const listeners = new Set<() => void>()
 let collapsedCache: string = localStorage.getItem(collapsedKey) ?? '[]'
 const readCollapsed = () => collapsedCache

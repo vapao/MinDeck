@@ -6,19 +6,19 @@ import styles from './UpdateNotice.module.css'
 
 export function UpdateNotice() {
   const { data } = useQuery({ queryKey: ['update-status'], queryFn: api.updateStatus, refetchInterval: 5000, refetchIntervalInBackground: true, retry: false })
-  const [dismissed, setDismissed] = useState(() => localStorage.getItem('agentdeck.dismissedUpdate'))
+  const [dismissed, setDismissed] = useState(() => localStorage.getItem('mindeck.dismissedUpdate'))
   const update = data?.update
   if (!update || dismissed === `${update.id}:${update.phase}`) return null
   const title = {
     waiting: 'Update queued · waiting for idle sessions',
     building: 'Building update',
-    restarting: 'Restarting AgentDeck',
-    completed: 'AgentDeck updated',
-    failed: 'AgentDeck update failed',
+    restarting: 'Restarting MinDeck',
+    completed: 'MinDeck updated',
+    failed: 'MinDeck update failed',
   }[update.phase]
   const dismiss = () => {
     const key = `${update.id}:${update.phase}`
-    localStorage.setItem('agentdeck.dismissedUpdate', key)
+    localStorage.setItem('mindeck.dismissedUpdate', key)
     setDismissed(key)
   }
   const Icon = update.phase === 'completed' ? Check : update.phase === 'failed' ? TriangleAlert : RefreshCw

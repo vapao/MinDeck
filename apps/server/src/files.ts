@@ -1,6 +1,6 @@
 import { lstat, mkdir, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
-import type { CreateProjectEntryBody, DeleteProjectEntryBody, ProjectFilesResponse, SaveProjectFileBody } from '@agentdeck/shared';
+import type { CreateProjectEntryBody, DeleteProjectEntryBody, ProjectFilesResponse, SaveProjectFileBody } from '@mindeck/shared';
 import { HubError } from './hub';
 
 export async function listProjectFiles(cwd: string, path: string, query: string, hidden: boolean): Promise<ProjectFilesResponse> {

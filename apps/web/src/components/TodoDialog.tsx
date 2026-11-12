@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { X } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { Todo } from '@agentdeck/shared'
+import type { Todo } from '@mindeck/shared'
 import { api } from '../api'
 import { useSessions } from '../session/useSessions'
 import { Select } from './Select'

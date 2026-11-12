@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { Attachment, ImageMimeType } from '@agentdeck/shared';
+import type { Attachment, ImageMimeType } from '@mindeck/shared';
 import type { Store } from './db';
 
 // 图片字节落在服务端私有目录 <root>/<sessionId>/<id>.<ext>（方案 §9.2）。

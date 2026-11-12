@@ -1,4 +1,4 @@
-# AgentDeck UI 设计规范
+# MinDeck UI 设计规范
 
 设计稿：https://claude.ai/artifact/Q4D8So6aNPffo4oiLezwze（5 块画板：桌面会话视图、iPhone 会话列表、iPhone 会话与审批、iPhone 重连回放 + 提问、事件卡片组件表）。本文是设计稿的文字版约束，实现时以本文为准；两者冲突以本文为准并回头改稿。
 
@@ -122,7 +122,7 @@ Automations（`/schedules`）：顶栏标题 + New task（描边按钮）；内�
 
 - 品牌栏和会话顶栏统一高 60px（另加安全区），品牌名 16px、会话标题 15px；桌面 logo 24px。列表首次请求尚未完成时显示 `Loading sessions…`，后台刷新不替换已有列表；加载组件与详情共用。首次进入详情、尚无消息且连接未就绪时，显示旋转图标和 `Loading conversation…`，减少动态效果偏好下不旋转。
 - 输入框状态栏使用模型显示名（如 `Opus-5`、`GPT-6 Astra`）和首字母大写的思考等级，保留原始模型 ID 用于 Provider 请求；手机已有会话隐藏独立的 Provider 名称，空会话保留 Agent / 模型切换入口。手机底部操作栏依次为上传、快捷指令、可收缩的模型信息、新开会话、发送 / 中断：上传和快捷指令按钮为 32×32px，图标保持 16px，上传图标左边缘与输入文字对齐；上传图标到快捷指令图标、快捷指令图标到模型文字的视觉间距均为 16px（含空会话切换入口）；右侧图标按钮保留 40px 点击区域，按钮间不额外留间距；中间文字过长时截尾，切换箭头保持可见，右侧按钮始终留在输入框内。上传、排队等状态提示独占下一行并允许换行。
-- 手机顶栏不显示底部分隔线。品牌名 `AgentDeck` 左侧使用琥珀底、黑色 `A` 的圆角方形 logo，桌面品牌栏与 favicon 共用同一 SVG。
+- 手机顶栏不显示底部分隔线。品牌名 `MinDeck` 左侧使用琥珀底、黑色 `A` 的圆角方形 logo，桌面品牌栏与 favicon 共用同一 SVG。
 - 列表页固定在视口内，仅会话列表区域滚动，滚动到边缘不带动整页；顶部品牌栏保持不动，logo 尺寸 28px，手机品牌名 18px。手机列表顶栏操作图标 24px、点击区域 44px；详情返回箭头 32px 并向左偏移 7px 抵消 SVG 内部留白，删除图标 22px，点击区域仍为 44px；按可见笔画做光学对齐，手机会话标题为 16px。
 - 顶层四页（Inbox `/`、Todos `/todos`、Sessions `/sessions`、Automations `/schedules`）底部有 tab 栏（图标 22px，选中琥珀，Inbox 带琥珀数量角标）；会话、Inbox 详情、项目、设置等下一级页面不显示，返回键回到最近停留的 tab 页。
 - Inbox 页：品牌行（logo + Inbox + 新建会话）→ 可横向滚动的筛选芯片 → 事项列表（每项最小高 64）。详情页：返回 + 类型 + Open session，正文同桌面。
@@ -180,5 +180,5 @@ Automations（`/schedules`）：顶栏标题 + New task（描边按钮）；内�
 
 ## 空闲更新通知
 
-- 更新提示独立于右下角会话通知，固定在顶部栏下方居中，桌面最大宽 560px、手机两侧留 16px。使用 Application update 标签、36px 图标底座和加粗左边框；进行中为琥珀色、成功为绿色、失败为红色，复用现有语义颜色变量。包括 Update queued、Building update、Restarting AgentDeck、AgentDeck updated、AgentDeck update failed，显示阶段时间和失败原因，不自动消失。
+- 更新提示独立于右下角会话通知，固定在顶部栏下方居中，桌面最大宽 560px、手机两侧留 16px。使用 Application update 标签、36px 图标底座和加粗左边框；进行中为琥珀色、成功为绿色、失败为红色，复用现有语义颜色变量。包括 Update queued、Building update、Restarting MinDeck、MinDeck updated、MinDeck update failed，显示阶段时间和失败原因，不自动消失。
 - 成功状态附 Refresh 按钮，由用户主动加载新界面；不自动刷新。关闭提示仅隐藏该任务的当前阶段，完成或失败仍提示；关闭状态按浏览器记住，刷新和重开页面不重复显示已关闭的结果。

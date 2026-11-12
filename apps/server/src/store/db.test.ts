@@ -39,7 +39,7 @@ test('pending request resolves atomically exactly once', () => {
 
 // 迁移仅修正 Codex 的旧拼写；重开库幂等，其他 Provider、合法等级及会话数据不变。
 test('legacy Codex efforts migrate without changing other session data', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'agentdeck-effort-'));
+  const dir = mkdtempSync(join(tmpdir(), 'mindeck-effort-'));
   const path = join(dir, 'hub.sqlite');
   try {
     openStore(path).close();
@@ -77,7 +77,7 @@ test('legacy Codex efforts migrate without changing other session data', () => {
 
 // 规则：派生授权跨 Hub 重启保留，且只属于被授权的会话（无人值守时重启不能让派生重新卡在审批上）。
 test('spawn grant survives reopening the store and stays with its session', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'agentdeck-spawn-'));
+  const dir = mkdtempSync(join(tmpdir(), 'mindeck-spawn-'));
   try {
     const file = join(dir, 'hub.db');
     const now = new Date().toISOString();

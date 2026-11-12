@@ -1,4 +1,4 @@
-import { effortOptions, modelOptions, type ProviderId } from '@agentdeck/shared'
+import { effortOptions, modelOptions, type ProviderId } from '@mindeck/shared'
 
 export const providerName: Record<ProviderId, string> = { claude: 'Claude', codex: 'Codex', deepseek: 'DeepSeek' }
 

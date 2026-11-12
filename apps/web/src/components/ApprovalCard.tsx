@@ -1,5 +1,5 @@
 import { ShieldAlert } from 'lucide-react'
-import type { ApprovalDecision, PendingRequest } from '@agentdeck/shared'
+import type { ApprovalDecision, PendingRequest } from '@mindeck/shared'
 import { formatTime } from '../format'
 import type { PendingState } from '../session/useSessionStream'
 import { formatElapsed, useElapsed } from './useElapsed'

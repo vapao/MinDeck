@@ -557,7 +557,7 @@ Browser ─┘
 pnpm workspace，三个工作区。Provider 是 server 内的目录，不是独立包；等出现第二个消费方（例如独立 worker 进程）再拆。
 
 ```
-AgentDeck/
+MinDeck/
 ├─ apps/
 │ ├─ server/                    # Fastify + WS + launchd entry
 │ │ └─ src/

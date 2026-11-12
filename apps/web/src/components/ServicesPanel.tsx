@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ExternalLink, Pencil, Play, Plus, RotateCw, Square, Trash2 } from 'lucide-react'
-import type { Service, ServiceConfig } from '@agentdeck/shared'
+import type { Service, ServiceConfig } from '@mindeck/shared'
 import { api } from '../api'
 import { dialog } from './Dialog'
 import panel from './ChangesPanel.module.css'

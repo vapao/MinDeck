@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronLeft, Eye, EyeOff } from 'lucide-react'
-import { getEffortOptions, modelOptions, permissionModeOptions, type ProviderId, type Settings } from '@agentdeck/shared'
+import { getEffortOptions, modelOptions, permissionModeOptions, type ProviderId, type Settings } from '@mindeck/shared'
 import { api } from '../api'
 import { providerName } from '../format'
 import { backToTab } from '../router'
@@ -232,7 +232,7 @@ export function SettingsPage() {
               <span>Mounted folder on this Mac</span>
               <input className={styles.input} value={localSettings.local} onChange={(e) => { setLocalSettings({ ...localSettings, local: e.target.value }); setLocalError('') }} placeholder="/Volumes/Your share" />
             </label>
-            <p className={layout.connectionInfo}>Saved in this browser only. Map a folder on the Hub machine to its mounted path; clear the mounted folder to disable. Install AgentDeck Finder on this Mac with <code>scripts/install-finder-helper.sh</code>.</p>
+            <p className={layout.connectionInfo}>Saved in this browser only. Map a folder on the Hub machine to its mounted path; clear the mounted folder to disable. Install MinDeck Finder on this Mac with <code>scripts/install-finder-helper.sh</code>.</p>
           </section>
           <section className={layout.section} aria-labelledby="terminal-heading">
             <div className={layout.sectionHead}><h2 id="terminal-heading">iTerm2 on this Mac</h2></div>

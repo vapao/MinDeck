@@ -1,4 +1,4 @@
-# AgentDeck
+# MinDeck
 
 [English](README.md) | 简体中文
 
@@ -34,12 +34,12 @@
 | DeepSeek（可选） | 在设置页填 API Key |
 | 远程访问（可选） | [Tailscale](https://tailscale.com/)，用于从其他设备通过 HTTPS 访问 |
 
-AgentDeck 使用你本机自己的登录来驱动 Claude Code 和 Codex，仅面向个人自托管；请自行确认你的用法符合 Anthropic 与 OpenAI 的服务条款。
+MinDeck 使用你本机自己的登录来驱动 Claude Code 和 Codex，仅面向个人自托管；请自行确认你的用法符合 Anthropic 与 OpenAI 的服务条款。
 
 ## 快速开始
 
 ```sh
-git clone <repo> agentdeck && cd agentdeck
+git clone <repo> mindeck && cd mindeck
 pnpm install
 pnpm build      # 构建前端，Hub 会直接托管产物
 pnpm start      # 启动 Hub，默认 http://127.0.0.1:8004
@@ -51,10 +51,10 @@ pnpm start      # 启动 Hub，默认 http://127.0.0.1:8004
 
 | 变量 | 默认 | 说明 |
 |---|---|---|
-| `AGENTDECK_PORT` | `8004` | Hub 端口，只监听 127.0.0.1 |
-| `AGENTDECK_DB` | `data/agentdeck.db` | SQLite 数据库 |
-| `AGENTDECK_UPLOADS` | `data/uploads` | 附件目录 |
-| `AGENTDECK_WEB_DIST` | `apps/web/dist` | 前端构建产物；不存在时只提供 API |
+| `MINDECK_PORT` | `8004` | Hub 端口，只监听 127.0.0.1 |
+| `MINDECK_DB` | `data/mindeck.db` | SQLite 数据库 |
+| `MINDECK_UPLOADS` | `data/uploads` | 附件目录 |
+| `MINDECK_WEB_DIST` | `apps/web/dist` | 前端构建产物；不存在时只提供 API |
 
 数据都在 `data/` 下（已 gitignore）。
 
@@ -80,14 +80,14 @@ tailscale serve --bg --https=8450 8004
 
 ## 安全模型（请务必读）
 
-AgentDeck **没有登录和鉴权**，访问控制完全依赖"只监听 127.0.0.1 + 只在可信私有网络（如 Tailscale）中暴露"。能打开页面的人就能：
+MinDeck **没有登录和鉴权**，访问控制完全依赖"只监听 127.0.0.1 + 只在可信私有网络（如 Tailscale）中暴露"。能打开页面的人就能：
 
 - 在你的家目录内任意项目启动 Agent，包括 bypass 模式（无审批执行命令）
 - 通过 Services 功能执行任意 shell 命令
 - 读写项目内文件
 - 读取已保存的密钥和 DeepSeek API Key
 
-密钥和 DeepSeek API Key 以明文存放在 `data/agentdeck.db`，能读到这个文件的人就能拿到它们。
+密钥和 DeepSeek API Key 以明文存放在 `data/mindeck.db`，能读到这个文件的人就能拿到它们。
 
 **不要**把它反向代理到公网，不要改成监听 `0.0.0.0`，也不要用 Tailscale Funnel。
 
@@ -95,13 +95,13 @@ AgentDeck **没有登录和鉴权**，访问控制完全依赖"只监听 127.0.0
 
 ```sh
 pnpm dev:server          # Hub（tsx watch），默认 8004
-pnpm dev:web             # Vite 5180，代理到 AGENTDECK_PORT（默认 8004）
+pnpm dev:web             # Vite 5180，代理到 MINDECK_PORT（默认 8004）
 pnpm codex:schema        # 生成 Codex 协议类型，typecheck 前需要（依赖本机 codex）
 pnpm typecheck
-pnpm --filter @agentdeck/server test
+pnpm --filter @mindeck/server test
 ```
 
-本机已有常驻 Hub 时，开发用别的端口，并让前后端一致：`AGENTDECK_PORT=8024 pnpm dev:server` 与 `AGENTDECK_PORT=8024 pnpm dev:web`。
+本机已有常驻 Hub 时，开发用别的端口，并让前后端一致：`MINDECK_PORT=8024 pnpm dev:server` 与 `MINDECK_PORT=8024 pnpm dev:web`。
 
 设计与实现文档（中文）在 `docs/`：`features.md` 是各功能的行为与边界，`remote_agent_hub_technical_plan.md` 是架构与协议。AI 编码助手的约定见 `AGENTS.md`。
 

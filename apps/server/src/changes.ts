@@ -4,7 +4,7 @@ import { readdir, readFile, realpath, stat, unlink } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { promisify } from 'node:util';
-import type { ChangedFile, DiffResponse, DiscardChangeBody, EntriesResponse, FileResponse, ListChangesResponse } from '@agentdeck/shared';
+import type { ChangedFile, DiffResponse, DiscardChangeBody, EntriesResponse, FileResponse, ListChangesResponse } from '@mindeck/shared';
 import { HubError } from './hub';
 import { workspaceWritePath } from './files';
 

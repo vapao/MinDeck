@@ -8,7 +8,7 @@ import { openStore } from './db';
 
 // 升级旧库不能丢失原标题；生成标题必须持久化且不能改变排序、重复覆盖或复活已删除会话。
 test('AI titles survive migration and restart without changing activity or overwriting titles', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'agentdeck-title-store-'));
+  const dir = mkdtempSync(join(tmpdir(), 'mindeck-title-store-'));
   const path = join(dir, 'test.db');
   let store = openStore(path);
   const now = '2026-09-01T00:00:00.000Z';

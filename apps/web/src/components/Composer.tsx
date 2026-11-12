@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { ArrowUp, ChevronUp, DollarSign, File, Folder, FoldVertical, FolderOpen, Hash, ImagePlus, LoaderCircle, MessageSquare, MessageSquarePlus, Sparkles, Square, SquareSlash, SquareTerminal, X } from 'lucide-react'
-import { getEffortOptions, modelOptions, type Attachment, skillToken, type EntriesResponse, type ProviderId, type Session, type SkillsResponse } from '@agentdeck/shared'
+import { getEffortOptions, modelOptions, type Attachment, skillToken, type EntriesResponse, type ProviderId, type Session, type SkillsResponse } from '@mindeck/shared'
 import { api } from '../api'
 import { Select } from './Select'
 import { showImage } from './FilePreview'
@@ -82,8 +82,8 @@ export function Composer({ draftKey, disabled, sending, running, interrupting, o
       setText((t) => (t.trim() ? `${t}\n${fill}` : fill))
       textarea.current?.focus()
     }
-    window.addEventListener('agentdeck:fill-composer', onFill)
-    return () => window.removeEventListener('agentdeck:fill-composer', onFill)
+    window.addEventListener('mindeck:fill-composer', onFill)
+    return () => window.removeEventListener('mindeck:fill-composer', onFill)
   }, [draftKey])
 
   // 空会话的 Agent / 模型 / 思考等级平时只显示成一段文字，点开才在输入框上方弹出下拉，不占输入区

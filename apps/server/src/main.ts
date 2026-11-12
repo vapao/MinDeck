@@ -8,18 +8,18 @@ import Fastify from 'fastify';
 import websocket from '@fastify/websocket';
 import multipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
-import { secretNamePattern } from '@agentdeck/shared';
-import type { StewardMessageBody } from '@agentdeck/shared';
-import type { ClientMessage, CreateServiceBody, CreateSessionBody, CreateTodoBody, UpdateTodoBody, CreateWorkspaceBody, ForkSessionBody, ForkSessionResponse, ListDirsResponse, ResolvePendingBody, SaveSecretBody, ScheduleConfig, UpdateSecretBody, SendMessageBody, ServerMessage, SkillsResponse, UpdateServiceBody, UpdateSessionBody, UpdateSettingsBody, UpdateWorkspaceBody, UsageResponse, Workspace } from '@agentdeck/shared';
+import { secretNamePattern } from '@mindeck/shared';
+import type { StewardMessageBody } from '@mindeck/shared';
+import type { ClientMessage, CreateServiceBody, CreateSessionBody, CreateTodoBody, UpdateTodoBody, CreateWorkspaceBody, ForkSessionBody, ForkSessionResponse, ListDirsResponse, ResolvePendingBody, SaveSecretBody, ScheduleConfig, UpdateSecretBody, SendMessageBody, ServerMessage, SkillsResponse, UpdateServiceBody, UpdateSessionBody, UpdateSettingsBody, UpdateWorkspaceBody, UsageResponse, Workspace } from '@mindeck/shared';
 import { openStore } from './store/db';
 import { createAttachmentStore, isImageMime, maxAttachmentBytes, maxAttachmentsPerMessage } from './store/attachments';
 import { createHub, HubError } from './hub';
 import { listClaudeSkills, verifyDeepseekConnection } from './providers/claude';
 import { listCodexSkills } from './providers/codex';
 import { discardChange, fileDiff, listChanges, listEntries, readWorkspaceFile } from './changes';
-import type { CreateProjectEntryBody, DeleteProjectEntryBody, DiscardChangeBody, SaveProjectFileBody } from '@agentdeck/shared';
+import type { CreateProjectEntryBody, DeleteProjectEntryBody, DiscardChangeBody, SaveProjectFileBody } from '@mindeck/shared';
 import { createServices } from './services';
-import { agentdeckMcpFor, registerMcpRoute } from './mcp';
+import { mindeckMcpFor, registerMcpRoute } from './mcp';
 import { readUpdateStatus } from './update-status';
 import { createScheduler } from './schedules';
 import { createSteward } from './steward';
@@ -27,19 +27,19 @@ import { createPush } from './push';
 
 const repoRoot = resolve(import.meta.dirname, '../../..');
 // 8004 只监听本机；开发时由 vite dev server 代理，生产由 Tailscale Serve 8450 映射到这里
-const port = Number(process.env.AGENTDECK_PORT ?? 8004);
-const dbPath = process.env.AGENTDECK_DB ?? resolve(repoRoot, 'data/agentdeck.db');
-const uploadsDir = process.env.AGENTDECK_UPLOADS ?? resolve(repoRoot, 'data/uploads');
+const port = Number(process.env.MINDECK_PORT ?? 8004);
+const dbPath = process.env.MINDECK_DB ?? resolve(repoRoot, 'data/mindeck.db');
+const uploadsDir = process.env.MINDECK_UPLOADS ?? resolve(repoRoot, 'data/uploads');
 // 工作区（方案 §11.3 allowlist）由 UI 从家目录内浏览添加，存 workspaces 表；目录浏览也限定在家目录内
 const home = homedir();
 // 生产模式由 Hub 直接托管前端构建产物（方案 §11.2：只监听本机，Tailscale Serve 映射到这个端口）；目录不存在则只提供 API，前端走 vite dev server
-const webDist = process.env.AGENTDECK_WEB_DIST ?? resolve(repoRoot, 'apps/web/dist');
+const webDist = process.env.MINDECK_WEB_DIST ?? resolve(repoRoot, 'apps/web/dist');
 
 mkdirSync(dirname(dbPath), { recursive: true });
 const store = openStore(dbPath);
 const attachments = createAttachmentStore(store, uploadsDir);
 const push = createPush(store);
-const hub = createHub(store, attachments, (sessionId) => agentdeckMcpFor(`http://127.0.0.1:${port}/mcp`, sessionId), push);
+const hub = createHub(store, attachments, (sessionId) => mindeckMcpFor(`http://127.0.0.1:${port}/mcp`, sessionId), push);
 const services = createServices(store, resolve(repoRoot, 'data/logs/services'));
 const steward = createSteward(store, hub, services, resolve(dirname(dbPath), 'steward'));
 const scheduler = createScheduler(store, hub, undefined, steward.tick);
