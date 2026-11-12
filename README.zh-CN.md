@@ -6,6 +6,13 @@
 
 单用户自用，不是 SaaS，也没有账号体系。
 
+![会话页：工具步骤与 Changes 面板](docs/images/session.zh-CN.png)
+
+<p>
+  <img src="docs/images/approval.zh-CN.png" alt="审批卡" width="74%">
+  <img src="docs/images/mobile.zh-CN.png" alt="手机上的审批卡" width="21%">
+</p>
+
 ## 功能
 
 - 多会话并行，Claude / Codex / DeepSeek 统一界面，会话中途可切换 Provider
@@ -26,6 +33,8 @@
 | Codex（可选） | `codex` CLI 在 PATH 中并已登录 |
 | DeepSeek（可选） | 在设置页填 API Key |
 | 远程访问（可选） | [Tailscale](https://tailscale.com/)，用于从其他设备通过 HTTPS 访问 |
+
+AgentDeck 使用你本机自己的登录来驱动 Claude Code 和 Codex，仅面向个人自托管；请自行确认你的用法符合 Anthropic 与 OpenAI 的服务条款。
 
 ## 快速开始
 
@@ -76,6 +85,9 @@ AgentDeck **没有登录和鉴权**，访问控制完全依赖"只监听 127.0.0
 - 在你的家目录内任意项目启动 Agent，包括 bypass 模式（无审批执行命令）
 - 通过 Services 功能执行任意 shell 命令
 - 读写项目内文件
+- 读取已保存的密钥和 DeepSeek API Key
+
+密钥和 DeepSeek API Key 以明文存放在 `data/agentdeck.db`，能读到这个文件的人就能拿到它们。
 
 **不要**把它反向代理到公网，不要改成监听 `0.0.0.0`，也不要用 Tailscale Funnel。
 

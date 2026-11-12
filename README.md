@@ -6,6 +6,13 @@ A self-hosted console for Claude Code, Codex and DeepSeek. Agents run on an alwa
 
 Single user, self-hosted. Not a SaaS, no accounts.
 
+![Session view with tool steps and the Changes panel](docs/images/session.png)
+
+<p>
+  <img src="docs/images/approval.png" alt="Approval card" width="74%">
+  <img src="docs/images/mobile.png" alt="Approval card on a phone" width="21%">
+</p>
+
 ## Features
 
 - Parallel sessions with Claude, Codex and DeepSeek in one UI; switch providers mid-session
@@ -26,6 +33,8 @@ Single user, self-hosted. Not a SaaS, no accounts.
 | Codex (optional) | `codex` CLI on `PATH` and logged in |
 | DeepSeek (optional) | API key entered in Settings |
 | Remote access (optional) | [Tailscale](https://tailscale.com/), for HTTPS access from other devices |
+
+AgentDeck drives Claude Code and Codex with your own local login. It is meant for personal self-hosting; make sure your use complies with Anthropic's and OpenAI's terms.
 
 ## Quick start
 
@@ -76,6 +85,9 @@ AgentDeck has **no login or authentication**. Access control relies entirely on 
 - start agents in any project inside your home folder, including in bypass mode (commands run without approval)
 - run arbitrary shell commands through the Services feature
 - read and write files in your projects
+- read saved secrets and the DeepSeek API key
+
+Secrets and the DeepSeek API key are stored unencrypted in `data/agentdeck.db`; anyone who can read that file can read them.
 
 **Do not** put it behind a public reverse proxy, bind it to `0.0.0.0`, or expose it with Tailscale Funnel.
 
