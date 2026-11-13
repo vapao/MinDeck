@@ -255,6 +255,11 @@ export function SettingsPage() {
                   <p>The helper is installed in ~/Applications/MinDeck Finder.app. Return here to save your mapping and SSH host, then test again.</p>
                 </details>
               </>}
+              <details className={layout.sourceInstall}>
+                <summary>Nothing opens?</summary>
+                <p>Install MinDeck Finder on the Mac running this browser. If it is already installed, run the install command again and allow your browser to open the app when prompted.</p>
+                <p>For Finder, check that the folder exists on this Mac; mount remote shares and check the folder mapping below. For remote SSH, install iTerm2, allow MinDeck Finder to control it in System Settings → Privacy &amp; Security → Automation, and check iTerm2 for connection errors or login prompts.</p>
+              </details>
             </div>
             <label className={`${styles.field} ${layout.field}`}>
               <span>Hub location</span>

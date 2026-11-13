@@ -84,9 +84,7 @@ function desktopHelp(title: string, message: string) {
   })
 }
 let helperFrame: HTMLIFrameElement | null = null
-function launchDesktopHelper(url: string, title: string, target: string, checks: string) {
-  // Custom-protocol navigation has no success/failure callback; show the attempt and recovery steps.
-  desktopHelp(title, `${target}\n\nTrying to open MinDeck Finder on this Mac. Allow your browser to open the app if prompted. This page cannot confirm whether it opened.\n\nIf nothing opens:\n• Install MinDeck Finder on the Mac running this browser; installing it on the Hub Mac is not enough.\n• If it is already installed, rerun its installer to register the browser link, then retry and allow the browser prompt.\n${checks}`)
+function launchDesktopHelper(url: string) {
   // An unknown protocol can navigate to a browser error page; keep that navigation off the app page.
   if (!helperFrame) {
     helperFrame = document.createElement('iframe')
@@ -97,7 +95,7 @@ function launchDesktopHelper(url: string, title: string, target: string, checks:
   helperFrame.src = url
 }
 function openFinderPath(local: string) {
-  launchDesktopHelper(`mindeck-finder://reveal?path=${encodeURIComponent(local)}`, 'Opening Finder', `Folder or file on this Mac:\n${local}`, '• Check that this path exists in Finder. For a remote folder, mount the share first and check the folder mapping in Settings.')
+  launchDesktopHelper(`mindeck-finder://reveal?path=${encodeURIComponent(local)}`)
 }
 export function openProjectFinder(path: string) {
   const local = mappedPath(path)
@@ -109,7 +107,7 @@ export function openProjectFinder(path: string) {
 }
 export function openProjectTerminal(path: string) {
   if (isLocalConnection()) {
-    launchDesktopHelper(`mindeck-finder://local-terminal?path=${encodeURIComponent(path)}`, 'Opening Terminal', `Folder on this Mac:\n${path}`, '• Check that this folder exists on this Mac. If the Hub is on another Mac, select Remote Mac in Settings.')
+    launchDesktopHelper(`mindeck-finder://local-terminal?path=${encodeURIComponent(path)}`)
     return
   }
   const host = localStorage.getItem('terminal:sshHost') ?? ''
@@ -117,7 +115,7 @@ export function openProjectTerminal(path: string) {
     desktopHelp('Set up SSH', 'No SSH host is configured. Save a host alias or user@hostname in Settings → iTerm2 on this Mac. Both MinDeck Finder and iTerm2 must be installed on this Mac.')
     return
   }
-  launchDesktopHelper(`mindeck-finder://terminal?host=${encodeURIComponent(host)}&path=${encodeURIComponent(path)}`, 'Opening SSH in iTerm2', `SSH host: ${host}\nFolder on the Hub:\n${path}`, '• Install iTerm2 and allow MinDeck Finder to control it in System Settings → Privacy & Security → Automation.\n• Check iTerm2 for SSH connection errors, password requests, or host confirmation.')
+  launchDesktopHelper(`mindeck-finder://terminal?host=${encodeURIComponent(host)}&path=${encodeURIComponent(path)}`)
 }
 export function FilePreviewHost() {
   const { selected } = usePreviewState()

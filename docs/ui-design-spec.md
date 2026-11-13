@@ -188,3 +188,5 @@ Automations（`/schedules`）：顶栏标题 + New task（描边按钮）；内�
 Settings → Finder & Terminal 提供独立助手安装命令和 Copy install command，命令完整换行显示，复制结果原地提示；明确在浏览器所在 Mac 的终端执行。页面只展示安装操作，不解释仓库配置、CI 或发布准备等内部原因；源码构建未配置有效仓库时提供源码安装步骤，不提供占位下载命令。
 
 远程模式下，Finder / iTerm2 分组标题右侧分别放 Test Finder / Test SSH，使用现有次级按钮样式。测试使用已保存的本机配置，修改未保存或必需字段为空时禁用。Finder 打开映射根目录，SSH 进入 Hub folder（未填则 `/`）；界面提示在对应应用中确认结果，不声称网页检测到安装或连接成功。
+
+Finder / Terminal 的常规打开与测试直接唤起助手，不弹出打开提示框；设置页 Nothing opens? 收纳安装、浏览器授权、挂载与 SSH 排查步骤。缺少目录映射或 SSH 主机时仍使用统一配置提示弹窗。
