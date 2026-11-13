@@ -182,3 +182,9 @@ Automations（`/schedules`）：顶栏标题 + New task（描边按钮）；内�
 
 - 更新提示独立于右下角会话通知，固定在顶部栏下方居中，桌面最大宽 560px、手机两侧留 16px。使用 Application update 标签、36px 图标底座和加粗左边框；进行中为琥珀色、成功为绿色、失败为红色，复用现有语义颜色变量。包括 Update queued、Building update、Restarting MinDeck、MinDeck updated、MinDeck update failed，显示阶段时间和失败原因，不自动消失。
 - 成功状态附 Refresh 按钮，由用户主动加载新界面；不自动刷新。关闭提示仅隐藏该任务的当前阶段，完成或失败仍提示；关闭状态按浏览器记住，刷新和重开页面不重复显示已关闭的结果。
+
+## 桌面助手安装与验证
+
+Settings → Finder & Terminal 提供独立助手安装命令和 Copy install command，命令完整换行显示，复制结果原地提示；明确在浏览器所在 Mac 的终端执行。页面只展示安装操作，不解释仓库配置、CI 或发布准备等内部原因；源码构建未配置有效仓库时提供源码安装步骤，不提供占位下载命令。
+
+远程模式下，Finder / iTerm2 分组标题右侧分别放 Test Finder / Test SSH，使用现有次级按钮样式。测试使用已保存的本机配置，修改未保存或必需字段为空时禁用。Finder 打开映射根目录，SSH 进入 Hub folder（未填则 `/`）；界面提示在对应应用中确认结果，不声称网页检测到安装或连接成功。

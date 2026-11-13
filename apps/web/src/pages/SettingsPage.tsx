@@ -5,7 +5,7 @@ import { getEffortOptions, modelOptions, permissionModeOptions, type ProviderId,
 import { api } from '../api'
 import { providerName } from '../format'
 import { backToTab } from '../router'
-import { isLocalConnection, readLocalSettings, saveLocalSettings, type LocalSettings } from '../components/FilePreview'
+import { isLocalConnection, openProjectFinder, openProjectTerminal, readLocalSettings, saveLocalSettings, type LocalSettings } from '../components/FilePreview'
 import { Select } from '../components/Select'
 import { SecretsSection } from '../components/SecretsSection'
 import { dialog } from '../components/Dialog'
@@ -28,9 +28,15 @@ export function SettingsPage() {
   const [savedLocalSettings, setSavedLocalSettings] = useState(localSettings)
   const [localError, setLocalError] = useState('')
   const [didSave, setDidSave] = useState(false)
+  const [copyStatus, setCopyStatus] = useState('')
+  const helperCommand = import.meta.env.VITE_HELPER_INSTALL_URL
+    ? `curl -fsSL '${import.meta.env.VITE_HELPER_INSTALL_URL}' | sh` : ''
   useEffect(() => {
     if (saved.data && !draft) setDraft(saved.data)
   }, [saved.data, draft])
+  useEffect(() => {
+    if (location.hash === '#desktop-helper') document.getElementById('desktop-helper')?.scrollIntoView({ block: 'start' })
+  }, [draft !== null])
   const save = useMutation({
     mutationFn: api.updateSettings,
     onSuccess: (s) => {
@@ -224,6 +230,32 @@ export function SettingsPage() {
           </section>}
           <section className={layout.section} aria-labelledby="desktop-heading">
             <div className={layout.sectionHead}><h2 id="desktop-heading">Finder &amp; Terminal</h2></div>
+            <div id="desktop-helper" className={layout.helperSetup}>
+              <h3>Install desktop helper on this Mac</h3>
+              <p className={layout.connectionInfo}>Install MinDeck Finder on the Mac where you use this browser.</p>
+              {helperCommand ? <>
+                <p className={layout.connectionInfo}>Paste this command into that Mac’s terminal to install or update the helper. No Xcode or source download needed.</p>
+                <textarea className={`${styles.input} ${layout.installCommand}`} aria-label="Helper install command" readOnly rows={3} value={helperCommand} onFocus={(e) => e.currentTarget.select()} />
+                <button type="button" className={styles.secondary} onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(helperCommand)
+                    setCopyStatus('Copied. Run it in the terminal on this Mac.')
+                  } catch {
+                    setCopyStatus('Could not copy. Select the command above and copy it manually.')
+                  }
+                }}>Copy install command</button>
+                {copyStatus && <p className={layout.connectionInfo} role="status">{copyStatus}</p>}
+              </> : <>
+                <details className={layout.sourceInstall}>
+                  <summary>Install from source in the meantime</summary>
+                  <p>On the Mac running this browser, download the project source or copy these two files, keeping their folders:</p>
+                  <pre>scripts/install-finder-helper.sh{'\n'}scripts/finder-helper/main.swift</pre>
+                  <p>With Xcode Command Line Tools installed, run this from the project folder:</p>
+                  <pre>bash scripts/install-finder-helper.sh</pre>
+                  <p>The helper is installed in ~/Applications/MinDeck Finder.app. Return here to save your mapping and SSH host, then test again.</p>
+                </details>
+              </>}
+            </div>
             <label className={`${styles.field} ${layout.field}`}>
               <span>Hub location</span>
               <Select ariaLabel="Hub location" value={localSettings.mode} onChange={(mode) => setLocalSettings({ ...localSettings, mode: mode as LocalSettings['mode'] })} options={[
@@ -231,10 +263,12 @@ export function SettingsPage() {
               ]} />
             </label>
             <p className={layout.connectionInfo}>Saved in this browser only. Auto treats localhost and loopback addresses as this Mac. For an SSH tunnel, choose Remote Mac.</p>
-            {isLocalConnection(localSettings.mode) && <p className={layout.connectionInfo}>Finder opens local paths directly. Terminal opens a new window in the project folder. MinDeck Finder is included with the installer; for a source setup, run <code>scripts/install-finder-helper.sh</code> on this Mac.</p>}
+            {isLocalConnection(localSettings.mode) && <p className={layout.connectionInfo}>Finder opens local paths directly. Terminal opens a new window in the project folder. If you installed the Hub on this Mac with the installer, the helper is already included.</p>}
           </section>
           {!isLocalConnection(localSettings.mode) && <><section className={layout.section} aria-labelledby="finder-heading">
-            <div className={layout.sectionHead}><h2 id="finder-heading">Finder on this Mac</h2></div>
+            <div className={layout.sectionHead}><h2 id="finder-heading">Finder on this Mac</h2>
+              <button type="button" className={styles.secondary} disabled={localDirty || !savedLocalSettings.remote || !savedLocalSettings.local} onClick={() => openProjectFinder(savedLocalSettings.remote)}>Test Finder</button>
+            </div>
             <label className={`${styles.field} ${layout.field}`}>
               <span>Hub folder</span>
               <input className={styles.input} value={localSettings.remote} onChange={(e) => { setLocalSettings({ ...localSettings, remote: e.target.value }); setLocalError('') }} placeholder="/Users/you" />
@@ -243,15 +277,17 @@ export function SettingsPage() {
               <span>Mounted folder on this Mac</span>
               <input className={styles.input} value={localSettings.local} onChange={(e) => { setLocalSettings({ ...localSettings, local: e.target.value }); setLocalError('') }} placeholder="/Volumes/Your share" />
             </label>
-            <p className={layout.connectionInfo}>Saved in this browser only. Map a folder on the Hub machine to its mounted path; clear the mounted folder to disable. Install MinDeck Finder on this Mac with <code>scripts/install-finder-helper.sh</code>.</p>
+            <p className={layout.connectionInfo}>Mount the shared folder on this Mac first, then map its path here. Save changes before testing. Test Finder opens the mapped folder; check Finder to confirm. Saved in this browser only; clear the mounted folder to disable.</p>
           </section>
           <section className={layout.section} aria-labelledby="terminal-heading">
-            <div className={layout.sectionHead}><h2 id="terminal-heading">iTerm2 on this Mac</h2></div>
+            <div className={layout.sectionHead}><h2 id="terminal-heading">iTerm2 on this Mac</h2>
+              <button type="button" className={styles.secondary} disabled={localDirty || !savedLocalSettings.sshHost} onClick={() => openProjectTerminal(savedLocalSettings.remote || '/')}>Test SSH</button>
+            </div>
             <label className={`${styles.field} ${layout.field}`}>
               <span>SSH host</span>
               <input className={styles.input} value={localSettings.sshHost} placeholder="mac-mini" autoCapitalize="none" spellCheck={false} onChange={(e) => { setLocalSettings({ ...localSettings, sshHost: e.target.value }); setLocalError('') }} />
             </label>
-            <p className={layout.connectionInfo}>Use a host alias from ~/.ssh/config or user@hostname. Configure ports and keys in SSH config. Saved in this browser only; Finder mapping is not used.</p>
+            <p className={layout.connectionInfo}>Requires iTerm2 on this Mac. Use a host alias from ~/.ssh/config or user@hostname; configure ports and keys in SSH config. Save changes before testing. Test SSH opens the Hub folder (or / if unset); check iTerm2 to confirm. Saved in this browser only; Finder mapping is not used.</p>
           </section>
           </>}
           <div className={layout.footer}>

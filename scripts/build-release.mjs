@@ -64,10 +64,15 @@ mkdirSync(resolve(stage, 'licenses'), { recursive: true });
 cpSync(resolve(cache, `node-v${config.nodeVersion}-darwin-${process.arch}/LICENSE`), resolve(stage, 'licenses/Node.txt'));
 cpSync(resolve(dirname(require.resolve('@anthropic-ai/claude-agent-sdk')), 'README.md'), resolve(stage, 'licenses/Claude-Agent-SDK.md'));
 run('bash', ['scripts/install-finder-helper.sh', '--build', resolve(stage, 'MinDeck Finder.app')]);
+const helperArchive = resolve(out, `mindeck-helper-darwin-${process.arch}.tar.gz`);
+run('tar', ['-czf', helperArchive, '-C', stage, 'MinDeck Finder.app'], { env: { ...process.env, COPYFILE_DISABLE: '1' } });
+writeFileSync(`${helperArchive}.sha256`, `${createHash('sha256').update(readFileSync(helperArchive)).digest('hex')}  ${helperArchive.split('/').pop()}\n`);
 writeFileSync(resolve(stage, 'release.json'), JSON.stringify({ version, repository, nodeVersion: config.nodeVersion, arch: process.arch, agentPackages }) + '\n');
 const archive = `${stage}.tar.gz`;
 run('tar', ['-czf', archive, '-C', stage, '.'], { env: { ...process.env, COPYFILE_DISABLE: '1' } });
 writeFileSync(`${archive}.sha256`, `${createHash('sha256').update(readFileSync(archive)).digest('hex')}  ${archive.split('/').pop()}\n`);
-const installer = readFileSync(resolve(root, 'scripts/install.sh'), 'utf8').replaceAll('@REPOSITORY@', repository).replaceAll('@VERSION@', version);
-writeFileSync(resolve(out, 'install.sh'), installer, { mode: 0o755 });
+for (const name of ['install.sh', 'install-helper.sh']) {
+  const installer = readFileSync(resolve(root, 'scripts', name), 'utf8').replaceAll('@REPOSITORY@', repository).replaceAll('@VERSION@', version);
+  writeFileSync(resolve(out, name), installer, { mode: 0o755 });
+}
 console.log(`Release ready: ${archive}`);

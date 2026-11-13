@@ -41,7 +41,7 @@ MinDeck 使用你本机自己的登录来驱动 Claude Code 和 Codex，仅面�
 ## 快速开始
 
 ```sh
-git clone <repo> mindeck && cd mindeck
+git clone https://github.com/vapao/MinDeck.git mindeck && cd mindeck
 pnpm install
 pnpm build      # 构建前端，Hub 会直接托管产物
 pnpm start      # 启动 Hub，默认 http://127.0.0.1:8004
@@ -111,7 +111,11 @@ pnpm --filter @mindeck/server test
 
 ### Finder / iTerm2 联动（可选）
 
-适用于在另一台 Mac 上使用 MinDeck 的情况。在你**使用浏览器的那台 Mac** 上运行 `scripts/install-finder-helper.sh`（需要 Xcode Command Line Tools），然后在设置页配置 Hub 主机目录到本机挂载目录的映射、SSH 主机名。之后可以在会话里一键用 Finder 打开文件、用 iTerm2 SSH 到项目目录。
+适用于在另一台 Mac 上使用 MinDeck 的情况。在 Settings → Finder & Terminal 点击 **Copy install command**，将命令粘贴到**使用浏览器的那台 Mac** 的终端执行。它会自动识别芯片、下载并校验已编译助手，安装到 `~/Applications/MinDeck Finder.app`；无需下载源码或安装 Xcode，重复执行即可更新，也不会安装 Hub。
+
+先在这台 Mac 挂载共享目录，再在设置页填写 Hub 目录到本机挂载目录的映射、SSH 主机名。保存后点击 **Test Finder / Test SSH**，在 Finder / iTerm2 中确认结果；远程 SSH 需要本机已安装 iTerm2。之后可以在会话里一键打开项目目录或 SSH 到项目。
+
+开发者也可在浏览器所在 Mac 运行 `bash scripts/install-finder-helper.sh` 从源码安装（需要 Xcode Command Line Tools）。
 
 ## License
 

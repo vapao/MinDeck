@@ -2,7 +2,7 @@
 
 安装版面向已经登录 Claude Code 的单机用户。无需预装 Node、git、pnpm 或 Xcode，无需构建；安装器同时准备 Claude 与 Codex，Codex 登录可选。使用 Release 中 `install.sh` 的下载链接执行 `curl -fsSL "$installer_url" | sh`，重复执行同一条 latest Release 链接就是升级。脚本完成后打开 `http://127.0.0.1:8004`，首次在 Projects 添加自己的目录。
 
-仓库地址尚未确定：唯一默认值在 `scripts/release-config.json` 的 `repository`。GitHub Actions 使用 `github.repository` 注入实际地址；生成的安装脚本固定引用所属 tag 的包与校验文件，避免 latest 在下载过程中变化。发布后将该仓库的 latest Release 的 `install.sh` 链接放进 README。此变更没有修改两个 README。
+发布仓库为 `vapao/MinDeck`，默认值在 `scripts/release-config.json` 的 `repository`。GitHub Actions 使用 `github.repository` 注入实际地址；生成的安装脚本固定引用所属 tag 的包与校验文件，避免 latest 在下载过程中变化。
 
 ## 目录与生命周期
 
@@ -46,8 +46,15 @@ pnpm build:release v0.1.0
 - `mindeck-darwin-arm64.tar.gz` 或 `mindeck-darwin-x64.tar.gz`
 - 相应 `.sha256`
 - 已填入仓库和 tag 的 `install.sh`
+- 独立的 `mindeck-helper-darwin-arm64.tar.gz` / `mindeck-helper-darwin-x64.tar.gz`、相应 `.sha256` 和 `install-helper.sh`，供浏览器所在 Mac 单独安装助手
 
 `.github/workflows/release.yml` 在推送 `v*` tag 时，分别用 `macos-15` 与 `macos-15-intel` 构建（架构标签见 [GitHub 官方 runner 文档](https://docs.github.com/en/actions/how-tos/write-workflows/choose-where-workflows-run/choose-the-runner-for-a-job)），再把两套包及安装脚本上传到 Release。不需要预先创建 Release。Node 与 SDK JS 的许可说明随包提供，平台程序由用户安装时直接从官方 npm 包下载。
+
+独立助手安装：Settings → Finder & Terminal 根据同一份 `release-config.json` 的 repository（CI 可用 `MINDECK_REPOSITORY` 覆盖）生成 `https://github.com/vapao/MinDeck/releases/latest/download/install-helper.sh` 安装命令。latest 脚本内部固定 tag，助手包和校验文件来自同一版本。修改仓库配置后需要重新构建前端，且包含助手的 Release 发布成功后命令才可用。设置页只提供安装步骤，不展示发布配置原因；源码构建未配置有效仓库时仍提供源码安装步骤。
+
+在浏览器所在 Mac 执行命令后，脚本识别架构、验证 SHA-256 和包内签名，随后替换 `~/Applications/MinDeck Finder.app` 并注册协议。仅安装助手，不启动 Hub、不需要 Node / Xcode 或 sudo；重复执行 latest 命令即更新。安装到 Mac Mini 不会同步到 MacBook。移除此应用即可卸载独立助手；完整 Hub 安装器管理的助手仍位于 `~/.mindeck/`。
+
+独立助手安装边界检查：`node scripts/test-helper-installer.mjs`，验证下载失败或校验失败时保留原助手。
 
 构建机与运行系统的支持范围受所选 Node、SDK 与 Swift 系统框架限制；双架构发布需要分别验收，不能仅以 workflow 配置代替真机验证。
 

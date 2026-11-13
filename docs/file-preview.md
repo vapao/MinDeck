@@ -52,26 +52,28 @@ Settings → Finder & Terminal → Hub location 支持 Auto / This Mac / Remote 
 
 本机模式不需要目录映射或 SSH：Finder 使用原始绝对路径，Terminal 通过 macOS API 接收目录 URL，打开该目录的新终端，不把路径拼进 shell 命令。设置页隐藏远程映射和 SSH 字段；已有远程配置保留以便切回。项目行和输入框入口统一标作 Open in Terminal。
 
-安装版自动安装并注册已编译助手，不需要 Xcode，卸载安装版时一并移除。源码运行或仅作远程浏览器控制端的 Mac 仍可执行下述安装脚本。
+安装版自动安装并注册已编译助手，不需要 Xcode，卸载安装版时一并移除。源码运行或仅作远程浏览器控制端的 Mac 可按下述方式单独安装。
 
 ## 浏览器所在 Mac 一次性安装
 
-在**浏览器所在 Mac** 上取得本仓库的 `scripts/install-finder-helper.sh` 与 `scripts/finder-helper/main.swift`，保持相对目录不变，执行：
+推荐在 Settings → Finder & Terminal 点击 **Copy install command**，在**浏览器所在 Mac** 的终端粘贴执行。自动识别 Apple Silicon / Intel，下载已编译助手，校验 SHA-256 和签名后安装；不需要源码、Xcode、Node 或 sudo。重复执行同一条 latest 命令即可更新。页面只提供安装步骤，不展示发布配置原因；源码构建未配置有效仓库时提供源码安装步骤。正式命令需要已发布的 Release。
+
+源码安装仍可用：在**浏览器所在 Mac** 上取得本仓库的 `scripts/install-finder-helper.sh` 与 `scripts/finder-helper/main.swift`，保持相对目录不变，执行：
 
 ```sh
 bash scripts/install-finder-helper.sh
 ```
 
-安装需要 Xcode Command Line Tools（`xcrun swiftc`）。安装到 `~/Applications/MinDeck Finder.app`，注册 `mindeck-finder:` 协议，无常驻进程或监听端口。移除此应用即可卸载。
+仅源码安装需要 Xcode Command Line Tools（`xcrun swiftc`）。两种独立安装方式均安装到 `~/Applications/MinDeck Finder.app`，注册 `mindeck-finder:` 协议，无常驻进程或监听端口。移除此应用即可卸载。
 
 在 Remote Mac 模式的 MinDeck Settings → Finder on this Mac 设置：
 
 - Hub folder：例如 `/Users/you`
 - Mounted folder on this Mac：例如 `/Volumes/aka`
 
-点击设置页底部的 Save changes 后，映射只保存在当前浏览器。同一浏览器更换 Hub 地址会有独立设置。映射按完整目录前缀匹配，不将 `/Users/aka-other` 当成 `/Users/aka` 的子目录。
+点击设置页底部的 Save changes 后，用 Test Finder 打开映射根目录，在 Finder 中确认。未保存的修改会禁用测试按钮。映射只保存在当前浏览器。同一浏览器更换 Hub 地址会有独立设置。映射按完整目录前缀匹配，不将 `/Users/aka-other` 当成 `/Users/aka` 的子目录。
 
-点击 Show in Finder 后，浏览器可能首次要求允许启动辅助应用。文件在 Finder 中选中；目录直接打开。辅助应用只接收路径并调用系统 Finder API，不将参数传给 shell。路径不存在时提示检查挂载和映射。网页无法可靠判断辅助应用是否安装或操作是否成功。
+点击 Show in Finder 后，浏览器可能首次要求允许启动辅助应用。文件在 Finder 中选中；目录直接打开。辅助应用只接收路径并调用系统 Finder API，不将参数传给 shell。路径不存在时提示检查挂载和映射。网页无法可靠判断辅助应用是否安装或操作是否成功。设置页测试、项目页、会话输入框和文件预览的 Finder / Terminal 入口共用打开提示：显示目标路径或 SSH 主机、浏览器授权与安装排查步骤，Open setup 直接定位设置页安装区域；提示仅表示正在尝试唤起，不表示成功。
 
 下载始终可用；目录仅支持 Finder。没有映射的路径提示到 Settings 配置。手机上保持映射为空，使用预览和下载。
 
@@ -79,7 +81,7 @@ bash scripts/install-finder-helper.sh
 
 ## 项目 SSH 终端
 
-远程模式下，桌面输入框底部的 Open in Terminal 图标位于 Start fresh 左侧。Settings → iTerm2 on this Mac 中填写 MacBook `~/.ssh/config` 的主机别名（如 `mac-mini`），也可填写 `user@hostname`；端口、密钥等放在 SSH config 中。点击页尾 Save changes 后，该设置只保存在当前浏览器；未配置时按钮提示设置。
+远程模式下，桌面输入框底部的 Open in Terminal 图标位于 Start fresh 左侧。Settings → iTerm2 on this Mac 中填写 MacBook `~/.ssh/config` 的主机别名（如 `mac-mini`），也可填写 `user@hostname`；端口、密钥等放在 SSH config 中。点击页尾 Save changes 后，该设置只保存在当前浏览器；未配置时按钮提示设置。Test SSH 使用已保存的主机，在 Hub folder（未填时为 `/`）打开 SSH，由用户在 iTerm2 中确认结果，不在网页上报告连接成功。
 
 重新运行安装脚本更新辅助应用。首次调用可能要求允许 MinDeck Finder 控制 iTerm2；可在 macOS「系统设置 → 隐私与安全性 → 自动化」管理。辅助应用会在已有 iTerm2 窗口新建标签页，没有窗口则新建窗口，执行 SSH 并进入会话原始 cwd，随后启动远端登录 Shell。新建 session 先启动 `/bin/zsh -l`，再输入 SSH 命令；SSH 失败或结束后保留本地提示符，便于查看错误和重试。不会使用 Finder 映射，不会向已有 session 写命令。SSH 密码和主机确认在终端中处理。
 

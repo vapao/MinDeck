@@ -105,6 +105,51 @@
   font-size: 12px;
 }
 
+.installCommand {
+  width: 100%;
+  min-height: 72px;
+  margin: 8px 0;
+  resize: none;
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.helperSetup {
+  padding: 12px;
+  margin: 8px 0 12px;
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  scroll-margin-top: 80px;
+}
+
+.helperSetup h3 {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-strong);
+}
+
+.sourceInstall {
+  margin-top: 12px;
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.sourceInstall summary {
+  cursor: pointer;
+  color: var(--text);
+}
+
+.sourceInstall p {
+  margin: 8px 0;
+}
+
+.sourceInstall pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+}
+
 .footer button {
   flex-shrink: 0;
 }

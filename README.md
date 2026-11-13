@@ -41,7 +41,7 @@ MinDeck drives Claude Code and Codex with your own local login. It is meant for 
 ## Quick start
 
 ```sh
-git clone <repo> mindeck && cd mindeck
+git clone https://github.com/vapao/MinDeck.git mindeck && cd mindeck
 pnpm install
 pnpm build      # builds the web app; the Hub serves it directly
 pnpm start      # starts the Hub on http://127.0.0.1:8004
@@ -111,7 +111,11 @@ Design and implementation docs in `docs/` are in Chinese: `features.md` covers e
 
 ### Finder / iTerm2 integration (optional)
 
-For using MinDeck from a different Mac than the one running the Hub. On **the Mac you browse from**, run `scripts/install-finder-helper.sh` (requires Xcode Command Line Tools). Then in Settings, map the Hub machine's folder to where it is mounted locally and set the SSH host. Sessions can then reveal files in Finder and open an iTerm2 SSH session in the project folder.
+For using MinDeck from a different Mac than the one running the Hub. In Settings → Finder & Terminal, click **Copy install command** and paste it into a terminal on **the Mac you browse from**. It detects the chip, downloads and verifies the compiled helper, and installs it to `~/Applications/MinDeck Finder.app`. No source checkout or Xcode needed; run the same command again to update. It does not install the Hub.
+
+Mount the shared folder on this Mac, then configure the folder mapping and SSH host in Settings. Save and use **Test Finder / Test SSH**, checking Finder / iTerm2 for the result. Remote SSH requires iTerm2 on this Mac. Sessions can then open project folders or SSH into the project directory.
+
+Developers can also run `bash scripts/install-finder-helper.sh` on the browsing Mac to install from source (requires Xcode Command Line Tools).
 
 ## License
 

@@ -5,6 +5,7 @@ import { Check, ChevronLeft, ChevronRight, Copy, Download } from 'lucide-react'
 import Markdown, { defaultUrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { api, type OutputFile } from '../api'
+import { navigate } from '../router'
 import { dialog } from './Dialog'
 import { PreviewCode } from './PreviewCode'
 import { CodeDiff, CodeView } from './CodeView'
@@ -75,25 +76,48 @@ export function mappedPath(path: string) {
   if (!local || !remote || (path !== prefix && !path.startsWith(prefix + '/'))) return null
   return local.replace(/\/+$/, '') + path.slice(prefix.length)
 }
+function desktopHelp(title: string, message: string) {
+  void dialog.confirm({ title, message, ok: 'Open setup', cancel: 'Close' }).then((setup) => {
+    if (!setup) return
+    navigate('/settings#desktop-helper')
+    document.getElementById('desktop-helper')?.scrollIntoView({ block: 'start' })
+  })
+}
+let helperFrame: HTMLIFrameElement | null = null
+function launchDesktopHelper(url: string, title: string, target: string, checks: string) {
+  // Custom-protocol navigation has no success/failure callback; show the attempt and recovery steps.
+  desktopHelp(title, `${target}\n\nTrying to open MinDeck Finder on this Mac. Allow your browser to open the app if prompted. This page cannot confirm whether it opened.\n\nIf nothing opens:\n• Install MinDeck Finder on the Mac running this browser; installing it on the Hub Mac is not enough.\n• If it is already installed, rerun its installer to register the browser link, then retry and allow the browser prompt.\n${checks}`)
+  // An unknown protocol can navigate to a browser error page; keep that navigation off the app page.
+  if (!helperFrame) {
+    helperFrame = document.createElement('iframe')
+    helperFrame.hidden = true
+    helperFrame.title = 'Desktop helper launcher'
+    document.body.append(helperFrame)
+  }
+  helperFrame.src = url
+}
+function openFinderPath(local: string) {
+  launchDesktopHelper(`mindeck-finder://reveal?path=${encodeURIComponent(local)}`, 'Opening Finder', `Folder or file on this Mac:\n${local}`, '• Check that this path exists in Finder. For a remote folder, mount the share first and check the folder mapping in Settings.')
+}
 export function openProjectFinder(path: string) {
   const local = mappedPath(path)
   if (!local) {
-    void dialog.alert({ title: 'Set up Finder', message: 'Configure this project’s folder mapping in Settings → Finder on this Mac, and install the MinDeck Finder helper on this Mac.' })
+    desktopHelp('Set up Finder', `No Finder mapping matches this Hub path:\n${path}\n\nIn Settings → Finder on this Mac, map the Hub folder to its mounted folder on this Mac and save. MinDeck Finder must also be installed on this Mac.`)
     return
   }
-  window.location.href = `mindeck-finder://reveal?path=${encodeURIComponent(local)}`
+  openFinderPath(local)
 }
 export function openProjectTerminal(path: string) {
   if (isLocalConnection()) {
-    window.location.href = `mindeck-finder://local-terminal?path=${encodeURIComponent(path)}`
+    launchDesktopHelper(`mindeck-finder://local-terminal?path=${encodeURIComponent(path)}`, 'Opening Terminal', `Folder on this Mac:\n${path}`, '• Check that this folder exists on this Mac. If the Hub is on another Mac, select Remote Mac in Settings.')
     return
   }
   const host = localStorage.getItem('terminal:sshHost') ?? ''
   if (!host) {
-    void dialog.alert({ title: 'Set up iTerm2', message: 'Set SSH host in Settings → iTerm2 on this Mac, and install the updated MinDeck Finder helper on this Mac.' })
+    desktopHelp('Set up SSH', 'No SSH host is configured. Save a host alias or user@hostname in Settings → iTerm2 on this Mac. Both MinDeck Finder and iTerm2 must be installed on this Mac.')
     return
   }
-  window.location.href = `mindeck-finder://terminal?host=${encodeURIComponent(host)}&path=${encodeURIComponent(path)}`
+  launchDesktopHelper(`mindeck-finder://terminal?host=${encodeURIComponent(host)}&path=${encodeURIComponent(path)}`, 'Opening SSH in iTerm2', `SSH host: ${host}\nFolder on the Hub:\n${path}`, '• Install iTerm2 and allow MinDeck Finder to control it in System Settings → Privacy & Security → Automation.\n• Check iTerm2 for SSH connection errors, password requests, or host confirmation.')
 }
 export function FilePreviewHost() {
   const { selected } = usePreviewState()
@@ -388,7 +412,7 @@ function Preview({ sessionId, path, line, image, discard, onDismiss, navigation 
     {file && !dirty && <footer className={`${modal.actions} ${styles.footer}`}>
       {html && <a className={`${modal.secondary} ${styles.action}`} href={htmlUrl} target="_blank" rel="noreferrer">Open in new tab</a>}
       {file.content !== null && <button className={`${modal.secondary} ${styles.copyButton}`} onClick={() => { void navigator.clipboard.writeText(file.content!).then(() => setCopied(true)) }}>{copied ? <Check size={14} /> : <Copy size={14} />}{copied ? 'Copied' : 'Copy text'}</button>}
-      {local && <a className={`${modal.primary} ${styles.action}`} onClick={dismiss} href={`mindeck-finder://reveal?path=${encodeURIComponent(local)}`}>Show in Finder</a>}
+      {local && <a className={`${modal.primary} ${styles.action}`} onClick={(e) => { e.preventDefault(); dismiss(); openFinderPath(local) }} href={`mindeck-finder://reveal?path=${encodeURIComponent(local)}`}>Show in Finder</a>}
       {file.kind !== 'directory' && <a className={`${modal.secondary} ${styles.action}`} onClick={dismiss} href={image?.url ?? api.outputUrl(sessionId, path, true)} download={file.name}>Download</a>}
     </footer>}
     </>}

@@ -1,11 +1,18 @@
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 import { VitePWA } from 'vite-plugin-pwa'
+import { readFileSync } from 'node:fs'
 
 // 端口：前端 5180，后端 8004，Tailscale HTTPS 8450
 // 代理跟随 MINDECK_PORT，否则改了后端端口的本地开发会静默连到生产 Hub
 const hub = `127.0.0.1:${process.env.MINDECK_PORT ?? 8004}`
+const release = JSON.parse(readFileSync(new URL('../../scripts/release-config.json', import.meta.url), 'utf8'))
+const repository = process.env.MINDECK_REPOSITORY ?? release.repository
 export default defineConfig({
+  define: {
+    'import.meta.env.VITE_HELPER_INSTALL_URL': JSON.stringify(/^[\w.-]+\/[\w.-]+$/.test(repository)
+      ? `https://github.com/${repository}/releases/latest/download/install-helper.sh` : ''),
+  },
   plugins: [
     react(),
     VitePWA({

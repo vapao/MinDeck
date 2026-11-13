@@ -23,6 +23,7 @@ jobs:
       # Codex schema is generated (gitignored), and only needed by typecheck.
       - run: pnpm codex:schema
       - run: pnpm typecheck
+      - run: node scripts/test-helper-installer.mjs
       - run: pnpm build:release "$GITHUB_REF_NAME"
         env:
           MINDECK_REPOSITORY: ${{ github.repository }}
@@ -33,6 +34,7 @@ jobs:
             dist/*.tar.gz
             dist/*.sha256
             dist/install.sh
+            dist/install-helper.sh
   publish:
     needs: build
     runs-on: ubuntu-latest
